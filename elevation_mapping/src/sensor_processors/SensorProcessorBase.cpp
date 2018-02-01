@@ -44,6 +44,10 @@ bool SensorProcessorBase::readParameters()
   nodeHandle_.param("robot_base_frame_id", robotBaseFrameId_, std::string("/robot"));
   nodeHandle_.param("map_frame_id", mapFrameId_, std::string("/map"));
 
+  // New tests
+  //nodeHandle_.param("mapga_frame_id", mapFrameId_, std::)
+  // End New
+
   double minUpdateRate;
   nodeHandle_.param("min_update_rate", minUpdateRate, 2.0);
   transformListenerTimeout_.fromSec(1.0 / minUpdateRate);
@@ -55,10 +59,10 @@ bool SensorProcessorBase::readParameters()
 }
 
 bool SensorProcessorBase::process(
-		const pcl::PointCloud<pcl::PointXYZRGB>::ConstPtr pointCloudInput,
+        const pcl::PointCloud<pcl::PointXYZRGB>::ConstPtr pointCloudInput,
 		const Eigen::Matrix<double, 6, 6>& robotPoseCovariance,
 		const pcl::PointCloud<pcl::PointXYZRGB>::Ptr pointCloudMapFrame,
-		Eigen::VectorXf& variances)
+        Eigen::VectorXf& variances, Eigen::VectorXf& spatialVariances)
 {
   ros::Time timeStamp;
   timeStamp.fromNSec(1000 * pointCloudInput->header.stamp);
@@ -73,6 +77,11 @@ bool SensorProcessorBase::process(
   removePointsOutsideLimits(pointCloudMapFrame, pointClouds);
 	if (!computeVariances(pointCloudSensorFrame, robotPoseCovariance, variances)) return false;
 
+    // New: compute spacial variance *******************************************************************************************
+    if (!computeSpatialVariances(pointCloudMapFrame, spatialVariances)) return false;
+
+    // End New *****************************************************************************************************************
+
 	return true;
 }
 
@@ -84,6 +93,13 @@ bool SensorProcessorBase::updateTransformations(const ros::Time& timeStamp)
     tf::StampedTransform transformTf;
     transformListener_.lookupTransform(mapFrameId_, sensorFrameId_, timeStamp, transformTf);
     poseTFToEigen(transformTf, transformationSensorToMap_);
+
+    // New tests:
+    //tf::StampedTransform transformTfmapga;
+    //transformListener_.lookupTransform(map_gaFrameId_, sensorFrameId_, timeStamp, transformTfmapga);
+    //poseTFToEigen(transformTfmapga, transformationSensorToMapGA_);
+
+    // End New
 
     transformListener_.lookupTransform(robotBaseFrameId_, sensorFrameId_, timeStamp, transformTf);  // TODO Why wrong direction?
     Eigen::Affine3d transform;
@@ -102,6 +118,7 @@ bool SensorProcessorBase::updateTransformations(const ros::Time& timeStamp)
     return false;
   }
 }
+
 
 bool SensorProcessorBase::transformPointCloud(
 		pcl::PointCloud<pcl::PointXYZRGB>::ConstPtr pointCloud,

@@ -536,6 +536,28 @@ bool ElevationMap::publishVisibilityCleanupMap()
   return true;
 }
 
+bool ElevationMap::publishspatialVariancePointCloud()
+{
+  //if (visbilityCleanupMapPublisher_.getNumSubscribers() < 1) return false;
+  //boost::recursive_mutex::scoped_lock scopedLock(visibilityCleanupMapMutex_);
+  //grid_map::GridMap visibilityCleanupMapCopy = visibilityCleanupMap_;
+  //scopedLock.unlock();
+  //visibilityCleanupMapCopy.erase("elevation");
+  //visibilityCleanupMapCopy.erase("variance");
+  //visibilityCleanupMapCopy.erase("horizontal_variance_x");
+  //visibilityCleanupMapCopy.erase("horizontal_variance_y");
+  //visibilityCleanupMapCopy.erase("horizontal_variance_xy");
+  //visibilityCleanupMapCopy.erase("color");
+  //visibilityCleanupMapCopy.erase("time");
+  //grid_map_msgs::GridMap message;
+  //GridMapRosConverter::toMessage(visibilityCleanupMapCopy, message);
+  //visbilityCleanupMapPublisher_.publish(message);
+
+  //spatialVarianceColoreSchemedPointcloudPublisher_.publish(message)
+  //ROS_DEBUG("Spatial Variance Pointcloud has been published.");
+  //return true;
+}
+
 grid_map::GridMap& ElevationMap::getRawGridMap()
 {
   return rawMap_;

@@ -133,6 +133,15 @@ class ElevationMap
    */
   bool publishVisibilityCleanupMap();
 
+  // New ******************************
+  /*!
+   * Publishes a Pointcloud that is colored according to local spatial variance values
+   * @return true if successful.
+   */
+  bool publishSpatialVariancePointCloud();
+  // End New ***********************************
+
+
   /*!
    * Gets a reference to the raw grid map.
    * @return the raw grid map.
@@ -279,6 +288,7 @@ class ElevationMap
   ros::Publisher elevationMapRawPublisher_;
   ros::Publisher elevationMapFusedPublisher_;
   ros::Publisher visbilityCleanupMapPublisher_;
+  // New **************************************************************
 
   //! Mutex lock for fused map.
   boost::recursive_mutex fusedMapMutex_;

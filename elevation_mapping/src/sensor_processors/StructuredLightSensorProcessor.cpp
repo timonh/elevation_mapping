@@ -14,6 +14,12 @@
 #include <limits>
 #include <string>
 
+// New **********************************************************
+#include <sensor_msgs/PointCloud2.h>
+//#include <pcl/ros/conversions.h>
+//#include <pcl_conversions/pcl_conversions.h>
+// End New *********************************************************
+
 namespace elevation_mapping {
 
 /*! StructuredLight-type (structured light) sensor model:
@@ -25,7 +31,9 @@ namespace elevation_mapping {
 StructuredLightSensorProcessor::StructuredLightSensorProcessor(ros::NodeHandle& nodeHandle, tf::TransformListener& transformListener)
     : SensorProcessorBase(nodeHandle, transformListener)
 {
-
+    // New **************************************************************************
+    //spatialVarianceColoreSchemedPointcloudPublisher_ = nodeHandle_.advertise<sensor_msgs::PointCloud2>("spatial_variance_pointcloud", 1);
+    // End New *******************************************************************************
 }
 
 StructuredLightSensorProcessor::~StructuredLightSensorProcessor()
@@ -65,7 +73,7 @@ bool StructuredLightSensorProcessor::cleanPointCloud(const pcl::PointCloud<pcl::
 }
 
 bool StructuredLightSensorProcessor::computeVariances(
-		const pcl::PointCloud<pcl::PointXYZRGB>::ConstPtr pointCloud,
+        const pcl::PointCloud<pcl::PointXYZRGB>::ConstPtr pointCloud,
 		const Eigen::Matrix<double, 6, 6>& robotPoseCovariance,
 		Eigen::VectorXf& variances)
 {
@@ -86,6 +94,7 @@ bool StructuredLightSensorProcessor::computeVariances(
 	const Eigen::Matrix3f C_SB_transpose = rotationBaseToSensor_.transposed().toImplementation().cast<float>();
 	const Eigen::Matrix3f B_r_BS_skew = kindr::getSkewMatrixFromVector(Eigen::Vector3f(translationBaseToSensorInBaseFrame_.toImplementation().cast<float>()));
 
+
   for (unsigned int i = 0; i < pointCloud->size(); ++i) {
 		// For every point in point cloud.
 
@@ -95,7 +104,8 @@ bool StructuredLightSensorProcessor::computeVariances(
 		float heightVariance = 0.0; // sigma_p
 
 		// Measurement distance.
-		float measurementDistance = pointVector.z();
+        float measurementDistance = pointVector.z();
+
 
 		// Compute sensor covariance matrix (Sigma_S) with sensor model.
                 float deviationNormal = sensorParameters_.at("normal_factor_a")
@@ -120,7 +130,90 @@ bool StructuredLightSensorProcessor::computeVariances(
 		variances(i) = heightVariance;
 	}
 
+
 	return true;
+}
+
+// New ***************************************************************************************************************
+bool StructuredLightSensorProcessor::computeSpatialVariances(
+        const pcl::PointCloud<pcl::PointXYZRGB>::Ptr pointCloudMapFrame,
+        Eigen::VectorXf& spatialVariances)
+{
+
+    spatialVariances.resize(pointCloudMapFrame->size());
+
+    // Parameters.
+    int proximityParameter = 1500;
+    double thresholdRadius = 0.01;
+
+    for (unsigned int i = 0; i < pointCloudMapFrame->size(); ++i) {
+        // For every point in point cloud.
+
+        // Preparation.
+        auto& point = pointCloudMapFrame->points[i];
+        float varianceAccumulator = 0;
+        float varianceAccumulatorSquared = 0;
+        int varianceCalculationPointCounter = 0;
+
+
+        for (unsigned int j = std::max(0, int(i-proximityParameter)); j < std::min(int(pointCloudMapFrame->size()), int(i+proximityParameter)); ++j){
+            // For every point in logical proximity of point[j] (Pointcloud indexing).
+
+            auto& pointIter = pointCloudMapFrame->points[j];
+
+            // If the point is within the thresholdRadius of point[j].
+            if(sqrt(pow((point.x-pointIter.x),2)+pow((point.y-pointIter.y),2)) < thresholdRadius) {
+                varianceAccumulator += std::abs(pointIter.z);
+                varianceAccumulatorSquared += pow(pointIter.z,2);
+                varianceCalculationPointCounter++;
+            }
+        }
+
+        // Assign spatialVariance (Prevent division by zero).
+        float spatialVariance;
+        if(varianceCalculationPointCounter < 0.1){
+            std::cout << "WARNING: 0 points" << std::endl;
+            spatialVariance = 0;
+        }
+        else{
+            spatialVariance = std::abs(varianceAccumulatorSquared / float(varianceCalculationPointCounter)
+                                       - pow(varianceAccumulator / float(varianceCalculationPointCounter),2));
+
+        }
+
+        // For Debugging.
+        if(i%1000 == 0){
+            std::cout << "Variances: " << spatialVariance << " X: "<< point.x << " Y: " << point.y << " Z: " << point.z << "P" << std::endl;
+        }
+
+        // Copy to List.
+        spatialVariances[i] = spatialVariance;
+
+
+        //pcl::PointXYZRGB pointOut = point;
+        //pointOut.r = 255;
+        //PointCloudColorSchemeSpatialVariance.push_back(pointOut);
+        // std::cout << "RGB: " << "R: " << point.r << " G:" << point.g << " B: " << point.b << std::endl;
+
+        // End New *****************************************************
+
+
+
+
+    }
+    //spatialVarianceColoreSchemedPointcloudPublisher_.publish()
+    //sensor_msgs::PointCloud2 OutputVariancePointcloud;
+    //OutputVariancePointcloud.header.frame_id = "/map";
+
+    //pcl::toROSMsg(PointCloudColorSchemeSpatialVariance, OutputVariancePointcloud);
+    //spatialVarianceColoreSchemedPointcloudPublisher_.publish(OutputVariancePointcloud);
+
+    // New
+    //meanSpatialVariance = meanSpatialVariance / (float)pointCloudMapFrame->size();
+    //std::cout << "Mean Spatial Variance: " << meanSpatialVariance << std::endl;
+    // End New
+    return true;
+    // End New ***********************************************************************************************************
 }
 
 } /* namespace */

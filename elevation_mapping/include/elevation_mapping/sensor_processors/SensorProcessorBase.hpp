@@ -63,7 +63,7 @@ public:
 	 */
   bool process(const pcl::PointCloud<pcl::PointXYZRGB>::ConstPtr pointCloudInput,
                const Eigen::Matrix<double, 6, 6>& robotPoseCovariance,
-               const pcl::PointCloud<pcl::PointXYZRGB>::Ptr pointCloudOutput, Eigen::VectorXf& variances);
+               const pcl::PointCloud<pcl::PointXYZRGB>::Ptr pointCloudOutput, Eigen::VectorXf& variances, Eigen::VectorXf& spatialVariances);
 
   typedef std::unique_ptr<SensorProcessorBase> Ptr;
 
@@ -94,6 +94,21 @@ public:
    */
   virtual bool computeVariances(const pcl::PointCloud<pcl::PointXYZRGB>::ConstPtr pointCloud,
                                 const Eigen::Matrix<double, 6, 6>& robotPoseCovariance, Eigen::VectorXf& variances) = 0;
+
+
+
+
+  // New ***************************************************
+  /*!
+   * Computes the local spatial variances of the terrain for terrain classification
+   * into vegetation and non-vegetation elements (using the raw pointCloud instead of the elevation map)
+   * @param[in] pointCloudMapFrame the point cloud for which the variances are computed in the map frame.
+   * @param[out] spatialVariances the local spatial variances in z-direction of the map frame.
+   * @return true if successful.
+   */
+  virtual bool computeSpatialVariances(pcl::PointCloud<pcl::PointXYZRGB>::Ptr pointCloudMapFrame, Eigen::VectorXf& spatialVariances) = 0;
+  // End New ************************************************
+
 
 
   /*!

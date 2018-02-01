@@ -57,8 +57,10 @@ ElevationMapping::ElevationMapping(ros::NodeHandle& nodeHandle)
       ignoreRobotMotionUpdates_(false)
 {
   ROS_INFO("Elevation mapping node started.");
-
   readParameters();
+  // TESTS
+  ROS_WARN_STREAM("Elevation mapping topic name: " << pointCloudTopic_);
+  //
   pointCloudSubscriber_ = nodeHandle_.subscribe(pointCloudTopic_, 1, &ElevationMapping::pointCloudCallback, this);
   if (!robotPoseTopic_.empty()) {
     robotPoseSubscriber_.subscribe(nodeHandle_, robotPoseTopic_, 1);
@@ -115,6 +117,7 @@ ElevationMapping::~ElevationMapping()
 bool ElevationMapping::readParameters()
 {
   // ElevationMapping parameters.
+
   nodeHandle_.param("point_cloud_topic", pointCloudTopic_, string("/points"));
   nodeHandle_.param("robot_pose_with_covariance_topic", robotPoseTopic_, string("/pose"));
   nodeHandle_.param("track_point_frame_id", trackPointFrameId_, string("/robot"));
@@ -234,13 +237,20 @@ void ElevationMapping::visibilityCleanupThread()
   }
 }
 
+// New
+//void ElevationMapping::spatialVarianceCalculation()
+//{
+//    ROS_INFO("Triggered the function!");
+//    cout << "Triggered this" << endl;
+//}
+// End New
+
 void ElevationMapping::pointCloudCallback(
     const sensor_msgs::PointCloud2& rawPointCloud)
 {
   stopMapUpdateTimer();
 
   boost::recursive_mutex::scoped_lock scopedLock(map_.getRawDataMutex());
-
   // Convert the sensor_msgs/PointCloud2 data to pcl/PointCloud.
   // TODO Double check with http://wiki.ros.org/hydro/Migration
   pcl::PCLPointCloud2 pcl_pc;
@@ -251,6 +261,10 @@ void ElevationMapping::pointCloudCallback(
   lastPointCloudUpdateTime_.fromNSec(1000 * pointCloud->header.stamp);
 
   ROS_INFO("ElevationMap received a point cloud (%i points) for elevation mapping.", static_cast<int>(pointCloud->size()));
+
+  // New
+  //spatialVarianceCalculation();
+  // End New
 
   // Update map location.
   updateMapLocation();
@@ -277,8 +291,10 @@ void ElevationMapping::pointCloudCallback(
   // Process point cloud.
   PointCloud<PointXYZRGB>::Ptr pointCloudProcessed(new PointCloud<PointXYZRGB>);
   Eigen::VectorXf measurementVariances;
+  // New *******************
+  Eigen::VectorXf spatialVariances;
   if (!sensorProcessor_->process(pointCloud, robotPoseCovariance, pointCloudProcessed,
-                                 measurementVariances)) {
+                                 measurementVariances, spatialVariances)) {
     ROS_ERROR("Point cloud could not be processed.");
     resetMapUpdateTimer();
     return;
