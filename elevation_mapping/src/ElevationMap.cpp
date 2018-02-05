@@ -63,8 +63,22 @@ void ElevationMap::setGeometry(const grid_map::Length& length, const double& res
   ROS_INFO_STREAM("Elevation map grid resized to " << rawMap_.getSize()(0) << " rows and "  << rawMap_.getSize()(1) << " columns.");
 }
 
-bool ElevationMap::add(const pcl::PointCloud<pcl::PointXYZRGB>::Ptr pointCloud, Eigen::VectorXf& pointCloudVariances, const ros::Time& timestamp, const Eigen::Affine3d& transformationSensorToMap)
+bool ElevationMap::add(const pcl::PointCloud<pcl::PointXYZRGB>::Ptr pointCloud, Eigen::VectorXf& pointCloudVariances, Eigen::VectorXf& spatialVariances, const ros::Time& timestamp, const Eigen::Affine3d& transformationSensorToMap)
 {
+
+
+  //std::cout << "spatialVariances size: " << spatialVariances.size() << std::endl;
+  //for(unsigned int i = 0; i < spatialVariances.size(); ++i){
+  //   const float& spatialpointvariance = spatialVariances(i);
+  //   // Debug
+  //
+  //   std::cout << "spatialVariances: " << spatialpointvariance << std::endl;
+  //   // End Debug
+  //}
+
+
+
+
   if (pointCloud->size() != pointCloudVariances.size()) {
     ROS_ERROR("ElevationMap::add: Size of point cloud (%i) and variances (%i) do not agree.",
               (int) pointCloud->size(), (int) pointCloudVariances.size());
@@ -101,6 +115,15 @@ bool ElevationMap::add(const pcl::PointCloud<pcl::PointXYZRGB>::Ptr pointCloud, 
 
     const float& pointVariance = pointCloudVariances(i);
     const float scanTimeSinceInitialization = (timestamp - initialTime_).toSec();
+
+    //Debug
+    //std::cout << "pointVariance: " << pointVariance << std::endl;
+    // End Debug
+    //const float& spatialpointvariance = spatialVariances(i);
+      //   // Debug
+      //
+    //std::cout << "spatialVariances: " << spatialpointvariance << std::endl;
+    // End Debug
 
     if (!rawMap_.isValid(index)) {
       // No prior information in elevation map, use measurement.
@@ -536,26 +559,20 @@ bool ElevationMap::publishVisibilityCleanupMap()
   return true;
 }
 
-bool ElevationMap::publishspatialVariancePointCloud()
+bool ElevationMap::publishSpatialVariancePointCloud(Eigen::VectorXf& spatialVariances)
 {
-  //if (visbilityCleanupMapPublisher_.getNumSubscribers() < 1) return false;
-  //boost::recursive_mutex::scoped_lock scopedLock(visibilityCleanupMapMutex_);
-  //grid_map::GridMap visibilityCleanupMapCopy = visibilityCleanupMap_;
-  //scopedLock.unlock();
-  //visibilityCleanupMapCopy.erase("elevation");
-  //visibilityCleanupMapCopy.erase("variance");
-  //visibilityCleanupMapCopy.erase("horizontal_variance_x");
-  //visibilityCleanupMapCopy.erase("horizontal_variance_y");
-  //visibilityCleanupMapCopy.erase("horizontal_variance_xy");
-  //visibilityCleanupMapCopy.erase("color");
-  //visibilityCleanupMapCopy.erase("time");
-  //grid_map_msgs::GridMap message;
-  //GridMapRosConverter::toMessage(visibilityCleanupMapCopy, message);
-  //visbilityCleanupMapPublisher_.publish(message);
+  int size = spatialVariances.size();
+  ROS_INFO("VariancePointCloudPublisherfct..");
+  std::cout << "in: " << size << std::endl;
+  for(unsigned int i = 1; i <= spatialVariances.SizeAtCompileTime; ++i ){
+      const float& spatialpointvariance = spatialVariances(i);
 
-  //spatialVarianceColoreSchemedPointcloudPublisher_.publish(message)
-  //ROS_DEBUG("Spatial Variance Pointcloud has been published.");
-  //return true;
+      //std::cout << typeid(spatialpointvariance).name() << std::endl;
+      //std::cout << (double)spatialpointvariance << std::endl;
+      //ROS_INFO("This one: %f", spatialpointvariance);
+  }
+
+  return true;
 }
 
 grid_map::GridMap& ElevationMap::getRawGridMap()

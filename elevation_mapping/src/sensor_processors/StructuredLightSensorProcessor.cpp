@@ -173,7 +173,7 @@ bool StructuredLightSensorProcessor::computeSpatialVariances(
         float spatialVariance;
         if(varianceCalculationPointCounter < 0.1){
             std::cout << "WARNING: 0 points" << std::endl;
-            spatialVariance = 0;
+            spatialVariance = 0.0;
         }
         else{
             spatialVariance = std::abs(varianceAccumulatorSquared / float(varianceCalculationPointCounter)
@@ -181,13 +181,19 @@ bool StructuredLightSensorProcessor::computeSpatialVariances(
 
         }
 
-        // For Debugging.
+
+        // For Debugging. (Deprecated)
         if(i%1000 == 0){
-            std::cout << "Variances: " << spatialVariance << " X: "<< point.x << " Y: " << point.y << " Z: " << point.z << "P" << std::endl;
+            //std::cout << "Variances: " << spatialVariance << " X: "<< point.x << " Y: " << point.y << " Z: " << point.z << "P" << std::endl;
         }
 
         // Copy to List.
-        spatialVariances[i] = spatialVariance;
+        spatialVariances(i) = spatialVariance;
+
+        // For Debugging. (Deprecated)
+        //if(i%1000 == 0){
+        //    std::cout << "Variances: " << spatialVariances(i) << " X: "<< point.x << " Y: " << point.y << " Z: " << point.z << "P" << std::endl;
+        //}
 
 
         //pcl::PointXYZRGB pointOut = point;

@@ -80,6 +80,7 @@ add_library(${PROJECT_NAME}_library
   src/sensor_processors/StereoSensorProcessor.cpp
   src/sensor_processors/LaserSensorProcessor.cpp
   src/sensor_processors/PerfectSensorProcessor.cpp
+  src/HighGrassElevationMapping.cpp
 )
 
 target_link_libraries(${PROJECT_NAME}_library

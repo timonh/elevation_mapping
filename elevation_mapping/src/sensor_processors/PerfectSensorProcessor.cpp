@@ -104,4 +104,8 @@ bool PerfectSensorProcessor::computeVariances(
 	return true;
 }
 
+bool PerfectSensorProcessor::computeSpatialVariances(pcl::PointCloud<pcl::PointXYZRGB>::Ptr pointCloudMapFrame, Eigen::VectorXf& spatialVariances){
+    return true;
+}
+
 } /* namespace */

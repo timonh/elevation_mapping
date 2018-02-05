@@ -60,6 +60,10 @@ private:
 			const pcl::PointCloud<pcl::PointXYZRGB>::ConstPtr pointCloud,
 			const Eigen::Matrix<double, 6, 6>& robotPoseCovariance,
 			Eigen::VectorXf& variances);
+
+    virtual bool computeSpatialVariances(
+            const pcl::PointCloud<pcl::PointXYZRGB>::Ptr pointCloudMapFrame,
+            Eigen::VectorXf& spatialVariances);
 };
 
 

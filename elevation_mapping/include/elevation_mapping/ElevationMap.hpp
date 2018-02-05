@@ -64,7 +64,7 @@ class ElevationMap
    * @param transformationSensorToMap
    * @return true if successful.
    */
-  bool add(const pcl::PointCloud<pcl::PointXYZRGB>::Ptr pointCloud, Eigen::VectorXf& pointCloudVariances,
+  bool add(const pcl::PointCloud<pcl::PointXYZRGB>::Ptr pointCloud, Eigen::VectorXf& pointCloudVariances, Eigen::VectorXf& spatialVariances,
            const ros::Time& timeStamp, const Eigen::Affine3d& transformationSensorToMap);
 
   /*!
@@ -138,7 +138,7 @@ class ElevationMap
    * Publishes a Pointcloud that is colored according to local spatial variance values
    * @return true if successful.
    */
-  bool publishSpatialVariancePointCloud();
+  bool publishSpatialVariancePointCloud(Eigen::VectorXf& spatialVariances);
   // End New ***********************************
 
 

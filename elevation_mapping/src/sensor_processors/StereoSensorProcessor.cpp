@@ -106,6 +106,10 @@ bool StereoSensorProcessor::computeVariances(
   return true;
 }
 
+bool StereoSensorProcessor::computeSpatialVariances(pcl::PointCloud<pcl::PointXYZRGB>::Ptr pointCloudMapFrame, Eigen::VectorXf& spatialVariances){
+    return true;
+}
+
 int StereoSensorProcessor::getI(int index)
 {
   return indices_[index]/originalWidth_;

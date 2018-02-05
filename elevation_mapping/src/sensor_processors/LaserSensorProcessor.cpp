@@ -110,4 +110,8 @@ bool LaserSensorProcessor::computeVariances(
 	return true;
 }
 
+bool LaserSensorProcessor::computeSpatialVariances(pcl::PointCloud<pcl::PointXYZRGB>::Ptr pointCloudMapFrame, Eigen::VectorXf& spatialVariances){
+    return true;
+}
+
 } /* namespace */

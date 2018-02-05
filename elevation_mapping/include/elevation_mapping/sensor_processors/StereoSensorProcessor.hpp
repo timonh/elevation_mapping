@@ -65,6 +65,8 @@ private:
       const Eigen::Matrix<double, 6, 6>& robotPoseCovariance,
       Eigen::VectorXf& variances);
 
+  virtual bool computeSpatialVariances(pcl::PointCloud<pcl::PointXYZRGB>::Ptr pointCloudMapFrame, Eigen::VectorXf& spatialVariances);
+
   //! Helper functions to get i-j indices out of a single index.
   int getI(int index);
   int getJ(int index);

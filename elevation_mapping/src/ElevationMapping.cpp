@@ -237,13 +237,6 @@ void ElevationMapping::visibilityCleanupThread()
   }
 }
 
-// New
-//void ElevationMapping::spatialVarianceCalculation()
-//{
-//    ROS_INFO("Triggered the function!");
-//    cout << "Triggered this" << endl;
-//}
-// End New
 
 void ElevationMapping::pointCloudCallback(
     const sensor_msgs::PointCloud2& rawPointCloud)
@@ -262,9 +255,9 @@ void ElevationMapping::pointCloudCallback(
 
   ROS_INFO("ElevationMap received a point cloud (%i points) for elevation mapping.", static_cast<int>(pointCloud->size()));
 
-  // New
-  //spatialVarianceCalculation();
-  // End New
+
+
+
 
   // Update map location.
   updateMapLocation();
@@ -300,8 +293,16 @@ void ElevationMapping::pointCloudCallback(
     return;
   }
 
+  // TODO: Compare them here
+  //unsigned int m = 4000;
+  //const float& measurement400 = measurementVariances(m);
+  //std::cout << "meas: " << measurement400 << std::endl;
+
+
+
+
   // Add point cloud to elevation map.
-  if (!map_.add(pointCloudProcessed, measurementVariances, lastPointCloudUpdateTime_, Eigen::Affine3d(sensorProcessor_->transformationSensorToMap_))) {
+  if (!map_.add(pointCloudProcessed, measurementVariances, spatialVariances, lastPointCloudUpdateTime_, Eigen::Affine3d(sensorProcessor_->transformationSensorToMap_))) {
     ROS_ERROR("Adding point cloud to elevation map failed.");
     resetMapUpdateTimer();
     return;
@@ -313,6 +314,23 @@ void ElevationMapping::pointCloudCallback(
     map_.fuseAll();
     map_.publishFusedElevationMap();
   }
+
+  // New ***********************************************************************************************
+  // Publish Variance PointCloud
+  std::cout << "Here I am" << std::endl;
+  //std::cout << "Preliminary: " << spatialVariances[4] << std::endl;
+
+
+
+  // TODO: Check the way to transfer pointer..
+  //if (!map_.publishSpatialVariancePointCloud(spatialVariances)){
+  //   ROS_ERROR("Couldn't claculate spatial Variances");
+  //   return;
+  //}
+  // End New ********************************************************************************************
+
+
+
 
   resetMapUpdateTimer();
 }

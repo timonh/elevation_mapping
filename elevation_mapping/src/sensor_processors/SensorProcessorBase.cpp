@@ -79,7 +79,6 @@ bool SensorProcessorBase::process(
 
     // New: compute spacial variance *******************************************************************************************
     if (!computeSpatialVariances(pointCloudMapFrame, spatialVariances)) return false;
-
     // End New *****************************************************************************************************************
 
 	return true;
@@ -93,13 +92,6 @@ bool SensorProcessorBase::updateTransformations(const ros::Time& timeStamp)
     tf::StampedTransform transformTf;
     transformListener_.lookupTransform(mapFrameId_, sensorFrameId_, timeStamp, transformTf);
     poseTFToEigen(transformTf, transformationSensorToMap_);
-
-    // New tests:
-    //tf::StampedTransform transformTfmapga;
-    //transformListener_.lookupTransform(map_gaFrameId_, sensorFrameId_, timeStamp, transformTfmapga);
-    //poseTFToEigen(transformTfmapga, transformationSensorToMapGA_);
-
-    // End New
 
     transformListener_.lookupTransform(robotBaseFrameId_, sensorFrameId_, timeStamp, transformTf);  // TODO Why wrong direction?
     Eigen::Affine3d transform;
