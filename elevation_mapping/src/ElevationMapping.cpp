@@ -317,7 +317,7 @@ void ElevationMapping::pointCloudCallback(
 
   // New ***********************************************************************************************
   // Publish Variance PointCloud
-  std::cout << "Here I am" << std::endl;
+  //std::cout << "Here I am" << std::endl;
   //std::cout << "Preliminary: " << spatialVariances[4] << std::endl;
 
 

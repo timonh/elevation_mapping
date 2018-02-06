@@ -75,6 +75,11 @@ class HighGrassElevationMapping
   void highGrassFootTipStanceCallback(const quadruped_msgs::QuadrupedState& quadrupedState);
 
   /*!
+   * Callback function for Elevation Map data in proximity of the robot for ground estimation.
+   */
+  void highGrassElevationMapCallback(const grid_map_msgs::GridMap& elevationMap);
+
+  /*!
    * Callback function for the update timer. Forces an update of the map from
    * the robot's motion if no new measurements are received for a certain time
    * period.
@@ -189,13 +194,16 @@ class HighGrassElevationMapping
   //! ROS subscribers.
   ros::Subscriber highGrassPointCloudSubscriber_;
   ros::Subscriber highGrassFootTipStanceSubscriber_;
+  ros::Subscriber highGrassElevationMapSubscriber_;
 //  message_filters::Subscriber<geometry_msgs::PoseWithCovarianceStamped> robotPoseSubscriber_;
 
   //! ROS publishers
   ros::Publisher footContactPublisher_;
+  ros::Publisher elevationMapBoundPublisher_;
 
   //! Publication of Markers:
   visualization_msgs::Marker footContactMarkerList_;
+  visualization_msgs::Marker elevationMapBoundMarkerList_;
 
 
 //  //! ROS service servers.
@@ -230,6 +238,8 @@ class HighGrassElevationMapping
 //  //! Elevation map.
   ElevationMap map_;
 
+  //! Robot feetcenter pose
+  Eigen::Vector3d feetcenter_;
 //  //! Sensor processors.
 //  SensorProcessorBase::Ptr sensorProcessor_;
 
