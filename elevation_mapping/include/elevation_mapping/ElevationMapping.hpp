@@ -35,6 +35,10 @@
 #include <geometry_msgs/PoseWithCovarianceStamped.h>
 #include <std_srvs/Empty.h>
 
+// State Estimator Message
+#include <quadruped_msgs/QuadrupedState.h>
+#include <quadruped_msgs/Contacts.h>
+
 // Boost
 #include <boost/thread.hpp>
 

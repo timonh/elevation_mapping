@@ -238,6 +238,11 @@ class HighGrassElevationMapping
 //  //! Elevation map.
   ElevationMap map_;
 
+  //! Front Feet Positions:
+  Eigen::Vector3f LFTipPostiion_;
+  Eigen::Vector3f RFTipPostiion_;
+
+
   //! Robot feetcenter pose
   Eigen::Vector3d feetcenter_;
 //  //! Sensor processors.

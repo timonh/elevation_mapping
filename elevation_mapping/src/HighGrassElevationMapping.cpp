@@ -1,5 +1,5 @@
-/*
- * ElevationMapping.cpp
+
+ /* ElevationMapping.cpp
  *
  *  Created on: Nov 12, 2013
  *      Author: Péter Fankhauser
@@ -195,19 +195,17 @@ void HighGrassElevationMapping::highGrassFootTipStanceCallback(const quadruped_m
 
 
 //  std::cout << "Callback for Foot tips!!!!!" << std::endl;
-
 //  float state_0 = quadrupedState.contacts[0].state;
-//  string name_0 = quadrupedState.contacts[0].name;
-
+  //string name_0 = quadrupedState.contacts[0].name;
 //  std::cout << "Quadstate test: " << state_0 << std::endl;
-//  std::cout << "Quadstate test: " << name_0 << std::endl;
+  //std::cout << "Quadname test: " << name_0 << std::endl;
 
 
 //  float state_1 = quadrupedState.contacts[1].state;
-//  string name_1 = quadrupedState.contacts[1].name;
+  //string name_1 = quadrupedState.contacts[1].name;
 
 //  std::cout << "Quadstate test: " << state_1 << std::endl;
-//  std::cout << "Quadstate test: " << name_1 << std::endl;
+  //std::cout << "Quadname test: " << name_1 << std::endl;
 
 
 //  float state_2 = quadrupedState.contacts[2].state;
@@ -227,13 +225,23 @@ void HighGrassElevationMapping::highGrassFootTipStanceCallback(const quadruped_m
   // TODO: Assign feet center:
   //feetcenter_(0) = quadrupedState.frame_transforms.at("feetcenter").transform.translation.x;
 
-
+  // Set class variables.
+  LFTipPostiion_(0) = quadrupedState.contacts[0].position.x;
+  LFTipPostiion_(1) = quadrupedState.contacts[0].position.y;
+  LFTipPostiion_(2) = quadrupedState.contacts[0].position.z;
+  RFTipPostiion_(0) = quadrupedState.contacts[1].position.x;
+  RFTipPostiion_(1) = quadrupedState.contacts[1].position.y;
+  RFTipPostiion_(2) = quadrupedState.contacts[1].position.z;
 
   for(unsigned int i; i <= 3; ++i){
       geometry_msgs::Point p;
       p.x = quadrupedState.contacts[i].position.x;
       p.y = quadrupedState.contacts[i].position.y;
       p.z = quadrupedState.contacts[i].position.z;
+
+
+
+
       if(quadrupedState.contacts[i].state == 1){
           footContactMarkerList_.points.push_back(p);
 
@@ -249,8 +257,9 @@ void HighGrassElevationMapping::highGrassFootTipStanceCallback(const quadruped_m
               footContactMarkerList_.points.pop_back();
           }
       }
-      footContactPublisher_.publish(footContactMarkerList_);
+
   }
+  footContactPublisher_.publish(footContactMarkerList_);
 
 
 }

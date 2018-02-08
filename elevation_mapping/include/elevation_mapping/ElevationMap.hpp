@@ -28,6 +28,10 @@
 // ROS
 #include <ros/ros.h>
 
+// State Estimator Message
+#include "quadruped_msgs/QuadrupedState.h"
+#include "quadruped_msgs/Contacts.h"
+
 namespace elevation_mapping {
 
 /*!
@@ -224,6 +228,12 @@ class ElevationMap
    */
   void underlyingMapCallback(const grid_map_msgs::GridMap& underlyingMap);
 
+  /*!
+   * Callback Method for the quadruped state for foot tip - Elevation Map comparison
+   * @param the quadruped state
+   */
+  void footTipStanceCallback(const quadruped_msgs::QuadrupedState& quadrupedState);
+
   friend class ElevationMapping;
 
  private:
@@ -316,6 +326,25 @@ class ElevationMap
   bool enableVisibilityCleanup_;
   double visibilityCleanupDuration_;
   double scanningDuration_;
+
+  //! Front Feet Positions:
+  Eigen::Vector3f LFTipPostiion_;
+  Eigen::Vector3f RFTipPostiion_;
+  bool LFTipState_;
+  bool RFTipState_;
+
+  //! ROS subscribers.
+  //ros::Subscriber highGrassPointCloudSubscriber_;
+  ros::Subscriber footTipStanceSubscriber_;
+  //ros::Subscriber highGrassElevationMapSubscriber_;
+
+  //! ROS publishers
+  ros::Publisher footContactPublisher_;
+  ros::Publisher elevationMapBoundPublisher_;
+
+  //! Publication of Markers:
+  visualization_msgs::Marker footContactMarkerList_;
+  visualization_msgs::Marker elevationMapBoundMarkerList_;
 };
 
 } /* namespace */

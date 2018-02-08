@@ -11,6 +11,7 @@
 // Elevation Mapping
 #include "elevation_mapping/ElevationMapFunctors.hpp"
 #include "elevation_mapping/WeightedEmpiricalCumulativeDistributionFunction.hpp"
+#include "elevation_mapping/HighGrassElevationMapping.hpp"
 
 // Grid Map
 #include <grid_map_msgs/GridMap.h>
@@ -46,6 +47,9 @@ ElevationMap::ElevationMap(ros::NodeHandle nodeHandle)
       nodeHandle_.subscribe(underlyingMapTopic_, 1, &ElevationMap::underlyingMapCallback, this);
   // TODO if (enableVisibilityCleanup_) when parameter cleanup is ready.
   visbilityCleanupMapPublisher_ = nodeHandle_.advertise<grid_map_msgs::GridMap>("visibility_cleanup_map", 1);
+
+  // Foot tip position Subscriber for Foot tip - Elevation comparison
+  footTipStanceSubscriber_ = nodeHandle_.subscribe("/state_estimator/quadruped_state", 1, &ElevationMap::footTipStanceCallback, this);
 
   initialTime_ = ros::Time::now();
 }
@@ -206,6 +210,40 @@ bool ElevationMap::update(const grid_map::Matrix& varianceUpdate, const grid_map
   clean();
   rawMap_.setTimestamp(time.toNSec());
 
+
+  // New *********************************************************************************************************************************************
+  // Do Feet comparison stuff in here..?
+  // TODO: Define position..
+  if(LFTipState_ == 1){
+      std::cout << "Left Touching the ground" << std::endl;
+      Position posLeft(LFTipPostiion_(0), LFTipPostiion_(1));
+      float heightLeft = rawMap_.atPosition("elevation", posLeft);
+      float varLeft = rawMap_.atPosition("variance", posLeft);
+      // TODO: Why nan??
+
+      std::cout << "Hight Left lower bound: " << heightLeft << std::endl;
+      std::cout << "Hight Foot tip: " << LFTipPostiion_(2) << std::endl;
+      std::cout << "Var Left: " << varLeft << std::endl;
+      std::cout << "Diff: " << heightLeft - LFTipPostiion_(2) << std::endl;
+  }
+  else std::cout << "LEFT LIFTED!!!" << std::endl;
+
+  if(RFTipState_ == 1){
+      std::cout << "Right Touching the ground" << std::endl;
+      Position posRight(RFTipPostiion_(0), RFTipPostiion_(1));
+      float heightRight = rawMap_.atPosition("elevation", posRight);
+      float varRight = rawMap_.atPosition("variance", posRight);
+      // TODO: Why nan??
+
+      std::cout << "Hight Right lower bound: " << heightRight << std::endl;
+      std::cout << "Hight Foot tip: " << RFTipPostiion_(2) << std::endl;
+      std::cout << "Var Left: " << varRight << std::endl;
+      std::cout << "Diff: " << heightRight - RFTipPostiion_(2) << std::endl;
+
+  }
+  else std::cout << "RIGHT LIFTED!!!" << std::endl;
+  // End New **********************************************************************************************************************************************
+
   return true;
 }
 
@@ -243,6 +281,8 @@ bool ElevationMap::fuse(const grid_map::Index& topLeftIndex, const grid_map::Ind
 {
   ROS_DEBUG("Fusing elevation map...");
 
+  // TODO: get foot tips here, and understand how variance ellipsoids are generated here..
+
   // Nothing to do.
   if ((size == 0).any()) return false;
 
@@ -267,6 +307,18 @@ bool ElevationMap::fuse(const grid_map::Index& topLeftIndex, const grid_map::Ind
   // Align fused map with raw map.
   if (rawMapCopy.getPosition() != fusedMap_.getPosition()) fusedMap_.move(rawMapCopy.getPosition());
 
+
+  // New: ****************************************************************************************************************************************
+  std::cout << "Left fore x: " << LFTipPostiion_(0) << std::endl;
+
+
+  // TODO: here get the foot tip positions and get the variance and height in the given cell..
+
+
+  // End New **************************************************************************************************************************************
+
+
+
   // For each cell in requested area.
   for (SubmapIterator areaIterator(rawMapCopy, topLeftIndex, size); !areaIterator.isPastEnd(); ++areaIterator) {
 
@@ -278,6 +330,8 @@ bool ElevationMap::fuse(const grid_map::Index& topLeftIndex, const grid_map::Ind
       // TODO.
       continue;
     }
+
+
 
     // Get size of error ellipse.
     const float& sigmaXsquare = rawMapCopy.at("horizontal_variance_x", *areaIterator);
@@ -683,6 +737,87 @@ void ElevationMap::underlyingMapCallback(const grid_map_msgs::GridMap& underlyin
 float ElevationMap::cumulativeDistributionFunction(float x, float mean, float standardDeviation)
 {
   return 0.5 * erfc(-(x - mean) / (standardDeviation * sqrt(2.0)));
+}
+
+void ElevationMap::footTipStanceCallback(const quadruped_msgs::QuadrupedState& quadrupedState)
+{
+
+
+//  std::cout << "Callback for Foot tips!!!!!" << std::endl;
+//  float state_0 = quadrupedState.contacts[0].state;
+  //string name_0 = quadrupedState.contacts[0].name;
+//  std::cout << "Quadstate test: " << state_0 << std::endl;
+  //std::cout << "Quadname test: " << name_0 << std::endl;
+
+
+//  float state_1 = quadrupedState.contacts[1].state;
+  //string name_1 = quadrupedState.contacts[1].name;
+
+//  std::cout << "Quadstate test: " << state_1 << std::endl;
+  //std::cout << "Quadname test: " << name_1 << std::endl;
+
+
+//  float state_2 = quadrupedState.contacts[2].state;
+//  string name_2 = quadrupedState.contacts[2].name;
+
+//  std::cout << "Quadstate test: " << state_2 << std::endl;
+//  std::cout << "Quadstate test: " << name_2 << std::endl;
+
+
+//  float state_3 = quadrupedState.contacts[3].state;
+//  string name_3 = quadrupedState.contacts[3].name;
+
+//  std::cout << "Quadstate test: " << state_3 << std::endl;
+//  std::cout << "Quadstate test: " << name_3 << std::endl;
+
+
+  // TODO: Assign feet center:
+  //feetcenter_(0) = quadrupedState.frame_transforms.at("feetcenter").transform.translation.x;
+
+  // Set class variables.
+  LFTipPostiion_(0) = quadrupedState.contacts[0].position.x;
+  LFTipPostiion_(1) = quadrupedState.contacts[0].position.y;
+  LFTipPostiion_(2) = quadrupedState.contacts[0].position.z;
+  RFTipPostiion_(0) = quadrupedState.contacts[1].position.x;
+  RFTipPostiion_(1) = quadrupedState.contacts[1].position.y;
+  RFTipPostiion_(2) = quadrupedState.contacts[1].position.z;
+  LFTipState_ = quadrupedState.contacts[0].state;
+  RFTipState_ = quadrupedState.contacts[1].state;
+
+  //std::cout << "Checking left state: " << int(quadrupedState.contacts[0].state) << std::endl;
+
+
+  //std::cout << "In Foot Tip Callback: " << LFTipPostiion_(0) << std::endl;
+
+  for(unsigned int i; i <= 3; ++i){
+      geometry_msgs::Point p;
+      p.x = quadrupedState.contacts[i].position.x;
+      p.y = quadrupedState.contacts[i].position.y;
+      p.z = quadrupedState.contacts[i].position.z;
+
+
+
+
+      if(quadrupedState.contacts[i].state == 1){
+          footContactMarkerList_.points.push_back(p);
+
+      }
+
+      // Clear some foot tip markers after a certain time (and move them to the beginning of the list, as no pop_front exists)
+      int size =footContactMarkerList_.points.size();
+      if(size > 1200){
+          for(unsigned int j = 0; j<400; ++j){
+              footContactMarkerList_.points[j] = footContactMarkerList_.points[size - 400 + j];
+          }
+          for (unsigned int n = 0; n < (size-400); ++n){
+              footContactMarkerList_.points.pop_back();
+          }
+      }
+
+  }
+  //footContactPublisher_.publish(footContactMarkerList_);
+
+
 }
 
 } /* namespace */
