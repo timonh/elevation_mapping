@@ -211,38 +211,77 @@ bool ElevationMap::update(const grid_map::Matrix& varianceUpdate, const grid_map
   rawMap_.setTimestamp(time.toNSec());
 
 
+  //std::cout << "Map Layers: " << rawMap_.getLayers()[0] << std::endl;
+  //std::cout << "Map Layers: " << rawMap_.getLayers()[1] << std::endl;
+  //std::cout << "Map Layers: " << rawMap_.getLayers()[2] << std::endl;
+  //std::cout << "Map Layers: " << rawMap_.getLayers()[3] << std::endl;
+  //std::cout << "Map Layers: " << rawMap_.getLayers()[4] << std::endl;
+  //std::cout << "Map Layers: " << rawMap_.getLayers()[5] << std::endl;
+  //std::cout << "Map Layers: " << rawMap_.getLayers()[6] << std::endl;
+  //std::cout << "Map Layers: " << rawMap_.getLayers()[7] << std::endl;
+  //std::cout << "Map Layers: " << rawMap_.getLayers()[8] << std::endl;
+  //std::cout << "Map Layers: " << rawMap_.getLayers()[9] << std::endl;
+  //std::cout << "Map Layers: " << rawMap_.getLayers()[10] << std::endl;
+  //std::cout << "Map Layers: " << rawMap_.getLayers().size() << std::endl;
+
   // New *********************************************************************************************************************************************
   // Do Feet comparison stuff in here..?
   // TODO: Define position..
-  if(LFTipState_ == 1){
-      std::cout << "Left Touching the ground" << std::endl;
-      Position posLeft(LFTipPostiion_(0), LFTipPostiion_(1));
-      float heightLeft = rawMap_.atPosition("elevation", posLeft);
-      float varLeft = rawMap_.atPosition("variance", posLeft);
-      // TODO: Why nan??
+  std::cout << "Center: " << rawMap_.getPosition()(0) << " " << rawMap_.getPosition()(1) << std::endl;
+  bool slowComparison = false;
+  if(slowComparison){
+      double totalDiff = 0;
+      if(LFTipState_ == 1){
+          std::cout << "Left Touching the ground" << std::endl;
+          Position posLeft(LFTipPostiion_(0), LFTipPostiion_(1));
+          float heightLeft = rawMap_.atPosition("elevation", posLeft);
+          float varLeft = rawMap_.atPosition("variance", posLeft);
 
-      std::cout << "Hight Left lower bound: " << heightLeft << std::endl;
-      std::cout << "Hight Foot tip: " << LFTipPostiion_(2) << std::endl;
-      std::cout << "Var Left: " << varLeft << std::endl;
-      std::cout << "Diff: " << heightLeft - LFTipPostiion_(2) << std::endl;
+          std::cout << "Hight Left lower bound: " << heightLeft << std::endl;
+          std::cout << "Hight Foot tip: " << LFTipPostiion_(2) << std::endl;
+          std::cout << "Var Left: " << varLeft << std::endl;
+          std::cout << "Diff: " << heightLeft - LFTipPostiion_(2) << std::endl;
+          double diff = heightLeft - LFTipPostiion_(2);
+          if(abs(diff) < 1.0) totalDiff += diff/2.5;
+          else std::cout << "WARNING, big error" << std::endl;
+      }
+      else std::cout << "LEFT LIFTED!!!" << std::endl;
+
+      if(RFTipState_ == 1){
+          std::cout << "Right Touching the ground" << std::endl;
+          Position posRight(RFTipPostiion_(0), RFTipPostiion_(1));
+          float heightRight = rawMap_.atPosition("elevation", posRight);
+          float varRight = rawMap_.atPosition("variance", posRight);
+
+          std::cout << "Hight Right lower bound: " << heightRight << std::endl;
+          std::cout << "Hight Foot tip: " << RFTipPostiion_(2) << std::endl;
+          std::cout << "Var Right: " << varRight << std::endl;
+          std::cout << "Diff: " << heightRight - RFTipPostiion_(2) << std::endl;
+          double diff = heightRight - RFTipPostiion_(2);
+          if(abs(diff) < 1.0) totalDiff += diff/2.5;
+          else std::cout << "WARNING, big error" << std::endl;
+      }
+      else std::cout << "RIGHT LIFTED!!!" << std::endl;
+      // End New **********************************************************************************************************************************************
+
+      //rawMap_.add("elevation", -totalDiff); // HACKED!!
+      //totalHeightDifference_ = 0.0;
+      //std::cout << "HIGH GRASS: Shifted the Elevation Map" << std::endl;
+
+
+
   }
-  else std::cout << "LEFT LIFTED!!!" << std::endl;
 
-  if(RFTipState_ == 1){
-      std::cout << "Right Touching the ground" << std::endl;
-      Position posRight(RFTipPostiion_(0), RFTipPostiion_(1));
-      float heightRight = rawMap_.atPosition("elevation", posRight);
-      float varRight = rawMap_.atPosition("variance", posRight);
-      // TODO: Why nan??
+  // New: (From fast diff calculation)
 
-      std::cout << "Hight Right lower bound: " << heightRight << std::endl;
-      std::cout << "Hight Foot tip: " << RFTipPostiion_(2) << std::endl;
-      std::cout << "Var Left: " << varRight << std::endl;
-      std::cout << "Diff: " << heightRight - RFTipPostiion_(2) << std::endl;
+//  float heightDiff;
+//  if(heightDifferenceComponentCounter_ > 0.0) heightDiff = totalHeightDifference_ / double(heightDifferenceComponentCounter_);
+//  else heightDiff = 0.0;
+//  std::cout << "heightDiff: " << heightDiff << std::endl;
+  heightDifferenceComponentCounter_ = 0;
+  totalHeightDifference_ = 0.0;
 
-  }
-  else std::cout << "RIGHT LIFTED!!!" << std::endl;
-  // End New **********************************************************************************************************************************************
+  // End New
 
   return true;
 }
@@ -290,6 +329,14 @@ bool ElevationMap::fuse(const grid_map::Index& topLeftIndex, const grid_map::Ind
   const ros::WallTime methodStartTime(ros::WallTime::now());
   boost::recursive_mutex::scoped_lock scopedLock(fusedMapMutex_);
 
+
+  // TEST
+  const auto& sizemap = rawMap_.getSize();
+
+  std::cout << "Size x: " << size(0) << "Size y: " << size(1) << std::endl;
+  // END TEST
+
+
   // Copy raw elevation map data for safe multi-threading.
   boost::recursive_mutex::scoped_lock scopedLockForRawData(rawMapMutex_);
   auto rawMapCopy = rawMap_;
@@ -309,7 +356,7 @@ bool ElevationMap::fuse(const grid_map::Index& topLeftIndex, const grid_map::Ind
 
 
   // New: ****************************************************************************************************************************************
-  std::cout << "Left fore x: " << LFTipPostiion_(0) << std::endl;
+  //std::cout << "Left fore x: " << LFTipPostiion_(0) << std::endl;
 
 
   // TODO: here get the foot tip positions and get the variance and height in the given cell..
@@ -714,6 +761,7 @@ bool ElevationMap::hasFusedMapSubscribers() const
 
 void ElevationMap::underlyingMapCallback(const grid_map_msgs::GridMap& underlyingMap)
 {
+
   ROS_INFO("Updating underlying map.");
   GridMapRosConverter::fromMessage(underlyingMap, underlyingMap_);
   if (underlyingMap_.getFrameId() != rawMap_.getFrameId()) {
@@ -742,7 +790,9 @@ float ElevationMap::cumulativeDistributionFunction(float x, float mean, float st
 void ElevationMap::footTipStanceCallback(const quadruped_msgs::QuadrupedState& quadrupedState)
 {
 
-
+  //boost::recursive_mutex::scoped_lock scopedLockForRawData(rawMapMutex_);
+  const auto& sizerawmap = rawMap_.getSize();
+  //std::cout << "Imediatesize x: " << sizerawmap(0) << " foot tip" << std::endl;
 //  std::cout << "Callback for Foot tips!!!!!" << std::endl;
 //  float state_0 = quadrupedState.contacts[0].state;
   //string name_0 = quadrupedState.contacts[0].name;
@@ -816,6 +866,81 @@ void ElevationMap::footTipStanceCallback(const quadruped_msgs::QuadrupedState& q
 
   }
   //footContactPublisher_.publish(footContactMarkerList_);
+
+  //const auto& size = rawMap_.getSize();
+
+  //std::cout << "Size x: " << size(0) << "Size y: " << size(1) << std::endl;
+
+
+
+  //! TODO: check if the foot tips lie inside of the elevation map!!!
+
+
+
+  // Test:
+  bool fastComparison = true;
+  if(fastComparison){
+      if(LFTipState_ == 1){
+          //std::cout << "Left Touching the ground" << std::endl;
+          //std::cout << "Left pos x: " << LFTipPostiion_(0) << "Right Pos y: " << LFTipPostiion_(1) << std::endl;
+          Position posLeft(LFTipPostiion_(0), LFTipPostiion_(1));
+          //std::cout << "before" << std::endl;
+          // For some reason the rawMap is sometimes empty..
+          if(rawMap_.getSize()(0) > 1){
+              //std::cout << "Left pos x: " << LFTipPostiion_(0) << "Right Pos y: " << LFTipPostiion_(1) << std::endl;
+
+              //std::cout << "Positions: " << posLeft(0) << " " << posLeft(1) << std::endl;
+              //std::cout << "Center: " << rawMap_.getPosition()(0) << " " << rawMap_.getPosition()(1) << std::endl;
+              //std::cout << "Size: " << rawMap_.getLength() << std::endl;
+              float heightLeft = rawMap_.atPosition("elevation", posLeft);
+              //std::cout << "inbetween!!" << heightLeft << std::endl;
+              float varLeft = rawMap_.atPosition("variance", posLeft);
+              //std::cout << "after" << std::endl;
+
+              //std::cout << "Height Left lower bound: " << heightLeft << std::endl;
+              //std::cout << "Height Foot tip: " << LFTipPostiion_(2) << std::endl;
+              //std::cout << "Var Left: " << varLeft << std::endl;
+              //std::cout << "Diff: " << heightLeft - LFTipPostiion_(2) << std::endl;
+              double diff = heightLeft - LFTipPostiion_(2);
+              if(abs(diff) < 1.0) totalHeightDifference_ += diff;
+              heightDifferenceComponentCounter_ += 1;
+              //else std::cout << "WARNING, big error" << std::endl;
+          }
+      }
+      //else std::cout << "LEFT LIFTED!!!" << std::endl;
+
+      if(RFTipState_ == 1){
+          //std::cout << "Right Touching the ground" << std::endl;
+          Position posRight(RFTipPostiion_(0), RFTipPostiion_(1));
+          // For some reason the rawMap is sometimes empty..
+          if(rawMap_.getSize()(0) > 1){
+              float heightRight = rawMap_.atPosition("elevation", posRight);
+              float varRight = rawMap_.atPosition("variance", posRight);
+
+              //std::cout << "Height Right lower bound: " << heightRight << std::endl;
+              //std::cout << "Height Foot tip: " << RFTipPostiion_(2) << std::endl;
+              //std::cout << "Var Right: " << varRight << std::endl;
+              //std::cout << "Diff: " << heightRight - RFTipPostiion_(2) << std::endl;
+              double diff = heightRight - RFTipPostiion_(2);
+              if(abs(diff) < 1.0) totalHeightDifference_ += diff;
+              heightDifferenceComponentCounter_ += 1;
+              //else std::cout << "WARNING, big error" << std::endl;
+          }
+      }
+      //else std::cout << "RIGHT LIFTED!!!" << std::endl;
+      // End Test!!
+
+
+//  std::cout << "Reached Endpoint once.. " << std::endl;
+  // Todo: Calculate diff here!
+  // Todo: Think about the meaning of the Elevation Map variances on comparison!!!!!
+  }
+  float heightDiff;
+  if(heightDifferenceComponentCounter_ > 0.0) heightDiff = totalHeightDifference_ / double(heightDifferenceComponentCounter_);
+  else heightDiff = 0.0;
+  std::cout << "heightDiff: " << heightDiff << std::endl;
+  //heightDifferenceComponentCounter_ = 0;
+  //totalHeightDifference_ = 0.0;
 
 
 }

@@ -332,6 +332,8 @@ class ElevationMap
   Eigen::Vector3f RFTipPostiion_;
   bool LFTipState_;
   bool RFTipState_;
+  double totalHeightDifference_;
+  int heightDifferenceComponentCounter_;
 
   //! ROS subscribers.
   //ros::Subscriber highGrassPointCloudSubscriber_;

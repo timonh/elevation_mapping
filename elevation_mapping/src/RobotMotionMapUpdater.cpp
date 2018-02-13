@@ -113,6 +113,11 @@ bool RobotMotionMapUpdater::update(
   map.update(varianceUpdate, horizontalVarianceUpdateX, horizontalVarianceUpdateY, horizontalVarianceUpdateXY, time);
   previousReducedCovariance_ = reducedCovariance;
   previousRobotPose_ = robotPose;
+
+  // TEST:
+  std::cout << "THIS IS THE REAL FREQ" << std::endl;
+  // END TEST!
+
   return true;
 }
 

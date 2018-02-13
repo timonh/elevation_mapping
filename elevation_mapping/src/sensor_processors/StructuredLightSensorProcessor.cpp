@@ -142,6 +142,9 @@ bool StructuredLightSensorProcessor::computeSpatialVariances(
 
     spatialVariances.resize(pointCloudMapFrame->size());
 
+    //const auto& sizespatialvar = spatialVariances.size();
+    //std::cout << "HERE IS THE SIZE OF THE VARIANCE POINTCLOUD!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!: " << sizespatialvar << std::endl;
+
     // Parameters.
     int proximityParameter = 1500;
     double thresholdRadius = 0.01;
@@ -180,6 +183,7 @@ bool StructuredLightSensorProcessor::computeSpatialVariances(
                                        - pow(varianceAccumulator / float(varianceCalculationPointCounter),2));
 
         }
+
 
 
         // For Debugging. (Deprecated)
