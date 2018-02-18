@@ -273,6 +273,9 @@ class ElevationMap
    */
   float cumulativeDistributionFunction(float x, float mean, float standardDeviation);
 
+  //! TODO: Description!
+  bool processStance(std::string tip);
+
   //! ROS nodehandle.
   ros::NodeHandle nodeHandle_;
 
@@ -298,7 +301,6 @@ class ElevationMap
   ros::Publisher elevationMapRawPublisher_;
   ros::Publisher elevationMapFusedPublisher_;
   ros::Publisher visbilityCleanupMapPublisher_;
-  // New **************************************************************
 
   //! Mutex lock for fused map.
   boost::recursive_mutex fusedMapMutex_;
@@ -330,6 +332,10 @@ class ElevationMap
   //! Front Feet Positions:
   Eigen::Vector3f LFTipPostiion_;
   Eigen::Vector3f RFTipPostiion_;
+  std::vector<Eigen::Vector3f> LFTipStance_;
+  std::vector<Eigen::Vector3f> RFTipStance_;
+  std::vector<bool> processStanceTriggerLeft_;
+  std::vector<bool> processStanceTriggerRight_;
   bool LFTipState_;
   bool RFTipState_;
   double totalHeightDifference_;

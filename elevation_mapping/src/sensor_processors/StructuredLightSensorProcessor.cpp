@@ -142,6 +142,7 @@ bool StructuredLightSensorProcessor::computeSpatialVariances(
 
     spatialVariances.resize(pointCloudMapFrame->size());
 
+    pcl::PointCloud<pcl::PointXYZRGB>::Ptr PointCloudColorSchemeSpatialVariance;
     //const auto& sizespatialvar = spatialVariances.size();
     //std::cout << "HERE IS THE SIZE OF THE VARIANCE POINTCLOUD!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!: " << sizespatialvar << std::endl;
 
@@ -196,13 +197,22 @@ bool StructuredLightSensorProcessor::computeSpatialVariances(
 
         // For Debugging. (Deprecated)
         //if(i%1000 == 0){
+        //    std::cout << "Spatial var size" << spatialVariances.size() << std::endl;
         //    std::cout << "Variances: " << spatialVariances(i) << " X: "<< point.x << " Y: " << point.y << " Z: " << point.z << "P" << std::endl;
         //}
 
 
+        //double min_var = pow(10,-12);
+        //double max_var = pow(10,-6);
+
         //pcl::PointXYZRGB pointOut = point;
         //pointOut.r = 255;
-        //PointCloudColorSchemeSpatialVariance.push_back(pointOut);
+        //pointOut.g = std::max(255.0, 255 * (spatialVariance - min_var) / max_var);
+        //pointOut.b = 100;
+        //pointOut.x = point.x;
+        //pointOut.y = point.y;
+        //pointOut.z = point.z;
+        //PointCloudColorSchemeSpatialVariance->push_back(pointOut);
         // std::cout << "RGB: " << "R: " << point.r << " G:" << point.g << " B: " << point.b << std::endl;
 
         // End New *****************************************************
@@ -215,7 +225,7 @@ bool StructuredLightSensorProcessor::computeSpatialVariances(
     //sensor_msgs::PointCloud2 OutputVariancePointcloud;
     //OutputVariancePointcloud.header.frame_id = "/map";
 
-    //pcl::toROSMsg(PointCloudColorSchemeSpatialVariance, OutputVariancePointcloud);
+    //toROSMsg(PointCloudColorSchemeSpatialVariance, OutputVariancePointcloud);
     //spatialVarianceColoreSchemedPointcloudPublisher_.publish(OutputVariancePointcloud);
 
     // New

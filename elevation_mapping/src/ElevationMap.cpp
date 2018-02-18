@@ -70,19 +70,6 @@ void ElevationMap::setGeometry(const grid_map::Length& length, const double& res
 bool ElevationMap::add(const pcl::PointCloud<pcl::PointXYZRGB>::Ptr pointCloud, Eigen::VectorXf& pointCloudVariances, Eigen::VectorXf& spatialVariances, const ros::Time& timestamp, const Eigen::Affine3d& transformationSensorToMap)
 {
 
-
-  //std::cout << "spatialVariances size: " << spatialVariances.size() << std::endl;
-  //for(unsigned int i = 0; i < spatialVariances.size(); ++i){
-  //   const float& spatialpointvariance = spatialVariances(i);
-  //   // Debug
-  //
-  //   std::cout << "spatialVariances: " << spatialpointvariance << std::endl;
-  //   // End Debug
-  //}
-
-
-
-
   if (pointCloud->size() != pointCloudVariances.size()) {
     ROS_ERROR("ElevationMap::add: Size of point cloud (%i) and variances (%i) do not agree.",
               (int) pointCloud->size(), (int) pointCloudVariances.size());
@@ -278,9 +265,12 @@ bool ElevationMap::update(const grid_map::Matrix& varianceUpdate, const grid_map
 //  if(heightDifferenceComponentCounter_ > 0.0) heightDiff = totalHeightDifference_ / double(heightDifferenceComponentCounter_);
 //  else heightDiff = 0.0;
 //  std::cout << "heightDiff: " << heightDiff << std::endl;
+  std::cout << "Updated ##########################" << std::endl;
+  std::cout << std::endl;
+  std::cout << std::endl;
+  std::cout << "################################################" << std::endl;
   heightDifferenceComponentCounter_ = 0;
   totalHeightDifference_ = 0.0;
-
   // End New
 
   return true;
@@ -353,17 +343,6 @@ bool ElevationMap::fuse(const grid_map::Index& topLeftIndex, const grid_map::Ind
 
   // Align fused map with raw map.
   if (rawMapCopy.getPosition() != fusedMap_.getPosition()) fusedMap_.move(rawMapCopy.getPosition());
-
-
-  // New: ****************************************************************************************************************************************
-  //std::cout << "Left fore x: " << LFTipPostiion_(0) << std::endl;
-
-
-  // TODO: here get the foot tip positions and get the variance and height in the given cell..
-
-
-  // End New **************************************************************************************************************************************
-
 
 
   // For each cell in requested area.
@@ -792,37 +771,18 @@ void ElevationMap::footTipStanceCallback(const quadruped_msgs::QuadrupedState& q
 
   //boost::recursive_mutex::scoped_lock scopedLockForRawData(rawMapMutex_);
   const auto& sizerawmap = rawMap_.getSize();
-  //std::cout << "Imediatesize x: " << sizerawmap(0) << " foot tip" << std::endl;
-//  std::cout << "Callback for Foot tips!!!!!" << std::endl;
-//  float state_0 = quadrupedState.contacts[0].state;
-  //string name_0 = quadrupedState.contacts[0].name;
-//  std::cout << "Quadstate test: " << state_0 << std::endl;
-  //std::cout << "Quadname test: " << name_0 << std::endl;
+  //std::cout << "Size of Map x: " << sizerawmap(0) << " foot tip" << std::endl;
 
-
-//  float state_1 = quadrupedState.contacts[1].state;
-  //string name_1 = quadrupedState.contacts[1].name;
-
-//  std::cout << "Quadstate test: " << state_1 << std::endl;
-  //std::cout << "Quadname test: " << name_1 << std::endl;
-
-
-//  float state_2 = quadrupedState.contacts[2].state;
-//  string name_2 = quadrupedState.contacts[2].name;
-
-//  std::cout << "Quadstate test: " << state_2 << std::endl;
-//  std::cout << "Quadstate test: " << name_2 << std::endl;
-
-
-//  float state_3 = quadrupedState.contacts[3].state;
-//  string name_3 = quadrupedState.contacts[3].name;
-
-//  std::cout << "Quadstate test: " << state_3 << std::endl;
-//  std::cout << "Quadstate test: " << name_3 << std::endl;
-
-
-  // TODO: Assign feet center:
-  //feetcenter_(0) = quadrupedState.frame_transforms.at("feetcenter").transform.translation.x;
+//  std::cout << rawMap_.getLayers()[0] << std::endl;
+//  std::cout << rawMap_.getLayers()[1] << std::endl;
+//  std::cout << rawMap_.getLayers()[2] << std::endl;
+//  std::cout << rawMap_.getLayers()[3] << std::endl;
+//  std::cout << rawMap_.getLayers()[4] << std::endl;
+//  std::cout << rawMap_.getLayers()[5] << std::endl;
+//  std::cout << rawMap_.getLayers()[6] << std::endl;
+//  std::cout << rawMap_.getLayers()[7] << std::endl;
+//  std::cout << rawMap_.getLayers()[8] << std::endl;
+//  std::cout << rawMap_.getLayers()[9] << std::endl;
 
   // Set class variables.
   LFTipPostiion_(0) = quadrupedState.contacts[0].position.x;
@@ -834,10 +794,46 @@ void ElevationMap::footTipStanceCallback(const quadruped_msgs::QuadrupedState& q
   LFTipState_ = quadrupedState.contacts[0].state;
   RFTipState_ = quadrupedState.contacts[1].state;
 
-  //std::cout << "Checking left state: " << int(quadrupedState.contacts[0].state) << std::endl;
+
+  if(LFTipState_){
+      LFTipStance_.push_back(LFTipPostiion_);
+  }
+  if(RFTipState_){
+      RFTipStance_.push_back(RFTipPostiion_);
+  }
 
 
-  //std::cout << "In Foot Tip Callback: " << LFTipPostiion_(0) << std::endl;
+  // TODO: more cleanly check the last few..
+
+  if(processStanceTriggerLeft_.size() >= 9 && processStanceTriggerLeft_.end()[-1]+processStanceTriggerLeft_.end()[-2]+
+          processStanceTriggerLeft_.end()[-3]+processStanceTriggerLeft_.end()[-4]+processStanceTriggerLeft_.end()[-5] +
+          processStanceTriggerLeft_.end()[-6]+processStanceTriggerLeft_.end()[-7]+processStanceTriggerLeft_.end()[-8]+
+          processStanceTriggerLeft_.end()[-9]+processStanceTriggerLeft_.end()[-10] <= 1 &&
+          processStanceTriggerLeft_.end()[-11] + processStanceTriggerLeft_.end()[-12] + processStanceTriggerLeft_.end()[-13]+
+          processStanceTriggerLeft_.end()[-14]+processStanceTriggerLeft_.end()[-15] >= 3){
+      std::cout << "size: " << processStanceTriggerLeft_.size() << std::endl;
+      if(!processStance("Left")) return;
+  }
+
+  if(processStanceTriggerRight_.size() >= 9 && processStanceTriggerRight_.end()[-1]+processStanceTriggerRight_.end()[-2]+
+          processStanceTriggerRight_.end()[-3]+processStanceTriggerRight_.end()[-4]+processStanceTriggerRight_.end()[-5] +
+          processStanceTriggerRight_.end()[-6]+processStanceTriggerRight_.end()[-7]+processStanceTriggerRight_.end()[-8]+
+          processStanceTriggerRight_.end()[-9]+processStanceTriggerRight_.end()[-10] <= 1 &&
+          processStanceTriggerRight_.end()[-11] + processStanceTriggerRight_.end()[-12] + processStanceTriggerRight_.end()[-13]+
+          processStanceTriggerRight_.end()[-14]+processStanceTriggerRight_.end()[-15] >= 3){
+      if(!processStance("Right")) return;
+  }
+
+
+  //std::cout << "Tipstate " << LFTipState_ << std::endl;
+  //std::cout << "Tipstate r " << RFTipState_ << std::endl;
+
+  processStanceTriggerLeft_.push_back(LFTipState_);
+  processStanceTriggerRight_.push_back(RFTipState_);
+  //if(processStanceTriggerLeft_.size() >= 2) std::cout << "late end: " << processStanceTriggerLeft_.back() << std::endl;
+
+
+  //TODO: Think of Method to get robust reaction to changing stance state!!
 
   for(unsigned int i; i <= 3; ++i){
       geometry_msgs::Point p;
@@ -845,12 +841,8 @@ void ElevationMap::footTipStanceCallback(const quadruped_msgs::QuadrupedState& q
       p.y = quadrupedState.contacts[i].position.y;
       p.z = quadrupedState.contacts[i].position.z;
 
-
-
-
       if(quadrupedState.contacts[i].state == 1){
           footContactMarkerList_.points.push_back(p);
-
       }
 
       // Clear some foot tip markers after a certain time (and move them to the beginning of the list, as no pop_front exists)
@@ -863,19 +855,12 @@ void ElevationMap::footTipStanceCallback(const quadruped_msgs::QuadrupedState& q
               footContactMarkerList_.points.pop_back();
           }
       }
-
   }
   //footContactPublisher_.publish(footContactMarkerList_);
-
   //const auto& size = rawMap_.getSize();
-
   //std::cout << "Size x: " << size(0) << "Size y: " << size(1) << std::endl;
 
-
-
-  //! TODO: check if the foot tips lie inside of the elevation map!!!
-
-
+  bool print_horizontal_variances = false;
 
   // Test:
   bool fastComparison = true;
@@ -893,7 +878,6 @@ void ElevationMap::footTipStanceCallback(const quadruped_msgs::QuadrupedState& q
               //std::cout << "Center: " << rawMap_.getPosition()(0) << " " << rawMap_.getPosition()(1) << std::endl;
               //std::cout << "Size: " << rawMap_.getLength() << std::endl;
               float heightLeft = rawMap_.atPosition("elevation", posLeft);
-              //std::cout << "inbetween!!" << heightLeft << std::endl;
               float varLeft = rawMap_.atPosition("variance", posLeft);
               //std::cout << "after" << std::endl;
 
@@ -901,6 +885,20 @@ void ElevationMap::footTipStanceCallback(const quadruped_msgs::QuadrupedState& q
               //std::cout << "Height Foot tip: " << LFTipPostiion_(2) << std::endl;
               //std::cout << "Var Left: " << varLeft << std::endl;
               //std::cout << "Diff: " << heightLeft - LFTipPostiion_(2) << std::endl;
+
+              // TEST:
+              if(LFTipPostiion_(2) < heightLeft - varLeft || LFTipPostiion_(2) > heightLeft + varLeft){
+                  //std::cout << "Right height is critical!!!!! *************************************************" << std::endl;
+              }
+
+              // Output variance values:
+              if(print_horizontal_variances){
+                  std::cout << "Left: horizontal_variance_x: " << rawMap_.atPosition("horizontal_variance_x",posLeft) << std::endl;
+                  std::cout << "Left: horizontal_variance_y: " << rawMap_.atPosition("horizontal_variance_y",posLeft) << std::endl;
+                  std::cout << "Left: horizontal_variance_xy: " << rawMap_.atPosition("horizontal_variance_xy",posLeft) << std::endl;
+              }
+
+
               double diff = heightLeft - LFTipPostiion_(2);
               if(abs(diff) < 1.0) totalHeightDifference_ += diff;
               heightDifferenceComponentCounter_ += 1;
@@ -915,14 +913,29 @@ void ElevationMap::footTipStanceCallback(const quadruped_msgs::QuadrupedState& q
           // For some reason the rawMap is sometimes empty..
           if(rawMap_.getSize()(0) > 1){
               float heightRight = rawMap_.atPosition("elevation", posRight);
+
               float varRight = rawMap_.atPosition("variance", posRight);
+              float horVarRight = rawMap_.atPosition("horizontal_variance_x", posRight);
 
               //std::cout << "Height Right lower bound: " << heightRight << std::endl;
               //std::cout << "Height Foot tip: " << RFTipPostiion_(2) << std::endl;
               //std::cout << "Var Right: " << varRight << std::endl;
               //std::cout << "Diff: " << heightRight - RFTipPostiion_(2) << std::endl;
+
+              //std::cout << "Variance varying? " << horVarRight << std::endl;
+              // TEST:
+              if(RFTipPostiion_(2) < heightRight - varRight || RFTipPostiion_(2) > heightRight + varRight){
+                  //std::cout << "Right height is critical!!!!! *************************************************" << std::endl;
+              }
+
+              if(print_horizontal_variances){
+                  std::cout << "Right: horizontal_variance_x: " << rawMap_.atPosition("horizontal_variance_x",posRight) << std::endl;
+                  std::cout << "Right: horizontal_variance_y: " << rawMap_.atPosition("horizontal_variance_y",posRight) << std::endl;
+                  std::cout << "Right: horizontal_variance_xy: " << rawMap_.atPosition("horizontal_variance_xy",posRight) << std::endl;
+              }
+
               double diff = heightRight - RFTipPostiion_(2);
-              if(abs(diff) < 1.0) totalHeightDifference_ += diff;
+              if(abs(diff) < 10.0) totalHeightDifference_ += diff;
               heightDifferenceComponentCounter_ += 1;
               //else std::cout << "WARNING, big error" << std::endl;
           }
@@ -930,19 +943,39 @@ void ElevationMap::footTipStanceCallback(const quadruped_msgs::QuadrupedState& q
       //else std::cout << "RIGHT LIFTED!!!" << std::endl;
       // End Test!!
 
-
-//  std::cout << "Reached Endpoint once.. " << std::endl;
-  // Todo: Calculate diff here!
-  // Todo: Think about the meaning of the Elevation Map variances on comparison!!!!!
   }
-  float heightDiff;
-  if(heightDifferenceComponentCounter_ > 0.0) heightDiff = totalHeightDifference_ / double(heightDifferenceComponentCounter_);
-  else heightDiff = 0.0;
-  std::cout << "heightDiff: " << heightDiff << std::endl;
-  //heightDifferenceComponentCounter_ = 0;
-  //totalHeightDifference_ = 0.0;
 
+  //std::cout << "Frame transform z odom map " << quadrupedState.frame_transforms.at(0).transform.translation.z << std::endl;
+  //std::cout << "Frame transform z odom map_ga " << quadrupedState.frame_transforms.at(1).transform.translation.z << std::endl;
 
+  //! To add: consider horizontal variance for diff calculation
+  //! How is frequency of motion update.. Where stored?
+
+  if(rawMap_.getSize()(0) > 1){
+    // Actual Difference quantification:
+    float heightDiff;
+    if(heightDifferenceComponentCounter_ > 0.0) heightDiff = totalHeightDifference_ / double(heightDifferenceComponentCounter_);
+    else heightDiff = 0.0;
+    //std::cout << "heightDiff: " << heightDiff << "totDiff: " << totalHeightDifference_ << std::endl;
+    if(heightDifferenceComponentCounter_ > 30){
+        totalHeightDifference_ = 0.0;
+        heightDifferenceComponentCounter_ = 0;
+    }
+    //std::cout << "heightDiff: " << heightDiff << std::endl;
+
+    //heightDifferenceComponentCounter_ = 0;
+    //totalHeightDifference_ = 0.0;
+  }
+
+}
+
+bool ElevationMap::processStance(std::string tip)
+{
+    std::cout << "Tip change: " << tip <<std::endl;
+    if(tip == "Left") processStanceTriggerLeft_.clear();
+    if(tip == "Right") processStanceTriggerRight_.clear();
+
+    return true;
 }
 
 } /* namespace */

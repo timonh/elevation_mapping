@@ -344,6 +344,11 @@ void ElevationMapping::mapUpdateTimerCallback(const ros::TimerEvent&)
   stopMapUpdateTimer();
   ros::Time time = ros::Time::now();
 
+  // Test for Timing
+  std::cout << "Timing of Mapupdater from motion" << std::endl;
+  // End Test
+
+
   // Update map from motion prediction.
   if (!updatePrediction(time)) {
     ROS_ERROR("Updating process noise failed.");
