@@ -25,6 +25,9 @@
 // Eigen
 #include <Eigen/Dense>
 
+// TEST thread
+#include <thread>
+
 using namespace std;
 using namespace grid_map;
 
@@ -796,20 +799,11 @@ void ElevationMap::footTipStanceCallback(const quadruped_msgs::QuadrupedState& q
   RFTipState_ = quadrupedState.contacts[1].state;
 
 
-
+  //std::cout << "RFTippos x: " << RFTipPostiion_(0) << std::endl;
 
   //std::cout << "LFTipsStance Size: " << LFTipStance_.size() << std::endl;
 
 
-  processStanceTriggerLeft_.push_back(LFTipState_);
-  processStanceTriggerRight_.push_back(RFTipState_);
-
-  if(processStanceTriggerLeft_.size() > 1000){
-      processStanceTriggerLeft_.erase(processStanceTriggerLeft_.begin());
-  }
-  if(processStanceTriggerRight_.size() > 1000){
-      processStanceTriggerRight_.erase(processStanceTriggerRight_.begin());
-  }
 
   // Detect start and end of stances.
   detectStancePhase();
@@ -862,8 +856,66 @@ void ElevationMap::footTipStanceCallback(const quadruped_msgs::QuadrupedState& q
 
 bool ElevationMap::detectStancePhase(){
 
+    //! TEST about the two threads
+    //std::thread::id this_id = std::this_thread::get_id();
+    //std::cout << "This is the thread: " << this_id << std::endl;
+    //! END TEST
 
-    // TODO: Make nicer and more compact
+    // Collect State Data for stance phase detection
+    processStanceTriggerLeft_.push_back(LFTipState_);
+    processStanceTriggerRight_.push_back(RFTipState_);
+
+    if(processStanceTriggerLeft_.size() > 1000){
+        processStanceTriggerLeft_.erase(processStanceTriggerLeft_.begin());
+    }
+    if(processStanceTriggerRight_.size() > 1000){
+        processStanceTriggerRight_.erase(processStanceTriggerRight_.begin());
+    }
+
+
+
+    // Collect the foot tip position data (if foot tip in contact).
+    if(LFTipState_ && isInStanceLeft_){
+        LFTipStance_.push_back(LFTipPostiion_);
+        //std::cout << "LFTipStance.x: " << LFTipStance_.back()(0) << "y: " << LFTipStance_.back()(1) << "z: " << LFTipStance_.back()(2) << std::endl;
+    }
+    if(RFTipState_ && isInStanceRight_){
+        RFTipStance_.push_back(RFTipPostiion_);
+        std::cout << "RTipPosition x: " << RFTipPostiion_(0) << std::endl;
+    }
+
+
+
+    // TODO: Make nicer and more compact AND CORRECT< SWAP THEM!!
+
+
+
+    // Recognition of the end of a stance phase of the front legs.
+    if(processStanceTriggerLeft_.size() >= 20 && processStanceTriggerLeft_.end()[-1]+processStanceTriggerLeft_.end()[-2]+
+            processStanceTriggerLeft_.end()[-3]+processStanceTriggerLeft_.end()[-4]+processStanceTriggerLeft_.end()[-5]+
+            processStanceTriggerLeft_.end()[-6]+processStanceTriggerLeft_.end()[-7]+processStanceTriggerLeft_.end()[-8]+
+            processStanceTriggerLeft_.end()[-9]+processStanceTriggerLeft_.end()[-10] >= 8 &&
+            processStanceTriggerLeft_.end()[-11]+processStanceTriggerLeft_.end()[-12]+ processStanceTriggerLeft_.end()[-13]+
+            processStanceTriggerLeft_.end()[-14]+processStanceTriggerLeft_.end()[-15]+processStanceTriggerLeft_.end()[-16] +
+            processStanceTriggerLeft_.end()[-17]+processStanceTriggerLeft_.end()[-18]+processStanceTriggerLeft_.end()[-19] <= 2 &&
+            !isInStanceLeft_){
+        std::cout << "Start of LEFT stance" << std::endl;
+        isInStanceLeft_ = 1;
+    }
+
+
+
+    if(processStanceTriggerRight_.size() >= 20 && processStanceTriggerRight_.end()[-1]+processStanceTriggerRight_.end()[-2]+
+            processStanceTriggerRight_.end()[-3]+processStanceTriggerRight_.end()[-4]+processStanceTriggerRight_.end()[-5] +
+            processStanceTriggerRight_.end()[-6]+processStanceTriggerRight_.end()[-7]+processStanceTriggerRight_.end()[-8]+
+            processStanceTriggerRight_.end()[-9]+processStanceTriggerRight_.end()[-10] >= 8 &&
+            processStanceTriggerRight_.end()[-11]+processStanceTriggerRight_.end()[-12]+processStanceTriggerRight_.end()[-13]+
+            processStanceTriggerRight_.end()[-14]+processStanceTriggerRight_.end()[-15]+processStanceTriggerRight_.end()[-16]+
+            processStanceTriggerRight_.end()[-17]+processStanceTriggerRight_.end()[-18]+processStanceTriggerRight_.end()[-19] <= 2 &&
+            !isInStanceRight_){
+        std::cout << "Start of RIGHT stance" << std::endl;
+        isInStanceRight_ = 1;
+    }
 
     // Recognition of the start of a stance phase of the front legs.
     if(processStanceTriggerLeft_.size() >= 20 &&
@@ -874,9 +926,9 @@ bool ElevationMap::detectStancePhase(){
             processStanceTriggerLeft_.end()[-11]+processStanceTriggerLeft_.end()[-12]+ processStanceTriggerLeft_.end()[-13]+
             processStanceTriggerLeft_.end()[-14]+processStanceTriggerLeft_.end()[-15]+processStanceTriggerLeft_.end()[-16] +
             processStanceTriggerLeft_.end()[-17]+processStanceTriggerLeft_.end()[-18]+processStanceTriggerLeft_.end()[-19] >=8 &&
-            !isProcessingLeft_){
-        std::cout << "Start of LEFT stance" << std::endl;
-        isProcessingLeft_ = 1;
+            isInStanceLeft_){
+        if(!processStance("Left")) return false;
+        isInStanceLeft_ = 0;
     }
 
     // Recognition of the start of a stance phase of the front legs.
@@ -888,47 +940,16 @@ bool ElevationMap::detectStancePhase(){
             processStanceTriggerRight_.end()[-11]+processStanceTriggerRight_.end()[-12]+processStanceTriggerRight_.end()[-13]+
             processStanceTriggerRight_.end()[-14]+processStanceTriggerRight_.end()[-15]+processStanceTriggerRight_.end()[-16]+
             processStanceTriggerRight_.end()[-17]+processStanceTriggerRight_.end()[-18]+processStanceTriggerRight_.end()[-19] >=8 &&
-            !isProcessingRight_){
-        std::cout << "Start of RIGHT stance" << std::endl;
-        isProcessingRight_ = 1;
-    }
-
-    // Recognition of the end of a stance phase of the front legs.
-    if(processStanceTriggerLeft_.size() >= 20 && processStanceTriggerLeft_.end()[-1]+processStanceTriggerLeft_.end()[-2]+
-            processStanceTriggerLeft_.end()[-3]+processStanceTriggerLeft_.end()[-4]+processStanceTriggerLeft_.end()[-5]+
-            processStanceTriggerLeft_.end()[-6]+processStanceTriggerLeft_.end()[-7]+processStanceTriggerLeft_.end()[-8]+
-            processStanceTriggerLeft_.end()[-9]+processStanceTriggerLeft_.end()[-10] >= 8 &&
-            processStanceTriggerLeft_.end()[-11]+processStanceTriggerLeft_.end()[-12]+ processStanceTriggerLeft_.end()[-13]+
-            processStanceTriggerLeft_.end()[-14]+processStanceTriggerLeft_.end()[-15]+processStanceTriggerLeft_.end()[-16] +
-            processStanceTriggerLeft_.end()[-17]+processStanceTriggerLeft_.end()[-18]+processStanceTriggerLeft_.end()[-19] <= 2 &&
-            isProcessingLeft_){
-        if(!processStance("Left")) return false;
-        isProcessingLeft_ = 0;
-    }
-
-    if(processStanceTriggerRight_.size() >= 20 && processStanceTriggerRight_.end()[-1]+processStanceTriggerRight_.end()[-2]+
-            processStanceTriggerRight_.end()[-3]+processStanceTriggerRight_.end()[-4]+processStanceTriggerRight_.end()[-5] +
-            processStanceTriggerRight_.end()[-6]+processStanceTriggerRight_.end()[-7]+processStanceTriggerRight_.end()[-8]+
-            processStanceTriggerRight_.end()[-9]+processStanceTriggerRight_.end()[-10] >= 8 &&
-            processStanceTriggerRight_.end()[-11]+processStanceTriggerRight_.end()[-12]+processStanceTriggerRight_.end()[-13]+
-            processStanceTriggerRight_.end()[-14]+processStanceTriggerRight_.end()[-15]+processStanceTriggerRight_.end()[-16]+
-            processStanceTriggerRight_.end()[-17]+processStanceTriggerRight_.end()[-18]+processStanceTriggerRight_.end()[-19] <= 2 &&
-            isProcessingRight_){
+            isInStanceRight_){
         if(!processStance("Right")) return false;
-        isProcessingRight_ = 0;
+        isInStanceRight_ = 0;
     }
 
 
-    // Collect the foot tip position data.
-    if(LFTipState_){
-        LFTipStance_.push_back(LFTipPostiion_);
-        //std::cout << "LFTipStance.z: " << LFTipStance_.back()[2] << "x: " << LFTipStance_.back()[0] << "y: " << LFTipStance_.back()[1] << std::endl;
-    }
-    if(RFTipState_){
-        RFTipStance_.push_back(RFTipPostiion_);
-    }
-
-
+    //std::cout << "LFTipState: " << LFTipState_ << std::endl;
+    //std::cout << "Is in stance Left: " << isInStanceLeft_ << std::endl;
+    //std::cout << "RFTipState: " << RFTipState_ << std::endl;
+    //std::cout << "Is in stance Right: " << isInStanceRight_ << std::endl;
 
 
     //std::cout << "LFTipsStance Size: " << LFTipStance_.size() << std::endl;
@@ -947,15 +968,55 @@ bool ElevationMap::detectStancePhase(){
 bool ElevationMap::processStance(std::string tip)
 {
     std::cout << "Processing: " << tip <<std::endl;
-    if(tip == "Left") processStanceTriggerLeft_.clear();
-    if(tip == "Right") processStanceTriggerRight_.clear();
 
     // Process here..
 
     //std::cout << "LFTipsStance Size: " << LFTipStance_.size() << std::endl;
 
-    LFTipStance_.clear();
-    RFTipStance_.clear();
+    double xMeanLeft, yMeanLeft, zMeanLeft, xMeanRight, yMeanRight, zMeanRight;
+    double xTotalLeft, yTotalLeft, zTotalLeft, xTotalRight, yTotalRight, zTotalRight;
+
+    if(tip == "Left"){
+        for (auto& n : LFTipStance_){
+            // Consider only those with state = 1
+            xTotalLeft += n(0);
+            yTotalLeft += n(1);
+            zTotalLeft += n(2);
+        }
+        xMeanLeft = xTotalLeft / float(LFTipStance_.size());
+        yMeanLeft = yTotalLeft / float(LFTipStance_.size());
+        zMeanLeft = zTotalLeft / float(LFTipStance_.size());
+
+        std::cout << "x Mean Left: " << xMeanLeft << std::endl;
+        std::cout << "y Mean Left: " << yMeanLeft << std::endl;
+        std::cout << "z Mean Left: " << zMeanLeft << std::endl;
+
+        std::cout << "LSIZE: " << LFTipStance_.size() << std::endl;
+        LFTipStance_.clear();
+        processStanceTriggerLeft_.clear();
+        std::cout << "LSIZE: " << LFTipStance_.size() << std::endl;
+    }
+
+    if(tip == "Right"){
+        for (auto& n : RFTipStance_){
+            // Consider only those with state = 1
+            xTotalRight += n(0);
+            yTotalRight += n(1);
+            zTotalRight += n(2);
+        }
+        xMeanRight = xTotalRight / float(RFTipStance_.size());
+        yMeanRight = yTotalRight / float(RFTipStance_.size());
+        zMeanRight = zTotalRight / float(RFTipStance_.size());
+
+        std::cout << "x Mean Right: " << xMeanRight << std::endl;
+        std::cout << "y Mean Right: " << yMeanRight << std::endl;
+        std::cout << "z Mean Right: " << zMeanRight << std::endl;
+
+        std::cout << "RSIZE: " << RFTipStance_.size() << std::endl;
+        RFTipStance_.clear();
+        processStanceTriggerRight_.clear();
+        std::cout << "RSIZE: " << RFTipStance_.size() << std::endl;
+    }
 
 
     //std::cout << "LFTipsStance Size: " << LFTipStance_.size() << std::endl;

@@ -351,8 +351,8 @@ class ElevationMap
   bool RFTipState_;
   double totalHeightDifference_;
   int heightDifferenceComponentCounter_;
-  bool isProcessingLeft_;
-  bool isProcessingRight_;
+  bool isInStanceLeft_;
+  bool isInStanceRight_;
 
   //! ROS subscribers.
   //ros::Subscriber highGrassPointCloudSubscriber_;
