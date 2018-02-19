@@ -101,6 +101,11 @@ bool SensorProcessorBase::updateTransformations(const ros::Time& timeStamp)
 
     transformListener_.lookupTransform(mapFrameId_, robotBaseFrameId_, timeStamp, transformTf);  // TODO Why wrong direction?
     poseTFToEigen(transformTf, transform);
+
+    // New TESTS 190218
+    std::cout << "TRANSFORMATIONTRASNORM: " << transform.translation()(2) << std::endl;
+    // End TESTS
+
     rotationMapToBase_.setMatrix(transform.rotation().matrix());
     translationMapToBaseInMapFrame_.toImplementation() = transform.translation();
 

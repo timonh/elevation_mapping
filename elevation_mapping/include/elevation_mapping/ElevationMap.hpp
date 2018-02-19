@@ -280,7 +280,13 @@ class ElevationMap
   bool detectStancePhase();
 
   //! TODO: Description:
-  bool footTipElevationMapComparison();
+  bool footTipElevationMapComparison(std::string mode);
+
+  //! TODO: Description:
+  bool publishMeanFootTipPositionMarkers();
+
+  //! TODO: Description:
+  bool initializeFootTipMarkers();
 
 
   //! ROS nodehandle.
@@ -353,6 +359,8 @@ class ElevationMap
   int heightDifferenceComponentCounter_;
   bool isInStanceLeft_;
   bool isInStanceRight_;
+
+
 
   //! ROS subscribers.
   //ros::Subscriber highGrassPointCloudSubscriber_;

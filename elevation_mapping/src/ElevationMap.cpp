@@ -54,6 +54,17 @@ ElevationMap::ElevationMap(ros::NodeHandle nodeHandle)
   // Foot tip position Subscriber for Foot tip - Elevation comparison
   footTipStanceSubscriber_ = nodeHandle_.subscribe("/state_estimator/quadruped_state", 1, &ElevationMap::footTipStanceCallback, this);
 
+
+  // NEW: publish foot tip markers
+  footContactPublisher_ = nodeHandle_.advertise<visualization_msgs::Marker>("mean_foot_contact_markers_rviz", 1000);
+  elevationMapBoundPublisher_ = nodeHandle_.advertise<visualization_msgs::Marker>("elevation_map_bound_markers_rviz", 1000);
+  initializeFootTipMarkers();
+
+
+
+  // END NEW
+
+
   initialTime_ = ros::Time::now();
 }
 
@@ -848,13 +859,12 @@ void ElevationMap::footTipStanceCallback(const quadruped_msgs::QuadrupedState& q
 
 
 
-
-  footTipElevationMapComparison();
-
-
+  //! If called here: Called at 400 Hz using the foot tip positions from quadruped state directly. -> If called in process function -> At lower rate after each stance phase!
+  footTipElevationMapComparison("fast");
 }
 
-bool ElevationMap::detectStancePhase(){
+bool ElevationMap::detectStancePhase()
+{
 
     //! TEST about the two threads
     //std::thread::id this_id = std::this_thread::get_id();
@@ -881,7 +891,7 @@ bool ElevationMap::detectStancePhase(){
     }
     if(RFTipState_ && isInStanceRight_){
         RFTipStance_.push_back(RFTipPostiion_);
-        std::cout << "RTipPosition x: " << RFTipPostiion_(0) << std::endl;
+        //std::cout << "RTipPosition x: " << RFTipPostiion_(0) << std::endl;
     }
 
 
@@ -976,6 +986,9 @@ bool ElevationMap::processStance(std::string tip)
     double xMeanLeft, yMeanLeft, zMeanLeft, xMeanRight, yMeanRight, zMeanRight;
     double xTotalLeft, yTotalLeft, zTotalLeft, xTotalRight, yTotalRight, zTotalRight;
 
+    // For publisher of mean foot tip positions
+    geometry_msgs::Point p;
+
     if(tip == "Left"){
         for (auto& n : LFTipStance_){
             // Consider only those with state = 1
@@ -987,14 +1000,19 @@ bool ElevationMap::processStance(std::string tip)
         yMeanLeft = yTotalLeft / float(LFTipStance_.size());
         zMeanLeft = zTotalLeft / float(LFTipStance_.size());
 
-        std::cout << "x Mean Left: " << xMeanLeft << std::endl;
-        std::cout << "y Mean Left: " << yMeanLeft << std::endl;
-        std::cout << "z Mean Left: " << zMeanLeft << std::endl;
+        //std::cout << "x Mean Left: " << xMeanLeft << std::endl;
+        //std::cout << "y Mean Left: " << yMeanLeft << std::endl;
+        //std::cout << "z Mean Left: " << zMeanLeft << std::endl;
 
-        std::cout << "LSIZE: " << LFTipStance_.size() << std::endl;
+        //std::cout << "LSIZE: " << LFTipStance_.size() << std::endl;
         LFTipStance_.clear();
         processStanceTriggerLeft_.clear();
-        std::cout << "LSIZE: " << LFTipStance_.size() << std::endl;
+        //std::cout << "LSIZE: " << LFTipStance_.size() << std::endl;
+
+        // Positions for publisher
+        p.x = xMeanLeft;
+        p.y = yMeanLeft;
+        p.z = zMeanLeft;
     }
 
     if(tip == "Right"){
@@ -1008,28 +1026,57 @@ bool ElevationMap::processStance(std::string tip)
         yMeanRight = yTotalRight / float(RFTipStance_.size());
         zMeanRight = zTotalRight / float(RFTipStance_.size());
 
-        std::cout << "x Mean Right: " << xMeanRight << std::endl;
-        std::cout << "y Mean Right: " << yMeanRight << std::endl;
-        std::cout << "z Mean Right: " << zMeanRight << std::endl;
+        //std::cout << "x Mean Right: " << xMeanRight << std::endl;
+        //std::cout << "y Mean Right: " << yMeanRight << std::endl;
+        //std::cout << "z Mean Right: " << zMeanRight << std::endl;
 
-        std::cout << "RSIZE: " << RFTipStance_.size() << std::endl;
+        //std::cout << "RSIZE: " << RFTipStance_.size() << std::endl;
         RFTipStance_.clear();
         processStanceTriggerRight_.clear();
-        std::cout << "RSIZE: " << RFTipStance_.size() << std::endl;
+        //std::cout << "RSIZE: " << RFTipStance_.size() << std::endl;
+
+        // Positions for publisher
+        p.x = xMeanRight;
+        p.y = yMeanRight;
+        p.z = zMeanRight;
     }
 
+
+    footContactMarkerList_.points.push_back(p);
+
+    footContactPublisher_.publish(footContactMarkerList_);
+
+    //footTipElevationMapComparison("slow");
+
+
+    // TODO HERE: Publish foot tip markers!!
 
     //std::cout << "LFTipsStance Size: " << LFTipStance_.size() << std::endl;
 
     return true;
 }
 
-bool ElevationMap::footTipElevationMapComparison(){
+bool ElevationMap::footTipElevationMapComparison(std::string mode)
+{
 
 
     //footContactPublisher_.publish(footContactMarkerList_);
     //const auto& size = rawMap_.getSize();
     //std::cout << "Size x: " << size(0) << "Size y: " << size(1) << std::endl;
+
+
+
+    // TODO: finish difference comparison flexibility adjustment!!
+    if(mode == "slow"){
+
+    }
+    if(mode == "fast"){
+
+    }
+
+
+
+
 
     bool print_horizontal_variances = false;
 
@@ -1138,9 +1185,37 @@ bool ElevationMap::footTipElevationMapComparison(){
       //totalHeightDifference_ = 0.0;
     }
 
+    return true;
+}
+
+bool ElevationMap::initializeFootTipMarkers()
+{
 
 
+    // Color and shape definition of markers for foot tip ground contact visualization.
+    footContactMarkerList_.header.frame_id = "odom";
+    footContactMarkerList_.header.stamp = ros::Time();
+    footContactMarkerList_.ns = "elevation_mapping";
+    footContactMarkerList_.id = 0;
+    footContactMarkerList_.type = visualization_msgs::Marker::SPHERE_LIST;
+    footContactMarkerList_.action = visualization_msgs::Marker::ADD;
+    footContactMarkerList_.pose.orientation.x = 0.0;
+    footContactMarkerList_.pose.orientation.y = 0.0;
+    footContactMarkerList_.pose.orientation.z = 0.0;
+    footContactMarkerList_.pose.orientation.w = 1.0;
+    footContactMarkerList_.scale.x = 0.1;
+    footContactMarkerList_.scale.y = 0.1;
+    footContactMarkerList_.scale.z = 0.1;
+    footContactMarkerList_.color.a = 1.0; // Don't forget to set the alpha!
+    footContactMarkerList_.color.r = 0.0;
+    footContactMarkerList_.color.g = 1.0;
+    footContactMarkerList_.color.b = 0.7;
 
+    return true;
+}
+
+bool ElevationMap::publishMeanFootTipPositionMarkers()
+{
 
 
 
