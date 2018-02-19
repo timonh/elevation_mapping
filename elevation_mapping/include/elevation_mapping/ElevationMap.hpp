@@ -276,6 +276,13 @@ class ElevationMap
   //! TODO: Description!
   bool processStance(std::string tip);
 
+  //! TODO: Description:
+  bool detectStancePhase();
+
+  //! TODO: Description:
+  bool footTipElevationMapComparison();
+
+
   //! ROS nodehandle.
   ros::NodeHandle nodeHandle_;
 
@@ -311,6 +318,10 @@ class ElevationMap
   //! Mutex lock for vsibility cleanup map.
   boost::recursive_mutex visibilityCleanupMapMutex_;
 
+  // NEW TESTING:
+  boost::recursive_mutex footTipStanceProcessorMutex_;
+  // END NEW!
+
   //! Underlying map subscriber.
   ros::Subscriber underlyingMapSubscriber_;
 
@@ -340,6 +351,8 @@ class ElevationMap
   bool RFTipState_;
   double totalHeightDifference_;
   int heightDifferenceComponentCounter_;
+  bool isProcessingLeft_;
+  bool isProcessingRight_;
 
   //! ROS subscribers.
   //ros::Subscriber highGrassPointCloudSubscriber_;
