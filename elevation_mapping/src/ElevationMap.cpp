@@ -59,7 +59,8 @@ ElevationMap::ElevationMap(ros::NodeHandle nodeHandle)
   footContactPublisher_ = nodeHandle_.advertise<visualization_msgs::Marker>("mean_foot_contact_markers_rviz", 1000);
   elevationMapBoundPublisher_ = nodeHandle_.advertise<visualization_msgs::Marker>("elevation_map_bound_markers_rviz", 1000);
   initializeFootTipMarkers();
-
+  // Chose comparison mode: fast -> 400 Hz, slow -> at each foot step once
+  comparisonMode_ = "slow";
 
 
   // END NEW
@@ -800,24 +801,31 @@ void ElevationMap::footTipStanceCallback(const quadruped_msgs::QuadrupedState& q
 //  std::cout << rawMap_.getLayers()[9] << std::endl;
 
   // Set class variables.
-  LFTipPostiion_(0) = quadrupedState.contacts[0].position.x;
-  LFTipPostiion_(1) = quadrupedState.contacts[0].position.y;
-  LFTipPostiion_(2) = quadrupedState.contacts[0].position.z;
-  RFTipPostiion_(0) = quadrupedState.contacts[1].position.x;
-  RFTipPostiion_(1) = quadrupedState.contacts[1].position.y;
-  RFTipPostiion_(2) = quadrupedState.contacts[1].position.z;
+  LFTipPostiion_(0) = (double)quadrupedState.contacts[0].position.x;
+  LFTipPostiion_(1) = (double)quadrupedState.contacts[0].position.y;
+  LFTipPostiion_(2) = (double)quadrupedState.contacts[0].position.z;
+  RFTipPostiion_(0) = (double)quadrupedState.contacts[1].position.x;
+  RFTipPostiion_(1) = (double)quadrupedState.contacts[1].position.y;
+  RFTipPostiion_(2) = (double)quadrupedState.contacts[1].position.z;
   LFTipState_ = quadrupedState.contacts[0].state;
   RFTipState_ = quadrupedState.contacts[1].state;
 
+  std::cout << "RFTippos x: " << RFTipPostiion_(0) << std::endl;
+  std::cout << "RFTippos y: " << RFTipPostiion_(1) << std::endl;
+  std::cout << "RFTippos z: " << RFTipPostiion_(2) << std::endl;
 
-  //std::cout << "RFTippos x: " << RFTipPostiion_(0) << std::endl;
+  double rfx = RFTipPostiion_(0);
+  double rfy = RFTipPostiion_(1);
+  double rfz = RFTipPostiion_(2);
 
+  //std::cout << "RFTippos z: " << rfz << std::endl;
   //std::cout << "LFTipsStance Size: " << LFTipStance_.size() << std::endl;
 
 
 
   // Detect start and end of stances.
   detectStancePhase();
+
 
   //std::cout << "Tipstate " << LFTipState_ << std::endl;
   //std::cout << "Tipstate r " << RFTipState_ << std::endl;
@@ -860,7 +868,7 @@ void ElevationMap::footTipStanceCallback(const quadruped_msgs::QuadrupedState& q
 
 
   //! If called here: Called at 400 Hz using the foot tip positions from quadruped state directly. -> If called in process function -> At lower rate after each stance phase!
-  footTipElevationMapComparison("fast");
+  if(comparisonMode_ == "fast") footTipElevationMapComparison(comparisonMode_);
 }
 
 bool ElevationMap::detectStancePhase()
@@ -876,15 +884,17 @@ bool ElevationMap::detectStancePhase()
     processStanceTriggerRight_.push_back(RFTipState_);
 
     if(processStanceTriggerLeft_.size() > 1000){
+        std::cout << "DELETED SOME ENTRIES AS LONG TIME IN SAME STATE!!   LEFT" << std::endl;
         processStanceTriggerLeft_.erase(processStanceTriggerLeft_.begin());
     }
     if(processStanceTriggerRight_.size() > 1000){
+        std::cout << "DELETED SOME ENTRIES AS LONG TIME IN SAME STATE!!   RIGHT" << std::endl;
         processStanceTriggerRight_.erase(processStanceTriggerRight_.begin());
     }
 
 
 
-    // Collect the foot tip position data (if foot tip in contact).
+    // Collect the foot tip position data (if foot tip in contact). (Prevent nans)
     if(LFTipState_ && isInStanceLeft_){
         LFTipStance_.push_back(LFTipPostiion_);
         //std::cout << "LFTipStance.x: " << LFTipStance_.back()(0) << "y: " << LFTipStance_.back()(1) << "z: " << LFTipStance_.back()(2) << std::endl;
@@ -898,7 +908,7 @@ bool ElevationMap::detectStancePhase()
 
     // TODO: Make nicer and more compact AND CORRECT< SWAP THEM!!
 
-
+    // CHANGED SOME NUMBERS FOR TESTING!
 
     // Recognition of the end of a stance phase of the front legs.
     if(processStanceTriggerLeft_.size() >= 20 && processStanceTriggerLeft_.end()[-1]+processStanceTriggerLeft_.end()[-2]+
@@ -907,7 +917,7 @@ bool ElevationMap::detectStancePhase()
             processStanceTriggerLeft_.end()[-9]+processStanceTriggerLeft_.end()[-10] >= 8 &&
             processStanceTriggerLeft_.end()[-11]+processStanceTriggerLeft_.end()[-12]+ processStanceTriggerLeft_.end()[-13]+
             processStanceTriggerLeft_.end()[-14]+processStanceTriggerLeft_.end()[-15]+processStanceTriggerLeft_.end()[-16] +
-            processStanceTriggerLeft_.end()[-17]+processStanceTriggerLeft_.end()[-18]+processStanceTriggerLeft_.end()[-19] <= 2 &&
+            processStanceTriggerLeft_.end()[-17]+processStanceTriggerLeft_.end()[-18]+processStanceTriggerLeft_.end()[-19] <= 10 &&
             !isInStanceLeft_){
         std::cout << "Start of LEFT stance" << std::endl;
         isInStanceLeft_ = 1;
@@ -921,7 +931,7 @@ bool ElevationMap::detectStancePhase()
             processStanceTriggerRight_.end()[-9]+processStanceTriggerRight_.end()[-10] >= 8 &&
             processStanceTriggerRight_.end()[-11]+processStanceTriggerRight_.end()[-12]+processStanceTriggerRight_.end()[-13]+
             processStanceTriggerRight_.end()[-14]+processStanceTriggerRight_.end()[-15]+processStanceTriggerRight_.end()[-16]+
-            processStanceTriggerRight_.end()[-17]+processStanceTriggerRight_.end()[-18]+processStanceTriggerRight_.end()[-19] <= 2 &&
+            processStanceTriggerRight_.end()[-17]+processStanceTriggerRight_.end()[-18]+processStanceTriggerRight_.end()[-19] <= 10 &&
             !isInStanceRight_){
         std::cout << "Start of RIGHT stance" << std::endl;
         isInStanceRight_ = 1;
@@ -932,10 +942,10 @@ bool ElevationMap::detectStancePhase()
             processStanceTriggerLeft_.end()[-1] + processStanceTriggerLeft_.end()[-2] + processStanceTriggerLeft_.end()[-3]+
             processStanceTriggerLeft_.end()[-4]+processStanceTriggerLeft_.end()[-5] + processStanceTriggerLeft_.end()[-6]+
             processStanceTriggerLeft_.end()[-7]+processStanceTriggerLeft_.end()[-8]+
-            processStanceTriggerLeft_.end()[-9]+processStanceTriggerLeft_.end()[-10] <= 2 &&
+            processStanceTriggerLeft_.end()[-9]+processStanceTriggerLeft_.end()[-10] <= 3 &&
             processStanceTriggerLeft_.end()[-11]+processStanceTriggerLeft_.end()[-12]+ processStanceTriggerLeft_.end()[-13]+
             processStanceTriggerLeft_.end()[-14]+processStanceTriggerLeft_.end()[-15]+processStanceTriggerLeft_.end()[-16] +
-            processStanceTriggerLeft_.end()[-17]+processStanceTriggerLeft_.end()[-18]+processStanceTriggerLeft_.end()[-19] >=8 &&
+            processStanceTriggerLeft_.end()[-17]+processStanceTriggerLeft_.end()[-18]+processStanceTriggerLeft_.end()[-19] >=1 &&
             isInStanceLeft_){
         if(!processStance("Left")) return false;
         isInStanceLeft_ = 0;
@@ -946,14 +956,17 @@ bool ElevationMap::detectStancePhase()
             processStanceTriggerRight_.end()[-1] + processStanceTriggerRight_.end()[-2] + processStanceTriggerRight_.end()[-3]+
             processStanceTriggerRight_.end()[-4]+processStanceTriggerRight_.end()[-5] + processStanceTriggerRight_.end()[-6]+
             processStanceTriggerRight_.end()[-7]+processStanceTriggerRight_.end()[-8]+
-            processStanceTriggerRight_.end()[-9]+processStanceTriggerRight_.end()[-10] <= 2 &&
+            processStanceTriggerRight_.end()[-9]+processStanceTriggerRight_.end()[-10] <= 3 &&
             processStanceTriggerRight_.end()[-11]+processStanceTriggerRight_.end()[-12]+processStanceTriggerRight_.end()[-13]+
             processStanceTriggerRight_.end()[-14]+processStanceTriggerRight_.end()[-15]+processStanceTriggerRight_.end()[-16]+
-            processStanceTriggerRight_.end()[-17]+processStanceTriggerRight_.end()[-18]+processStanceTriggerRight_.end()[-19] >=8 &&
+            processStanceTriggerRight_.end()[-17]+processStanceTriggerRight_.end()[-18]+processStanceTriggerRight_.end()[-19] >=1 &&
             isInStanceRight_){
         if(!processStance("Right")) return false;
         isInStanceRight_ = 0;
     }
+
+
+
 
 
     //std::cout << "LFTipState: " << LFTipState_ << std::endl;
@@ -978,31 +991,58 @@ bool ElevationMap::detectStancePhase()
 bool ElevationMap::processStance(std::string tip)
 {
     std::cout << "Processing: " << tip <<std::endl;
+    std::cout << "RFTippos z: " << RFTipPostiion_(2) << std::endl;
 
-    // Process here..
+    // Delete the last 10 entries of the Foot Stance Position Vector, as these are used for transition detection
+    if(LFTipStance_.size() > 10 && tip == "Left"){
+        for(unsigned int i = 0; i < 10; ++i){
+            LFTipStance_.pop_back();
+        }
+    }
+    else if(tip == "Left"){
+        std::cout << "WARNING: LEFT STANCE PHASE HAS TOO LITTLE ENTRIES TO BE PROCESSED" << std::endl;
+        return false;
+    }
+
+    // Delete the last 6 entries of the Foot Stance Position Vector, as these are used for transition detection
+    if(RFTipStance_.size() > 10 && tip == "Right"){
+        for(unsigned int i = 0; i < 10; ++i){
+            RFTipStance_.pop_back();
+        }
+    }
+    else if(tip == "Right"){
+        std::cout << "WARNING: RIGHT STANCE PHASE HAS TOO LITTLE ENTRIES TO BE PROCESSED" << std::endl;
+        return false;
+    }
+
+    //std::cout << "Size of left stance vector: " << LFTipStance_.size() << std::endl;
+    //std::cout << "Size of right stance vector: " << RFTipStance_.size() << std::endl;
+
+
 
     //std::cout << "LFTipsStance Size: " << LFTipStance_.size() << std::endl;
 
-    double xMeanLeft, yMeanLeft, zMeanLeft, xMeanRight, yMeanRight, zMeanRight;
     double xTotalLeft, yTotalLeft, zTotalLeft, xTotalRight, yTotalRight, zTotalRight;
 
-    // For publisher of mean foot tip positions
-    geometry_msgs::Point p;
 
-    if(tip == "Left"){
+    // For publisher of mean foot tip positions
+    if(tip == "Left" && LFTipStance_.size()>0){
+
+        geometry_msgs::Point p;
         for (auto& n : LFTipStance_){
             // Consider only those with state = 1
             xTotalLeft += n(0);
             yTotalLeft += n(1);
             zTotalLeft += n(2);
         }
-        xMeanLeft = xTotalLeft / float(LFTipStance_.size());
-        yMeanLeft = yTotalLeft / float(LFTipStance_.size());
-        zMeanLeft = zTotalLeft / float(LFTipStance_.size());
 
-        //std::cout << "x Mean Left: " << xMeanLeft << std::endl;
-        //std::cout << "y Mean Left: " << yMeanLeft << std::endl;
-        //std::cout << "z Mean Left: " << zMeanLeft << std::endl;
+        xMeanStanceLeft_ = xTotalLeft / float(LFTipStance_.size());
+        yMeanStanceLeft_ = yTotalLeft / float(LFTipStance_.size());
+        zMeanStanceLeft_ = zTotalLeft / float(LFTipStance_.size());
+
+        std::cout << "x Mean Left: " << xMeanStanceLeft_ << std::endl;
+        std::cout << "y Mean Left: " << yMeanStanceLeft_ << std::endl;
+        std::cout << "z Mean Left: " << zMeanStanceLeft_ << std::endl;
 
         //std::cout << "LSIZE: " << LFTipStance_.size() << std::endl;
         LFTipStance_.clear();
@@ -1010,25 +1050,35 @@ bool ElevationMap::processStance(std::string tip)
         //std::cout << "LSIZE: " << LFTipStance_.size() << std::endl;
 
         // Positions for publisher
-        p.x = xMeanLeft;
-        p.y = yMeanLeft;
-        p.z = zMeanLeft;
+        p.x = xMeanStanceLeft_;
+        p.y = yMeanStanceLeft_;
+        p.z = zMeanStanceLeft_;
+
+        // Check for nans
+        if(p.x != p.x || p.y != p.y || p.z != p.z){
+            std::cout << "NAN FOUND!!" << std::endl;
+        }
+        else footContactMarkerList_.points.push_back(p);
     }
 
-    if(tip == "Right"){
+    if(tip == "Right" && RFTipStance_.size() > 0){
+
+        geometry_msgs::Point p;
         for (auto& n : RFTipStance_){
             // Consider only those with state = 1
             xTotalRight += n(0);
             yTotalRight += n(1);
             zTotalRight += n(2);
         }
-        xMeanRight = xTotalRight / float(RFTipStance_.size());
-        yMeanRight = yTotalRight / float(RFTipStance_.size());
-        zMeanRight = zTotalRight / float(RFTipStance_.size());
+        xMeanStanceRight_ = xTotalRight / float(RFTipStance_.size());
+        yMeanStanceRight_ = yTotalRight / float(RFTipStance_.size());
+        zMeanStanceRight_ = zTotalRight / float(RFTipStance_.size());
 
-        //std::cout << "x Mean Right: " << xMeanRight << std::endl;
-        //std::cout << "y Mean Right: " << yMeanRight << std::endl;
-        //std::cout << "z Mean Right: " << zMeanRight << std::endl;
+
+        std::cout << "x Mean Right: " << xMeanStanceRight_ << std::endl;
+        std::cout << "y Mean Right: " << yMeanStanceRight_ << std::endl;
+        std::cout << "z Mean Right: " << zMeanStanceRight_ << std::endl;
+        std::cout << "z total Right: " << zTotalRight << std::endl;
 
         //std::cout << "RSIZE: " << RFTipStance_.size() << std::endl;
         RFTipStance_.clear();
@@ -1036,21 +1086,22 @@ bool ElevationMap::processStance(std::string tip)
         //std::cout << "RSIZE: " << RFTipStance_.size() << std::endl;
 
         // Positions for publisher
-        p.x = xMeanRight;
-        p.y = yMeanRight;
-        p.z = zMeanRight;
+        p.x = xMeanStanceRight_;
+        p.y = yMeanStanceRight_;
+        p.z = zMeanStanceRight_;
+
+        // Check for nans
+        if(p.x != p.x || p.y != p.y || p.z != p.z){
+            std::cout << "NAN FOUND!!" << std::endl;
+        }
+        else footContactMarkerList_.points.push_back(p);
     }
 
 
-    footContactMarkerList_.points.push_back(p);
-
+    // Prevent Nans to be published.
     footContactPublisher_.publish(footContactMarkerList_);
 
-    //footTipElevationMapComparison("slow");
-
-
-    // TODO HERE: Publish foot tip markers!!
-
+    if(comparisonMode_ == "slow") footTipElevationMapComparison(comparisonMode_);
     //std::cout << "LFTipsStance Size: " << LFTipStance_.size() << std::endl;
 
     return true;
@@ -1067,11 +1118,22 @@ bool ElevationMap::footTipElevationMapComparison(std::string mode)
 
 
     // TODO: finish difference comparison flexibility adjustment!!
+    float xLeft, yLeft, zLeft, xRight, yRight, zRight;
     if(mode == "slow"){
-
+        xLeft = xMeanStanceLeft_;
+        yLeft = yMeanStanceLeft_;
+        zLeft = zMeanStanceLeft_;
+        xRight = xMeanStanceRight_;
+        yRight = yMeanStanceRight_;
+        zRight = zMeanStanceRight_;
     }
     if(mode == "fast"){
-
+        xLeft = LFTipPostiion_(0);
+        yLeft = LFTipPostiion_(1);
+        zLeft = LFTipPostiion_(2);
+        xRight = RFTipPostiion_(0);
+        yRight = RFTipPostiion_(1);
+        zRight = RFTipPostiion_(2);
     }
 
 
@@ -1086,7 +1148,7 @@ bool ElevationMap::footTipElevationMapComparison(std::string mode)
         if(LFTipState_ == 1){
             //std::cout << "Left Touching the ground" << std::endl;
             //std::cout << "Left pos x: " << LFTipPostiion_(0) << "Right Pos y: " << LFTipPostiion_(1) << std::endl;
-            Position posLeft(LFTipPostiion_(0), LFTipPostiion_(1));
+            Position posLeft(xLeft, yLeft);
             //std::cout << "before" << std::endl;
             // For some reason the rawMap is sometimes empty..
             if(rawMap_.getSize()(0) > 1){
@@ -1105,7 +1167,7 @@ bool ElevationMap::footTipElevationMapComparison(std::string mode)
                 //std::cout << "Diff: " << heightLeft - LFTipPostiion_(2) << std::endl;
 
                 // TEST:
-                if(LFTipPostiion_(2) < heightLeft - varLeft || LFTipPostiion_(2) > heightLeft + varLeft){
+                if(zLeft < heightLeft - varLeft || zLeft > heightLeft + varLeft){
                     //std::cout << "Right height is critical!!!!! *************************************************" << std::endl;
                 }
 
@@ -1117,7 +1179,7 @@ bool ElevationMap::footTipElevationMapComparison(std::string mode)
                 }
 
 
-                double diff = heightLeft - LFTipPostiion_(2);
+                double diff = heightLeft - zLeft;
                 if(abs(diff) < 1.0) totalHeightDifference_ += diff;
                 heightDifferenceComponentCounter_ += 1;
                 //else std::cout << "WARNING, big error" << std::endl;
@@ -1127,7 +1189,7 @@ bool ElevationMap::footTipElevationMapComparison(std::string mode)
 
         if(RFTipState_ == 1){
             //std::cout << "Right Touching the ground" << std::endl;
-            Position posRight(RFTipPostiion_(0), RFTipPostiion_(1));
+            Position posRight(xRight, yRight);
             // For some reason the rawMap is sometimes empty..
             if(rawMap_.getSize()(0) > 1){
                 float heightRight = rawMap_.atPosition("elevation", posRight);
@@ -1142,7 +1204,7 @@ bool ElevationMap::footTipElevationMapComparison(std::string mode)
 
                 //std::cout << "Variance varying? " << horVarRight << std::endl;
                 // TEST:
-                if(RFTipPostiion_(2) < heightRight - varRight || RFTipPostiion_(2) > heightRight + varRight){
+                if(zRight < heightRight - varRight || zRight > heightRight + varRight){
                     //std::cout << "Right height is critical!!!!! *************************************************" << std::endl;
                 }
 
@@ -1152,7 +1214,7 @@ bool ElevationMap::footTipElevationMapComparison(std::string mode)
                     std::cout << "Right: horizontal_variance_xy: " << rawMap_.atPosition("horizontal_variance_xy",posRight) << std::endl;
                 }
 
-                double diff = heightRight - RFTipPostiion_(2);
+                double diff = heightRight - zRight;
                 if(abs(diff) < 10.0) totalHeightDifference_ += diff;
                 heightDifferenceComponentCounter_ += 1;
                 //else std::cout << "WARNING, big error" << std::endl;
@@ -1175,11 +1237,11 @@ bool ElevationMap::footTipElevationMapComparison(std::string mode)
       if(heightDifferenceComponentCounter_ > 0.0) heightDiff = totalHeightDifference_ / double(heightDifferenceComponentCounter_);
       else heightDiff = 0.0;
       //std::cout << "heightDiff: " << heightDiff << "totDiff: " << totalHeightDifference_ << std::endl;
-      if(heightDifferenceComponentCounter_ > 30){
+      if(heightDifferenceComponentCounter_ > 30 && mode == "fast"){
           totalHeightDifference_ = 0.0;
           heightDifferenceComponentCounter_ = 0;
       }
-      //std::cout << "heightDiff: " << heightDiff << std::endl;
+      std::cout << "HEIGHTDIFFERENCE -> " << heightDiff << std::endl;
 
       //heightDifferenceComponentCounter_ = 0;
       //totalHeightDifference_ = 0.0;

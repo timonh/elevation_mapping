@@ -359,6 +359,10 @@ class ElevationMap
   int heightDifferenceComponentCounter_;
   bool isInStanceLeft_;
   bool isInStanceRight_;
+  std::string comparisonMode_;
+
+  //! Mean foot tip positions
+  double xMeanStanceLeft_, yMeanStanceLeft_, zMeanStanceLeft_, xMeanStanceRight_, yMeanStanceRight_, zMeanStanceRight_;
 
 
 
