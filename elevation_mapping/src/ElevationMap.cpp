@@ -1113,7 +1113,6 @@ bool ElevationMap::footTipElevationMapComparison(std::string mode)
 
     //footContactPublisher_.publish(footContactMarkerList_);
     //const auto& size = rawMap_.getSize();
-    //std::cout << "Size x: " << size(0) << "Size y: " << size(1) << std::endl;
 
 
 
