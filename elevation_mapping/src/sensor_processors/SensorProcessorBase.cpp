@@ -137,6 +137,12 @@ bool SensorProcessorBase::transformPointCloud(
 
   Eigen::Affine3d transform;
   poseTFToEigen(transformTf, transform);
+
+  // TEST NEW:
+  // Check what transform is:
+  //std::cout << "IS TRANSFORM Z AXIS PARALLEL TO ODOM?" << transform.translation()(2) << std::endl;
+  // END TEST
+
   pcl::transformPointCloud(*pointCloud, *pointCloudTransformed, transform.cast<float>());
   pointCloudTransformed->header.frame_id = targetFrame;
 

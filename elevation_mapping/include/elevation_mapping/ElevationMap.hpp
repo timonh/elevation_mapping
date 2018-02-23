@@ -283,7 +283,7 @@ class ElevationMap
   bool footTipElevationMapComparison(std::string mode);
 
   //! TODO: Description:
-  bool publishMeanFootTipPositionMarkers();
+  bool filteredOffsetEstimation();
 
   //! TODO: Description:
   bool initializeFootTipMarkers();
@@ -314,6 +314,10 @@ class ElevationMap
   ros::Publisher elevationMapRawPublisher_;
   ros::Publisher elevationMapFusedPublisher_;
   ros::Publisher visbilityCleanupMapPublisher_;
+
+  // New
+  ros::Publisher elevationMapFastPublisher_;
+  // End New
 
   //! Mutex lock for fused map.
   boost::recursive_mutex fusedMapMutex_;
@@ -360,6 +364,7 @@ class ElevationMap
   bool isInStanceLeft_;
   bool isInStanceRight_;
   std::string comparisonMode_;
+  double heightDifferenceFromComparison_;
 
   //! Mean foot tip positions
   double xMeanStanceLeft_, yMeanStanceLeft_, zMeanStanceLeft_, xMeanStanceRight_, yMeanStanceRight_, zMeanStanceRight_;

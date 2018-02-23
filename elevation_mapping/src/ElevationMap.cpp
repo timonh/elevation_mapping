@@ -42,8 +42,16 @@ ElevationMap::ElevationMap(ros::NodeHandle nodeHandle)
 {
   rawMap_.setBasicLayers({"elevation", "variance"});
   fusedMap_.setBasicLayers({"elevation", "upper_bound", "lower_bound"});
+  // TEST
+  rawMap_.add("elevation_fast");
+  // END TEST
+
   clear();
 
+
+  // TEST:
+  elevationMapFastPublisher_ = nodeHandle_.advertise<grid_map_msgs::GridMap>("elevation_map_fast", 1);
+  // END TEST
   elevationMapRawPublisher_ = nodeHandle_.advertise<grid_map_msgs::GridMap>("elevation_map_raw", 1);
   elevationMapFusedPublisher_ = nodeHandle_.advertise<grid_map_msgs::GridMap>("elevation_map", 1);
   if (!underlyingMapTopic_.empty()) underlyingMapSubscriber_ =
@@ -84,6 +92,25 @@ void ElevationMap::setGeometry(const grid_map::Length& length, const double& res
 
 bool ElevationMap::add(const pcl::PointCloud<pcl::PointXYZRGB>::Ptr pointCloud, Eigen::VectorXf& pointCloudVariances, Eigen::VectorXf& spatialVariances, const ros::Time& timestamp, const Eigen::Affine3d& transformationSensorToMap)
 {
+
+  // NEW TESTING
+  //! Issue here: Frequency is not higher than map update
+  //double one = transformationSensorToMap.translation();
+  //Eigen::Affine3d aff = Eigen::Affine3d::Identity();
+
+  //double somevalue = transformationSensorToMap.affine()(1,1);
+  //double someothervalue = transformationSensorToMap.translation()(1,1);
+  //double athirdone = transformationSensorToMap.translation()(0,0);
+
+  //auto& trans = transformationSensorToMap.translation();
+  //std::cout << "TYPE                                                            TYPE" << typeid(trans).name() << std::endl;
+
+  //std::cout << "TRANSFORMATION                                                          Z: " << someothervalue << std::endl;
+  // END NEW TESTING
+
+
+
+
 
   if (pointCloud->size() != pointCloudVariances.size()) {
     ROS_ERROR("ElevationMap::add: Size of point cloud (%i) and variances (%i) do not agree.",
@@ -233,7 +260,7 @@ bool ElevationMap::update(const grid_map::Matrix& varianceUpdate, const grid_map
   bool slowComparison = false;
   if(slowComparison){
       double totalDiff = 0;
-      if(LFTipState_ == 1){
+      if(LFTipState_){
           std::cout << "Left Touching the ground" << std::endl;
           Position posLeft(LFTipPostiion_(0), LFTipPostiion_(1));
           float heightLeft = rawMap_.atPosition("elevation", posLeft);
@@ -249,7 +276,7 @@ bool ElevationMap::update(const grid_map::Matrix& varianceUpdate, const grid_map
       }
       else std::cout << "LEFT LIFTED!!!" << std::endl;
 
-      if(RFTipState_ == 1){
+      if(RFTipState_){
           std::cout << "Right Touching the ground" << std::endl;
           Position posRight(RFTipPostiion_(0), RFTipPostiion_(1));
           float heightRight = rawMap_.atPosition("elevation", posRight);
@@ -810,9 +837,9 @@ void ElevationMap::footTipStanceCallback(const quadruped_msgs::QuadrupedState& q
   LFTipState_ = quadrupedState.contacts[0].state;
   RFTipState_ = quadrupedState.contacts[1].state;
 
-  std::cout << "RFTippos x: " << RFTipPostiion_(0) << std::endl;
-  std::cout << "RFTippos y: " << RFTipPostiion_(1) << std::endl;
-  std::cout << "RFTippos z: " << RFTipPostiion_(2) << std::endl;
+  //std::cout << "RFTippos x: " << RFTipPostiion_(0) << std::endl;
+  //std::cout << "RFTippos y: " << RFTipPostiion_(1) << std::endl;
+  //std::cout << "RFTippos z: " << RFTipPostiion_(2) << std::endl;
 
   double rfx = RFTipPostiion_(0);
   double rfy = RFTipPostiion_(1);
@@ -873,6 +900,8 @@ void ElevationMap::footTipStanceCallback(const quadruped_msgs::QuadrupedState& q
 
 bool ElevationMap::detectStancePhase()
 {
+
+    boost::recursive_mutex::scoped_lock scopedLockForFootTipStanceProcessor(footTipStanceProcessorMutex_);
 
     //! TEST about the two threads
     //std::thread::id this_id = std::this_thread::get_id();
@@ -991,7 +1020,7 @@ bool ElevationMap::detectStancePhase()
 bool ElevationMap::processStance(std::string tip)
 {
     std::cout << "Processing: " << tip <<std::endl;
-    std::cout << "RFTippos z: " << RFTipPostiion_(2) << std::endl;
+    //std::cout << "RFTippos z: " << RFTipPostiion_(2) << std::endl;
 
     // Delete the last 10 entries of the Foot Stance Position Vector, as these are used for transition detection
     if(LFTipStance_.size() > 10 && tip == "Left"){
@@ -1111,10 +1140,11 @@ bool ElevationMap::footTipElevationMapComparison(std::string mode)
 {
 
 
+    //boost::recursive_mutex::scoped_lock scopedLockForFootTipStanceProcessor(footTipStanceProcessorMutex_);
     //footContactPublisher_.publish(footContactMarkerList_);
     //const auto& size = rawMap_.getSize();
 
-
+    bool checkVarianceEllipse = false;
 
     // TODO: finish difference comparison flexibility adjustment!!
     float xLeft, yLeft, zLeft, xRight, yRight, zRight;
@@ -1125,6 +1155,7 @@ bool ElevationMap::footTipElevationMapComparison(std::string mode)
         xRight = xMeanStanceRight_;
         yRight = yMeanStanceRight_;
         zRight = zMeanStanceRight_;
+
     }
     if(mode == "fast"){
         xLeft = LFTipPostiion_(0);
@@ -1156,32 +1187,45 @@ bool ElevationMap::footTipElevationMapComparison(std::string mode)
                 //std::cout << "Positions: " << posLeft(0) << " " << posLeft(1) << std::endl;
                 //std::cout << "Center: " << rawMap_.getPosition()(0) << " " << rawMap_.getPosition()(1) << std::endl;
                 //std::cout << "Size: " << rawMap_.getLength() << std::endl;
-                float heightLeft = rawMap_.atPosition("elevation", posLeft);
-                float varLeft = rawMap_.atPosition("variance", posLeft);
-                //std::cout << "after" << std::endl;
+                float heightLeft, varLeft, heightLeftOffsetCorrected;
+                std::cout << "Just before LEFT Map comparison" << std::endl;
+                if(rawMap_.isInside(posLeft)){
+                    heightLeft = rawMap_.atPosition("elevation", posLeft);
+                    varLeft = rawMap_.atPosition("variance", posLeft);
+                    heightLeftOffsetCorrected = rawMap_.atPosition("elevation_fast", posLeft);
 
-                //std::cout << "Height Left lower bound: " << heightLeft << std::endl;
-                //std::cout << "Height Foot tip: " << LFTipPostiion_(2) << std::endl;
-                //std::cout << "Var Left: " << varLeft << std::endl;
-                //std::cout << "Diff: " << heightLeft - LFTipPostiion_(2) << std::endl;
+                    std::cout << "Just after LEFT Map comparison" << std::endl;
 
-                // TEST:
-                if(zLeft < heightLeft - varLeft || zLeft > heightLeft + varLeft){
-                    //std::cout << "Right height is critical!!!!! *************************************************" << std::endl;
+                    //std::cout << "after" << std::endl;
+
+                    //std::cout << "Height Left lower bound: " << heightLeft << std::endl;
+                    //std::cout << "Height Foot tip: " << LFTipPostiion_(2) << std::endl;
+                    //std::cout << "Var Left: " << varLeft << std::endl;
+                    //std::cout << "Diff: " << heightLeft - LFTipPostiion_(2) << std::endl;
+
+                    // TEST:
+                    if(zLeft < heightLeft - varLeft || zLeft > heightLeft + varLeft){
+                        //std::cout << "Right height is critical!!!!! *************************************************" << std::endl;
+                    }
+
+                    // Output variance values:
+                    if(print_horizontal_variances){
+                        std::cout << "Left: horizontal_variance_x: " << rawMap_.atPosition("horizontal_variance_x",posLeft) << std::endl;
+                        std::cout << "Left: horizontal_variance_y: " << rawMap_.atPosition("horizontal_variance_y",posLeft) << std::endl;
+                        std::cout << "Left: horizontal_variance_xy: " << rawMap_.atPosition("horizontal_variance_xy",posLeft) << std::endl;
+                    }
+
+
+                    double diff = heightLeft - zLeft;
+                    double diffCorrected = heightLeftOffsetCorrected - zLeft;
+                    std::cout << "HeightDifference classical: " << diff << "HeightDifference corrected: " << diffCorrected << std::endl;
+                    if(abs(diff) < 10.0){
+                        totalHeightDifference_ += diff;
+                        heightDifferenceComponentCounter_ += 1;
+                    }
+                    //else std::cout << "WARNING, big error" << std::endl;
                 }
-
-                // Output variance values:
-                if(print_horizontal_variances){
-                    std::cout << "Left: horizontal_variance_x: " << rawMap_.atPosition("horizontal_variance_x",posLeft) << std::endl;
-                    std::cout << "Left: horizontal_variance_y: " << rawMap_.atPosition("horizontal_variance_y",posLeft) << std::endl;
-                    std::cout << "Left: horizontal_variance_xy: " << rawMap_.atPosition("horizontal_variance_xy",posLeft) << std::endl;
-                }
-
-
-                double diff = heightLeft - zLeft;
-                if(abs(diff) < 1.0) totalHeightDifference_ += diff;
-                heightDifferenceComponentCounter_ += 1;
-                //else std::cout << "WARNING, big error" << std::endl;
+                else std::cout << "posLEft is outside of range!" << std::endl;
             }
         }
         //else std::cout << "LEFT LIFTED!!!" << std::endl;
@@ -1191,32 +1235,47 @@ bool ElevationMap::footTipElevationMapComparison(std::string mode)
             Position posRight(xRight, yRight);
             // For some reason the rawMap is sometimes empty..
             if(rawMap_.getSize()(0) > 1){
-                float heightRight = rawMap_.atPosition("elevation", posRight);
 
-                float varRight = rawMap_.atPosition("variance", posRight);
-                float horVarRight = rawMap_.atPosition("horizontal_variance_x", posRight);
+                std::cout << "Just before RIGHT Map comparison" << std::endl;
 
-                //std::cout << "Height Right lower bound: " << heightRight << std::endl;
-                //std::cout << "Height Foot tip: " << RFTipPostiion_(2) << std::endl;
-                //std::cout << "Var Right: " << varRight << std::endl;
-                //std::cout << "Diff: " << heightRight - RFTipPostiion_(2) << std::endl;
+                float heightRight, varRight, horVarRight, heightRightOffsetCorrected;
+                if(rawMap_.isInside(posRight)){
+                    heightRight = rawMap_.atPosition("elevation", posRight);
+                    varRight = rawMap_.atPosition("variance", posRight);
+                    horVarRight = rawMap_.atPosition("horizontal_variance_x", posRight);
+                    heightRightOffsetCorrected = rawMap_.atPosition("elevation_fast", posRight);
 
-                //std::cout << "Variance varying? " << horVarRight << std::endl;
-                // TEST:
-                if(zRight < heightRight - varRight || zRight > heightRight + varRight){
-                    //std::cout << "Right height is critical!!!!! *************************************************" << std::endl;
+                    std::cout << "Just after RIGHT Map comparison" << std::endl;
+
+
+                    //std::cout << "Height Right lower bound: " << heightRight << std::endl;
+                    //std::cout << "Height Foot tip: " << RFTipPostiion_(2) << std::endl;
+                    //std::cout << "Var Right: " << varRight << std::endl;
+                    //std::cout << "Diff: " << heightRight - RFTipPostiion_(2) << std::endl;
+
+                    //std::cout << "Variance varying? " << horVarRight << std::endl;
+                    // TEST:
+                    if(zRight < heightRight - varRight || zRight > heightRight + varRight){
+                        //std::cout << "Right height is critical!!!!! *************************************************" << std::endl;
+                    }
+
+                    if(print_horizontal_variances){
+                        std::cout << "Right: horizontal_variance_x: " << rawMap_.atPosition("horizontal_variance_x",posRight) << std::endl;
+                        std::cout << "Right: horizontal_variance_y: " << rawMap_.atPosition("horizontal_variance_y",posRight) << std::endl;
+                        std::cout << "Right: horizontal_variance_xy: " << rawMap_.atPosition("horizontal_variance_xy",posRight) << std::endl;
+                    }
+
+                    double diff = heightRight - zRight;
+                    double diffCorrected = heightRightOffsetCorrected - zRight;
+                    std::cout << "HeightDifference classical: " << diff << "HeightDifference corrected: " << diffCorrected << std::endl;
+                    if(abs(diff) < 10.0){
+                        totalHeightDifference_ += diff;
+                        heightDifferenceComponentCounter_ += 1;
+                    }
+                    //else std::cout << "WARNING, big error" << std::endl;
+
                 }
-
-                if(print_horizontal_variances){
-                    std::cout << "Right: horizontal_variance_x: " << rawMap_.atPosition("horizontal_variance_x",posRight) << std::endl;
-                    std::cout << "Right: horizontal_variance_y: " << rawMap_.atPosition("horizontal_variance_y",posRight) << std::endl;
-                    std::cout << "Right: horizontal_variance_xy: " << rawMap_.atPosition("horizontal_variance_xy",posRight) << std::endl;
-                }
-
-                double diff = heightRight - zRight;
-                if(abs(diff) < 10.0) totalHeightDifference_ += diff;
-                heightDifferenceComponentCounter_ += 1;
-                //else std::cout << "WARNING, big error" << std::endl;
+                else std::cout << "posLEft is outside of range!" << std::endl;
             }
         }
         //else std::cout << "RIGHT LIFTED!!!" << std::endl;
@@ -1240,8 +1299,24 @@ bool ElevationMap::footTipElevationMapComparison(std::string mode)
           totalHeightDifference_ = 0.0;
           heightDifferenceComponentCounter_ = 0;
       }
+
       std::cout << "HEIGHTDIFFERENCE -> " << heightDiff << std::endl;
 
+      // Assign class Variable.
+      heightDifferenceFromComparison_ = heightDiff;
+
+      // TESTING
+      //rawMap_.add("elevation_fast_addition"); // TODO: think if this only adds a layer or actually adds height to "elevation"
+      //grid_map::GridMap map;
+
+      rawMap_["elevation_fast"].setConstant(-heightDiff); // HACKED FOR TESTING!! -> TODO: create nice Kalman Filter!!
+      rawMap_["elevation_fast"] = rawMap_["elevation"] + rawMap_["elevation_fast"];
+
+
+      grid_map_msgs::GridMap mapMessage;
+      GridMapRosConverter::toMessage(rawMap_, mapMessage);
+      elevationMapFastPublisher_.publish(mapMessage);
+      std::cout << "CORRECTED!!" << std::endl;
       //heightDifferenceComponentCounter_ = 0;
       //totalHeightDifference_ = 0.0;
     }
@@ -1275,9 +1350,13 @@ bool ElevationMap::initializeFootTipMarkers()
     return true;
 }
 
-bool ElevationMap::publishMeanFootTipPositionMarkers()
+bool ElevationMap::filteredOffsetEstimation()
 {
-
+    // TODO: check what the height difference exactly is so far!
+    std::cout << "Heightdifference: " << heightDifferenceFromComparison_ << std::endl;
+    // Kalman FIltering
+    // Inputs: Comparison values
+    // Output: Map values!
 
 
     return true;
