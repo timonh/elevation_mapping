@@ -16,6 +16,9 @@
 // Grid Map
 #include <grid_map_msgs/GridMap.h>
 
+// TEST
+#include <any_msgs/State.h>
+
 // Math
 #include <math.h>
 
@@ -43,7 +46,7 @@ ElevationMap::ElevationMap(ros::NodeHandle nodeHandle)
   rawMap_.setBasicLayers({"elevation", "variance"});
   fusedMap_.setBasicLayers({"elevation", "upper_bound", "lower_bound"});
   // TEST
-  rawMap_.add("elevation_fast");
+  rawMap_.add("elevation_corrected");
   // END TEST
 
   clear();
@@ -59,17 +62,24 @@ ElevationMap::ElevationMap(ros::NodeHandle nodeHandle)
   // TODO if (enableVisibilityCleanup_) when parameter cleanup is ready.
   visbilityCleanupMapPublisher_ = nodeHandle_.advertise<grid_map_msgs::GridMap>("visibility_cleanup_map", 1);
 
-  // Foot tip position Subscriber for Foot tip - Elevation comparison
-  footTipStanceSubscriber_ = nodeHandle_.subscribe("/state_estimator/quadruped_state", 1, &ElevationMap::footTipStanceCallback, this);
-
+  // (New:) Foot tip position Subscriber for Foot tip - Elevation comparison
+  bool use_bag = false;
+  if(!use_bag) footTipStanceSubscriber_ = nodeHandle_.subscribe("/state_estimator/quadruped_state", 1, &ElevationMap::footTipStanceCallback, this);
+  else footTipStanceSubscriber_ = nodeHandle_.subscribe("/state_estimator/quadruped_state_remapped", 1, &ElevationMap::footTipStanceCallback, this);
 
   // NEW: publish foot tip markers
   footContactPublisher_ = nodeHandle_.advertise<visualization_msgs::Marker>("mean_foot_contact_markers_rviz", 1000);
   elevationMapBoundPublisher_ = nodeHandle_.advertise<visualization_msgs::Marker>("elevation_map_bound_markers_rviz", 1000);
   initializeFootTipMarkers();
   // Chose comparison mode: fast -> 400 Hz, slow -> at each foot step once
-  comparisonMode_ = "slow";
+  comparisonMode_ = "slow"; // "slow" highly recommended (developement feature)
 
+  // Class Variable to model the compared difference evolution.
+  oldDiff_ = 0;
+  estimatedDrift_ = 0;
+  estimatedDriftVariance_ = 0;
+  // Some Parameters.
+  transformInCorrectedFrame_ = false; // Use map layer addition if false..
 
   // END NEW
 
@@ -352,7 +362,14 @@ bool ElevationMap::fuse(const grid_map::Index& topLeftIndex, const grid_map::Ind
 {
   ROS_DEBUG("Fusing elevation map...");
 
-  // TODO: get foot tips here, and understand how variance ellipsoids are generated here..
+  // DEBUG
+  std::cout << "Called the fusion function!! *********************************************************************" << std::endl;
+  std::cout << "Called the fusion function!! *********************************************************************" << std::endl;
+  std::cout << "Called the fusion function!! *********************************************************************" << std::endl;
+  std::cout << "Called the fusion function!! *********************************************************************" << std::endl;
+  std::cout << "Called the fusion function!! *********************************************************************" << std::endl;
+  std::cout << "Called the fusion function!! *********************************************************************" << std::endl;
+  // END DEBUG
 
   // Nothing to do.
   if ((size == 0).any()) return false;
@@ -360,14 +377,6 @@ bool ElevationMap::fuse(const grid_map::Index& topLeftIndex, const grid_map::Ind
   // Initializations.
   const ros::WallTime methodStartTime(ros::WallTime::now());
   boost::recursive_mutex::scoped_lock scopedLock(fusedMapMutex_);
-
-
-  // TEST
-  const auto& sizemap = rawMap_.getSize();
-
-  std::cout << "Size x: " << size(0) << "Size y: " << size(1) << std::endl;
-  // END TEST
-
 
   // Copy raw elevation map data for safe multi-threading.
   boost::recursive_mutex::scoped_lock scopedLockForRawData(rawMapMutex_);
@@ -812,20 +821,9 @@ void ElevationMap::footTipStanceCallback(const quadruped_msgs::QuadrupedState& q
 {
 
   boost::recursive_mutex::scoped_lock scopedLockForFootTipStanceProcessor(footTipStanceProcessorMutex_);
-  //boost::recursive_mutex::scoped_lock scopedLockForRawData(rawMapMutex_);
-  const auto& sizerawmap = rawMap_.getSize();
-  //std::cout << "Size of Map x: " << sizerawmap(0) << " foot tip" << std::endl;
+  //const auto& sizerawmap = rawMap_.getSize();
 
-//  std::cout << rawMap_.getLayers()[0] << std::endl;
-//  std::cout << rawMap_.getLayers()[1] << std::endl;
-//  std::cout << rawMap_.getLayers()[2] << std::endl;
-//  std::cout << rawMap_.getLayers()[3] << std::endl;
-//  std::cout << rawMap_.getLayers()[4] << std::endl;
-//  std::cout << rawMap_.getLayers()[5] << std::endl;
-//  std::cout << rawMap_.getLayers()[6] << std::endl;
-//  std::cout << rawMap_.getLayers()[7] << std::endl;
-//  std::cout << rawMap_.getLayers()[8] << std::endl;
-//  std::cout << rawMap_.getLayers()[9] << std::endl;
+
 
   // Set class variables.
   LFTipPostiion_(0) = (double)quadrupedState.contacts[0].position.x;
@@ -841,34 +839,9 @@ void ElevationMap::footTipStanceCallback(const quadruped_msgs::QuadrupedState& q
   //std::cout << "RFTippos y: " << RFTipPostiion_(1) << std::endl;
   //std::cout << "RFTippos z: " << RFTipPostiion_(2) << std::endl;
 
-  double rfx = RFTipPostiion_(0);
-  double rfy = RFTipPostiion_(1);
-  double rfz = RFTipPostiion_(2);
-
-  //std::cout << "RFTippos z: " << rfz << std::endl;
-  //std::cout << "LFTipsStance Size: " << LFTipStance_.size() << std::endl;
-
-
-
-  // Detect start and end of stances.
-  detectStancePhase();
-
-
-  //std::cout << "Tipstate " << LFTipState_ << std::endl;
-  //std::cout << "Tipstate r " << RFTipState_ << std::endl;
-
-
-
-
-  //if(processStanceTriggerLeft_.size() >= 2) std::cout << "late end: " << processStanceTriggerLeft_.back() << std::endl;
-
-
-  //TODO: Think of Method to get robust reaction to changing stance state!!
-
-
-
-
-
+  // Detect start and end of stances for each of the two front foot tips.
+  detectStancePhase("left");
+  //detectStancePhase("right");
 
 //  for(unsigned int i; i <= 3; ++i){
 //      geometry_msgs::Point p;
@@ -892,13 +865,11 @@ void ElevationMap::footTipStanceCallback(const quadruped_msgs::QuadrupedState& q
 //      }
 //  }
 
-
-
   //! If called here: Called at 400 Hz using the foot tip positions from quadruped state directly. -> If called in process function -> At lower rate after each stance phase!
   if(comparisonMode_ == "fast") footTipElevationMapComparison(comparisonMode_);
 }
 
-bool ElevationMap::detectStancePhase()
+bool ElevationMap::detectStancePhase(std::string footTip)
 {
 
     boost::recursive_mutex::scoped_lock scopedLockForFootTipStanceProcessor(footTipStanceProcessorMutex_);
@@ -911,6 +882,10 @@ bool ElevationMap::detectStancePhase()
     // Collect State Data for stance phase detection
     processStanceTriggerLeft_.push_back(LFTipState_);
     processStanceTriggerRight_.push_back(RFTipState_);
+
+    // Generalize.
+
+
 
     if(processStanceTriggerLeft_.size() > 1000){
         std::cout << "DELETED SOME ENTRIES AS LONG TIME IN SAME STATE!!   LEFT" << std::endl;
@@ -934,11 +909,6 @@ bool ElevationMap::detectStancePhase()
     }
 
 
-
-    // TODO: Make nicer and more compact AND CORRECT< SWAP THEM!!
-
-    // CHANGED SOME NUMBERS FOR TESTING!
-
     // Recognition of the end of a stance phase of the front legs.
     if(processStanceTriggerLeft_.size() >= 20 && processStanceTriggerLeft_.end()[-1]+processStanceTriggerLeft_.end()[-2]+
             processStanceTriggerLeft_.end()[-3]+processStanceTriggerLeft_.end()[-4]+processStanceTriggerLeft_.end()[-5]+
@@ -951,8 +921,6 @@ bool ElevationMap::detectStancePhase()
         std::cout << "Start of LEFT stance" << std::endl;
         isInStanceLeft_ = 1;
     }
-
-
 
     if(processStanceTriggerRight_.size() >= 20 && processStanceTriggerRight_.end()[-1]+processStanceTriggerRight_.end()[-2]+
             processStanceTriggerRight_.end()[-3]+processStanceTriggerRight_.end()[-4]+processStanceTriggerRight_.end()[-5] +
@@ -994,26 +962,6 @@ bool ElevationMap::detectStancePhase()
         isInStanceRight_ = 0;
     }
 
-
-
-
-
-    //std::cout << "LFTipState: " << LFTipState_ << std::endl;
-    //std::cout << "Is in stance Left: " << isInStanceLeft_ << std::endl;
-    //std::cout << "RFTipState: " << RFTipState_ << std::endl;
-    //std::cout << "Is in stance Right: " << isInStanceRight_ << std::endl;
-
-
-    //std::cout << "LFTipsStance Size: " << LFTipStance_.size() << std::endl;
-
-
-    //std::cout << "Is it processing?: " << isProcessingRight_ << std::endl;
-    //std::cout << "processStanceTrigger size: " << processStanceTriggerRight_.size() << std::endl;
-    //std::cout << "Z coordinate: " << quadrupedState.contacts[1].position.z << std::endl;
-
-    // TODO: check threading!! Why calls them always twice??
-
-
     return true;
 }
 
@@ -1051,11 +999,16 @@ bool ElevationMap::processStance(std::string tip)
 
     //std::cout << "LFTipsStance Size: " << LFTipStance_.size() << std::endl;
 
-    double xTotalLeft, yTotalLeft, zTotalLeft, xTotalRight, yTotalRight, zTotalRight;
+    double xTotalLeft = 0.0;
+    double yTotalLeft = 0.0;
+    double zTotalLeft = 0.0;
+    double xTotalRight = 0.0;
+    double yTotalRight = 0.0;
+    double zTotalRight = 0.0;
 
 
     // For publisher of mean foot tip positions
-    if(tip == "Left" && LFTipStance_.size()>0){
+    if(tip == "Left" && LFTipStance_.size() > 1){
 
         geometry_msgs::Point p;
         for (auto& n : LFTipStance_){
@@ -1069,9 +1022,9 @@ bool ElevationMap::processStance(std::string tip)
         yMeanStanceLeft_ = yTotalLeft / float(LFTipStance_.size());
         zMeanStanceLeft_ = zTotalLeft / float(LFTipStance_.size());
 
-        std::cout << "x Mean Left: " << xMeanStanceLeft_ << std::endl;
-        std::cout << "y Mean Left: " << yMeanStanceLeft_ << std::endl;
-        std::cout << "z Mean Left: " << zMeanStanceLeft_ << std::endl;
+        std::cout << "x Mean Left: " << xMeanStanceLeft_ << "Stance size: " << LFTipStance_.size() << std::endl;
+        std::cout << "y Mean Left: " << yMeanStanceLeft_ << "Stance size: " << LFTipStance_.size() << std::endl;
+        std::cout << "z Mean Left: " << zMeanStanceLeft_ << "Stance size: " << LFTipStance_.size() << std::endl;
 
         //std::cout << "LSIZE: " << LFTipStance_.size() << std::endl;
         LFTipStance_.clear();
@@ -1090,7 +1043,7 @@ bool ElevationMap::processStance(std::string tip)
         else footContactMarkerList_.points.push_back(p);
     }
 
-    if(tip == "Right" && RFTipStance_.size() > 0){
+    if(tip == "Right" && RFTipStance_.size() > 1){
 
         geometry_msgs::Point p;
         for (auto& n : RFTipStance_){
@@ -1104,9 +1057,9 @@ bool ElevationMap::processStance(std::string tip)
         zMeanStanceRight_ = zTotalRight / float(RFTipStance_.size());
 
 
-        std::cout << "x Mean Right: " << xMeanStanceRight_ << std::endl;
-        std::cout << "y Mean Right: " << yMeanStanceRight_ << std::endl;
-        std::cout << "z Mean Right: " << zMeanStanceRight_ << std::endl;
+        std::cout << "x Mean Right: " << xMeanStanceRight_ << "Stance Size: " << RFTipStance_.size() << std::endl;
+        std::cout << "y Mean Right: " << yMeanStanceRight_ << "Stance Size: " << RFTipStance_.size() << std::endl;
+        std::cout << "z Mean Right: " << zMeanStanceRight_ << "Stance Size: " << RFTipStance_.size() << std::endl;
         std::cout << "z total Right: " << zTotalRight << std::endl;
 
         //std::cout << "RSIZE: " << RFTipStance_.size() << std::endl;
@@ -1139,6 +1092,7 @@ bool ElevationMap::processStance(std::string tip)
 bool ElevationMap::footTipElevationMapComparison(std::string mode)
 {
 
+    //boost::recursive_mutex::scoped_lock scopedLockForFootTipStanceProcessor(footTipStanceComparisonMutex_);
 
     //boost::recursive_mutex::scoped_lock scopedLockForFootTipStanceProcessor(footTipStanceProcessorMutex_);
     //footContactPublisher_.publish(footContactMarkerList_);
@@ -1167,10 +1121,10 @@ bool ElevationMap::footTipElevationMapComparison(std::string mode)
     }
 
 
-
-
-
     bool print_horizontal_variances = false;
+
+    // Offset of each step versus Elevation map.
+    float diff = 0;
 
     // Test:
     bool fastComparison = true;
@@ -1179,6 +1133,28 @@ bool ElevationMap::footTipElevationMapComparison(std::string mode)
             //std::cout << "Left Touching the ground" << std::endl;
             //std::cout << "Left pos x: " << LFTipPostiion_(0) << "Right Pos y: " << LFTipPostiion_(1) << std::endl;
             Position posLeft(xLeft, yLeft);
+            Eigen::Array2d length;
+            if(rawMap_.isInside(posLeft) && !std::isnan(rawMap_.atPosition("horizontal_variance_x",posLeft))){
+                std::cout << "Size of fused area: " << rawMap_.atPosition("horizontal_variance_x",posLeft) << " and: " << rawMap_.atPosition("horizontal_variance_y",posLeft) << std::endl;
+                length[0] = std::max(rawMap_.atPosition("horizontal_variance_x",posLeft), rawMap_.atPosition("horizontal_variance_y",posLeft));
+
+                length[1] = length[0];
+                // HACKED!!!
+                //getFusedCellBounds(posLeft, length);
+            }
+            Index indexLeft;
+            // TEST FOR CELL FUSION
+
+            //if(rawMap_.isInside(posLeft)){
+            //    rawMap_.getIndex(posLeft, indexLeft);
+
+                //if(!fuseArea(posLeft,length)) std::cout << "ERROR FUSING" << std::endl;
+                //else std::cout << "NICE!" << std::endl;
+                //fuseArea(posLeft, length);
+            //}
+            // END TEST
+
+
             //std::cout << "before" << std::endl;
             // For some reason the rawMap is sometimes empty..
             if(rawMap_.getSize()(0) > 1){
@@ -1192,7 +1168,7 @@ bool ElevationMap::footTipElevationMapComparison(std::string mode)
                 if(rawMap_.isInside(posLeft)){
                     heightLeft = rawMap_.atPosition("elevation", posLeft);
                     varLeft = rawMap_.atPosition("variance", posLeft);
-                    heightLeftOffsetCorrected = rawMap_.atPosition("elevation_fast", posLeft);
+                    heightLeftOffsetCorrected = rawMap_.atPosition("elevation_corrected", posLeft);
 
                     std::cout << "Just after LEFT Map comparison" << std::endl;
 
@@ -1216,13 +1192,17 @@ bool ElevationMap::footTipElevationMapComparison(std::string mode)
                     }
 
 
-                    double diff = heightLeft - zLeft;
+                    diff = heightLeft - zLeft;
                     double diffCorrected = heightLeftOffsetCorrected - zLeft;
                     std::cout << "HeightDifference classical: " << diff << "HeightDifference corrected: " << diffCorrected << std::endl;
                     if(abs(diff) < 10.0){
                         totalHeightDifference_ += diff;
                         heightDifferenceComponentCounter_ += 1;
                     }
+
+                    // Filter for drift estimation.
+                    estimatedDrift_, estimatedDriftVariance_ = filteredDriftEstimation(diff, estimatedDrift_, estimatedDriftVariance_);
+
                     //else std::cout << "WARNING, big error" << std::endl;
                 }
                 else std::cout << "posLEft is outside of range!" << std::endl;
@@ -1233,6 +1213,15 @@ bool ElevationMap::footTipElevationMapComparison(std::string mode)
         if(RFTipState_ == 1){
             //std::cout << "Right Touching the ground" << std::endl;
             Position posRight(xRight, yRight);
+            Eigen::Array2d length;
+            if(rawMap_.isInside(posRight) && !std::isnan(rawMap_.atPosition("horizontal_variance_x",posRight))){
+                std::cout << "Size of fused area: " << rawMap_.atPosition("horizontal_variance_x",posRight) << " and: " << rawMap_.atPosition("horizontal_variance_y",posRight) << std::endl;
+                length[0] = std::max(rawMap_.atPosition("horizontal_variance_x",posRight), rawMap_.atPosition("horizontal_variance_y",posRight));
+
+                length[1] = length[0];
+                // HACKED!!
+                //getFusedCellBounds(posRight, length);
+            }
             // For some reason the rawMap is sometimes empty..
             if(rawMap_.getSize()(0) > 1){
 
@@ -1243,7 +1232,7 @@ bool ElevationMap::footTipElevationMapComparison(std::string mode)
                     heightRight = rawMap_.atPosition("elevation", posRight);
                     varRight = rawMap_.atPosition("variance", posRight);
                     horVarRight = rawMap_.atPosition("horizontal_variance_x", posRight);
-                    heightRightOffsetCorrected = rawMap_.atPosition("elevation_fast", posRight);
+                    heightRightOffsetCorrected = rawMap_.atPosition("elevation_corrected", posRight);
 
                     std::cout << "Just after RIGHT Map comparison" << std::endl;
 
@@ -1265,13 +1254,21 @@ bool ElevationMap::footTipElevationMapComparison(std::string mode)
                         std::cout << "Right: horizontal_variance_xy: " << rawMap_.atPosition("horizontal_variance_xy",posRight) << std::endl;
                     }
 
-                    double diff = heightRight - zRight;
+                    diff = heightRight - zRight;
                     double diffCorrected = heightRightOffsetCorrected - zRight;
                     std::cout << "HeightDifference classical: " << diff << "HeightDifference corrected: " << diffCorrected << std::endl;
                     if(abs(diff) < 10.0){
                         totalHeightDifference_ += diff;
                         heightDifferenceComponentCounter_ += 1;
                     }
+
+                    // Filter for drift estimation.
+                    if(std::isnan(estimatedDrift_) || std::isnan(estimatedDriftVariance_)){
+                        estimatedDrift_ = 0;
+                        estimatedDriftVariance_ = 0;
+                    }
+                    estimatedDrift_, estimatedDriftVariance_ = filteredDriftEstimation(diff, estimatedDrift_, estimatedDriftVariance_);
+
                     //else std::cout << "WARNING, big error" << std::endl;
 
                 }
@@ -1290,35 +1287,75 @@ bool ElevationMap::footTipElevationMapComparison(std::string mode)
     //! How is frequency of motion update.. Where stored?
 
     if(rawMap_.getSize()(0) > 1){
-      // Actual Difference quantification:
-      float heightDiff;
-      if(heightDifferenceComponentCounter_ > 0.0) heightDiff = totalHeightDifference_ / double(heightDifferenceComponentCounter_);
-      else heightDiff = 0.0;
-      //std::cout << "heightDiff: " << heightDiff << "totDiff: " << totalHeightDifference_ << std::endl;
-      if(heightDifferenceComponentCounter_ > 30 && mode == "fast"){
-          totalHeightDifference_ = 0.0;
-          heightDifferenceComponentCounter_ = 0;
+          // Actual Difference quantification:
+          float heightDiff;
+          if(heightDifferenceComponentCounter_ > 0.0) heightDiff = totalHeightDifference_ / double(heightDifferenceComponentCounter_);
+          else heightDiff = 0.0;
+          //std::cout << "heightDiff: " << heightDiff << "totDiff: " << totalHeightDifference_ << std::endl;
+          if(heightDifferenceComponentCounter_ > 30 && mode == "fast"){
+              totalHeightDifference_ = 0.0;
+              heightDifferenceComponentCounter_ = 0;
       }
-
-      std::cout << "HEIGHTDIFFERENCE -> " << heightDiff << std::endl;
 
       // Assign class Variable.
       heightDifferenceFromComparison_ = heightDiff;
+
+      std::cout << "Height Diff after calculation: " << heightDiff << std::endl;
 
       // TESTING
       //rawMap_.add("elevation_fast_addition"); // TODO: think if this only adds a layer or actually adds height to "elevation"
       //grid_map::GridMap map;
 
-      rawMap_["elevation_fast"].setConstant(-heightDiff); // HACKED FOR TESTING!! -> TODO: create nice Kalman Filter!!
-      rawMap_["elevation_fast"] = rawMap_["elevation"] + rawMap_["elevation_fast"];
+
+      frameCorrection();
+
+
+
+      // IF NOT ADDING MAPS, but translating frames.
+      if(transformInCorrectedFrame_) rawMap_["elevation_corrected"] = rawMap_["elevation"];
+      else{
+          rawMap_["elevation_corrected"].setConstant(-heightDiff); // HACKED FOR TESTING!! -> TODO: create nice Kalman Filter!!
+          //for(unsigned int n = 0; n < rawMap_.getLayers().size(); ++n){
+          //    std::cout << "LAYER: " << n << " :" << rawMap_.getLayers()[n] << std::endl;
+          //}
+
+
+          rawMap_["elevation_corrected"] = rawMap_["elevation"] + rawMap_["elevation_corrected"];
+      }
 
 
       grid_map_msgs::GridMap mapMessage;
       GridMapRosConverter::toMessage(rawMap_, mapMessage);
-      elevationMapFastPublisher_.publish(mapMessage);
-      std::cout << "CORRECTED!!" << std::endl;
+
+      // Concept: publish elevation map in map_corrected
+      if(transformInCorrectedFrame_) mapMessage.info.header.frame_id = "map_corrected";
+
+
+      if(comparisonMode_ == "slow") elevationMapFastPublisher_.publish(mapMessage);
+      //std::cout << "CORRECTED!!" << std::endl;
       //heightDifferenceComponentCounter_ = 0;
       //totalHeightDifference_ = 0.0;
+
+      /// SOME TESTS:
+      ///
+      tf::StampedTransform trans;
+      try{
+            baseOdomTransformListener_.lookupTransform("/odom", "/map_corrected",
+                                     ros::Time(0), trans);
+          }
+          catch (tf::TransformException ex){
+            ROS_ERROR("%s",ex.what());
+          }
+      std::cout << "TRANSFORM LISTENED: z: " << trans.getOrigin()[2] << std::endl;
+      std::cout << "VS. Height Difference: " << heightDifferenceFromComparison_ << std::endl;
+
+     // std::cout << "TRANSFORM LISTENED: frameid: " << trans.frame_id_ << std::endl;
+     // std::cout << "TRANSFORM LISTENED: x: " << odomMapTransform.getOrigin()[0] << std::endl;
+
+      ///
+      /// END TESTS
+
+
     }
 
     return true;
@@ -1326,7 +1363,6 @@ bool ElevationMap::footTipElevationMapComparison(std::string mode)
 
 bool ElevationMap::initializeFootTipMarkers()
 {
-
 
     // Color and shape definition of markers for foot tip ground contact visualization.
     footContactMarkerList_.header.frame_id = "odom";
@@ -1350,15 +1386,126 @@ bool ElevationMap::initializeFootTipMarkers()
     return true;
 }
 
-bool ElevationMap::filteredOffsetEstimation()
+double ElevationMap::filteredDriftEstimation(double diff, float estDrift, float PEstDrift)
 {
+
+
+
+    float predDrift, PPredDrift, measDrift, PMeasDrift;
+  //  measurement = newheightdiff - oldheightdiff
+    float diffMeasurement = diff - oldDiff_;
+    std::cout << "diff measurement: " << diffMeasurement << std::endl;
+    std::cout << "diff old: " << oldDiff_ << std::endl;
+    std::cout << "est Drift: " << estDrift << std::endl;
+
     // TODO: check what the height difference exactly is so far!
-    std::cout << "Heightdifference: " << heightDifferenceFromComparison_ << std::endl;
+    //std::cout << "Heightdifference: " << heightDifferenceFromComparison_ << std::endl;
     // Kalman FIltering
     // Inputs: Comparison values
     // Output: Map values!
 
 
+    float R = 0.5;
+    float Q = 0.01;
+//    // Prediction Step.
+    predDrift = estDrift;
+    PPredDrift = PEstDrift + Q;
+
+//    // Measurement Step.
+    float K = PPredDrift / (PPredDrift+R);
+    std::cout << "K: " << K << std::endl;
+    measDrift = predDrift + K * diffMeasurement;
+    PMeasDrift = PPredDrift - K * PPredDrift;
+
+
+    std::cout << "mean measDrift: " << measDrift << " per stance" << std::endl;
+
+    oldDiff_ = diff;
+
+
+    // Attention: if nans are there, then drift is set to zero!
+
+
+    return measDrift, PMeasDrift;
+}
+
+bool ElevationMap::getFusedCellBounds(const Eigen::Vector2d& position, const Eigen::Array2d& length)
+{
+
+    // TODO: IF argumentation on vs. off fus
+    // TODO: MAKE SURE TO BE SAFE IN TERMS OF BEING INSIDE THE ELEVATION MAP!
+
+    //! TEST about the two threads
+    //std::thread::id this_id = std::this_thread::get_id();
+    //std::cout << "This is the thread: " << this_id << std::endl;
+    //! END TEST
+
+    //boost::recursive_mutex::scoped_lock scopedLockForFootTipComparison(footTipStanceComparisonMutex_);
+    std::cout << "CALLED THE FUSED BOUNDS FUNCTION" << std::endl;
+    bool doFuseEachStep = true;
+    if(rawMap_.isInside(position) && heightDifferenceFromComparison_ == heightDifferenceFromComparison_ && doFuseEachStep){
+        std::cout << "CALLED THE FUSED BOUNDS FUNCTION INSIDE!!!" << std::endl;
+//        //! TEST about the two threads
+//        std::thread::id this_id = std::this_thread::get_id();
+//        std::cout << "This is the thread: " << this_id << std::endl;
+//        //! END TEST
+//        //float lower = rawMap_.atPosition("lower_bound", position);
+        //fuseArea(position, length);
+        std::cout << "HERE IT IS DONE" << std::endl;
+        float upperFused, lowerFused, elevationFused;
+        elevationFused = fusedMap_.atPosition("elevation", position); //HACKED!!
+        lowerFused = fusedMap_.atPosition("lower_bound", position);
+        upperFused = fusedMap_.atPosition("upper_bound", position);
+
+        // Debugging:
+        Eigen::Array2d lengthFusedMap = fusedMap_.getLength();
+        Eigen::Array2d lengthRawMap = rawMap_.getLength();
+        std::cout << "Size of fused map: length 0: " << float(lengthFusedMap(0)) << " length 1: " << (float)lengthFusedMap(1) << std::endl;
+        std::cout << "Size of raw map: length 0: " << float(lengthRawMap(0)) << " length 1: " << (float)lengthRawMap(1) << std::endl;
+        fusedMap_.clearAll();
+
+        std::cout << "LOWER: " << lowerFused << "UPPER: " << upperFused << "ELEV: " << elevationFused << std::endl;
+//        // TODO return these and find useful algorithm
+    }
+    return true;
+}
+
+bool ElevationMap::frameCorrection()
+{
+
+
+    // TODO: check which direction odommap/mapodom is the correct one by checking the sign of the z offset (z should be negative)
+    // -> Listening to transform: odom expressed in base frame
+    tf::StampedTransform odomMapTransform;
+    try{
+          baseOdomTransformListener_.lookupTransform("/base", "/odom",
+                                   ros::Time(0), odomMapTransform);
+        }
+        catch (tf::TransformException ex){
+          ROS_ERROR("%s",ex.what());
+        }
+    std::cout << "TRANSFORM LISTENED: z: " << odomMapTransform.getOrigin()[2] << std::endl;
+    std::cout << "TRANSFORM LISTENED: frameid: " << odomMapTransform.frame_id_ << std::endl;
+    std::cout << "TRANSFORM LISTENED: x: " << odomMapTransform.getOrigin()[0] << std::endl;
+
+
+    // TODO: Check sign later: (So far thinking minus is right)
+    odomMapTransform.getOrigin()[2] -= (heightDifferenceFromComparison_ + 0.1 * heightDifferenceComponentCounter_);  // HACKED!!!! TO CHECK THE TRANSFORM RATE
+    std::cout << "heightDifference inside frameCorrection: " << heightDifferenceFromComparison_ << std::endl;
+    //odomMapTransform.getOrigin()[2] -= 0.5;
+
+    odomMapTransform.setOrigin(odomMapTransform.getOrigin());
+    std::cout << "TRANSFORM LISTENED AFTER OFFSET CORRECTION: z: " << odomMapTransform.getOrigin()[2] << std::endl;
+
+    //baseOdomTransformListener_.
+
+    // Correct z element of transform:
+
+    // Assign new frame name.
+    odomMapTransform.child_frame_id_ = "map_corrected";
+
+    mapCorrectedOdomTransformBroadcaster_.sendTransform(odomMapTransform);
+    // Transform listener and transform broadcaster.
     return true;
 }
 

@@ -298,7 +298,11 @@ void ElevationMapping::pointCloudCallback(
   //const float& measurement400 = measurementVariances(m);
   //std::cout << "meas: " << measurement400 << std::endl;
 
-
+  // TEST OUTPUTS
+  std::cout << "z component of transform sensor to map: " << sensorProcessor_->transformationSensorToMap_.affine()(2,3) << std::endl;
+  /// To adjust the height here is too slow, as it happens with the frequency of the foot tip updates
+  /// So rather listen to the odom -> map transform and publish a tf for the map_corrected frame
+  // END TESTS
 
 
   // Add point cloud to elevation map.

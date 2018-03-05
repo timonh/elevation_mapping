@@ -32,6 +32,10 @@
 #include "quadruped_msgs/QuadrupedState.h"
 #include "quadruped_msgs/Contacts.h"
 
+// Transform Listener and broadcaster (NEW)
+#include "tf/transform_listener.h"
+#include "tf/transform_broadcaster.h"
+
 namespace elevation_mapping {
 
 /*!
@@ -277,16 +281,28 @@ class ElevationMap
   bool processStance(std::string tip);
 
   //! TODO: Description:
-  bool detectStancePhase();
+  bool detectStancePhase(std::string footTip);
 
   //! TODO: Description:
   bool footTipElevationMapComparison(std::string mode);
 
   //! TODO: Description:
-  bool filteredOffsetEstimation();
+  double filteredDriftEstimation(double diffMeasurement, float estDrift, float PEstDrift);
 
   //! TODO: Description:
   bool initializeFootTipMarkers();
+
+  //! TODO: Description:
+  bool getFusedCellBounds(const Eigen::Vector2d& position, const Eigen::Array2d& length);
+
+  //! TODO: Description:
+  bool frameCorrection();
+
+  //! TODO: Description:
+//  bool fuseCorrected(const grid_map::Index& topLeftIndex, const grid_map::Index& size);
+
+  //! TODO: Description:
+//  bool fuseCorrectedArea(const Eigen::Vector2d& position, const Eigen::Array2d& length);
 
 
   //! ROS nodehandle.
@@ -330,6 +346,7 @@ class ElevationMap
 
   // NEW TESTING:
   boost::recursive_mutex footTipStanceProcessorMutex_;
+  boost::recursive_mutex footTipStanceComparisonMutex_;
   // END NEW!
 
   //! Underlying map subscriber.
@@ -350,6 +367,7 @@ class ElevationMap
   double visibilityCleanupDuration_;
   double scanningDuration_;
 
+
   //! Front Feet Positions:
   Eigen::Vector3f LFTipPostiion_;
   Eigen::Vector3f RFTipPostiion_;
@@ -365,11 +383,15 @@ class ElevationMap
   bool isInStanceRight_;
   std::string comparisonMode_;
   double heightDifferenceFromComparison_;
+  float estimatedDrift_, estimatedDriftVariance_;
+  float oldDiff_;
 
   //! Mean foot tip positions
   double xMeanStanceLeft_, yMeanStanceLeft_, zMeanStanceLeft_, xMeanStanceRight_, yMeanStanceRight_, zMeanStanceRight_;
 
-
+  //! Transform Listener and broadcaster for generating the corrected frame
+  tf::TransformListener baseOdomTransformListener_;
+  tf::TransformBroadcaster mapCorrectedOdomTransformBroadcaster_;
 
   //! ROS subscribers.
   //ros::Subscriber highGrassPointCloudSubscriber_;
@@ -383,6 +405,9 @@ class ElevationMap
   //! Publication of Markers:
   visualization_msgs::Marker footContactMarkerList_;
   visualization_msgs::Marker elevationMapBoundMarkerList_;
+
+  //! Parameters
+  bool transformInCorrectedFrame_;
 };
 
 } /* namespace */
