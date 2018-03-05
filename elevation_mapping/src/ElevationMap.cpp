@@ -79,7 +79,7 @@ ElevationMap::ElevationMap(ros::NodeHandle nodeHandle)
   estimatedDrift_ = 0;
   estimatedDriftVariance_ = 0;
   // Some Parameters.
-  transformInCorrectedFrame_ = false; // Use map layer addition if false..
+  transformInCorrectedFrame_ = true; // Use map layer addition if false..
 
   // END NEW
 
@@ -1327,6 +1327,7 @@ bool ElevationMap::footTipElevationMapComparison(std::string mode)
       grid_map_msgs::GridMap mapMessage;
       GridMapRosConverter::toMessage(rawMap_, mapMessage);
 
+
       // Concept: publish elevation map in map_corrected
       if(transformInCorrectedFrame_) mapMessage.info.header.frame_id = "map_corrected";
 
@@ -1490,7 +1491,7 @@ bool ElevationMap::frameCorrection()
 
 
     // TODO: Check sign later: (So far thinking minus is right)
-    odomMapTransform.getOrigin()[2] -= (heightDifferenceFromComparison_ + 0.1 * heightDifferenceComponentCounter_);  // HACKED!!!! TO CHECK THE TRANSFORM RATE
+    odomMapTransform.getOrigin()[2] -= heightDifferenceFromComparison_;  // HACKED!!!! TO CHECK THE TRANSFORM RATE
     std::cout << "heightDifference inside frameCorrection: " << heightDifferenceFromComparison_ << std::endl;
     //odomMapTransform.getOrigin()[2] -= 0.5;
 
