@@ -79,7 +79,7 @@ ElevationMap::ElevationMap(ros::NodeHandle nodeHandle)
   estimatedDrift_ = 0;
   estimatedDriftVariance_ = 0;
   // Some Parameters.
-  transformInCorrectedFrame_ = true; // Use map layer addition if false..
+  transformInCorrectedFrame_ = false; // Use map layer addition if false..
 
   // END NEW
 
@@ -1288,19 +1288,31 @@ bool ElevationMap::footTipElevationMapComparison(std::string mode)
 
     if(rawMap_.getSize()(0) > 1){
           // Actual Difference quantification:
-          float heightDiff;
-          if(heightDifferenceComponentCounter_ > 0.0) heightDiff = totalHeightDifference_ / double(heightDifferenceComponentCounter_);
-          else heightDiff = 0.0;
+          float heightDiff, heightDiffPID;
+          if(heightDifferenceComponentCounter_ > 0.0){
+              heightDiff = totalHeightDifference_ / double(heightDifferenceComponentCounter_);
+              heightDiffPID = differenceCalculationUsingPID(diff, oldDiff_, heightDiff);
+          }
+          else heightDiff = heightDiffPID = 0.0;
           //std::cout << "heightDiff: " << heightDiff << "totDiff: " << totalHeightDifference_ << std::endl;
           if(heightDifferenceComponentCounter_ > 30 && mode == "fast"){
               totalHeightDifference_ = 0.0;
               heightDifferenceComponentCounter_ = 0;
       }
 
+
+
+      // TODO:
+      // Kalman Filter function
+      // PID Filter function
+
+      // Old diff assignment for differential parts of the controllers.
+      oldDiff_ = diff;
+
       // Assign class Variable.
       heightDifferenceFromComparison_ = heightDiff;
 
-      std::cout << "Height Diff after calculation: " << heightDiff << std::endl;
+      std::cout << "Height Diff after calculation: " << heightDiff << "and Height diff PID: " << heightDiffPID << std::endl;
 
       // TESTING
       //rawMap_.add("elevation_fast_addition"); // TODO: think if this only adds a layer or actually adds height to "elevation"
@@ -1421,7 +1433,7 @@ double ElevationMap::filteredDriftEstimation(double diff, float estDrift, float 
 
     std::cout << "mean measDrift: " << measDrift << " per stance" << std::endl;
 
-    oldDiff_ = diff;
+
 
 
     // Attention: if nans are there, then drift is set to zero!
@@ -1508,6 +1520,21 @@ bool ElevationMap::frameCorrection()
     mapCorrectedOdomTransformBroadcaster_.sendTransform(odomMapTransform);
     // Transform listener and transform broadcaster.
     return true;
+}
+
+float ElevationMap::differenceCalculationUsingPID(float diff, float old_diff, float totalDiff)
+{
+    // TODO: Tune these, they are only guessed so far.
+    float kp = 0.1;
+    float ki = 0.7;
+    float kd = -0.1;
+
+    return kp * diff + ki * totalDiff + kd * (diff - old_diff);
+}
+
+bool ElevationMap::differenceCalculationUsingKalmanFilter()
+{
+
 }
 
 } /* namespace */

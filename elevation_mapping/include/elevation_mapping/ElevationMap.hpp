@@ -299,6 +299,12 @@ class ElevationMap
   bool frameCorrection();
 
   //! TODO: Description:
+  float differenceCalculationUsingPID(float diff, float old_diff, float totalDiff);
+
+  //! TODO: Description:
+  bool differenceCalculationUsingKalmanFilter();
+
+  //! TODO: Description:
 //  bool fuseCorrected(const grid_map::Index& topLeftIndex, const grid_map::Index& size);
 
   //! TODO: Description:
