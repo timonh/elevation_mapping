@@ -374,14 +374,29 @@ bool ElevationMap::fuse(const grid_map::Index& topLeftIndex, const grid_map::Ind
   // Nothing to do.
   if ((size == 0).any()) return false;
 
+  // DEBUG:
+  std::cout << "Checkpoint 4 " << std::endl;
+
   // Initializations.
   const ros::WallTime methodStartTime(ros::WallTime::now());
   boost::recursive_mutex::scoped_lock scopedLock(fusedMapMutex_);
 
+  // DEBUG:
+  std::cout << "Checkpoint 3a " << std::endl;
+
+
+  //! ATTENTION!!! REMOVED THIS SCOPED LOCK!! CHECK WHAT THE CONSEQUENCE IS..
   // Copy raw elevation map data for safe multi-threading.
-  boost::recursive_mutex::scoped_lock scopedLockForRawData(rawMapMutex_);
-  auto rawMapCopy = rawMap_;
-  scopedLockForRawData.unlock();
+  //boost::recursive_mutex::scoped_lock scopedLockForRawData(rawMapMutex_);
+
+  // DEBUG:
+  std::cout << "Checkpoint 3b " << std::endl;
+
+  auto& rawMapCopy = rawMap_; // HACKING AROUND!!!
+  //scopedLockForRawData.unlock();
+
+  // DEBUG:
+  std::cout << "Checkpoint 3 " << std::endl;
 
   // More initializations.
   const double halfResolution = fusedMap_.getResolution() / 2.0;
@@ -395,6 +410,8 @@ bool ElevationMap::fuse(const grid_map::Index& topLeftIndex, const grid_map::Ind
   // Align fused map with raw map.
   if (rawMapCopy.getPosition() != fusedMap_.getPosition()) fusedMap_.move(rawMapCopy.getPosition());
 
+  // DEBUG:
+  std::cout << "Checkpoint 1 " << std::endl;
 
   // For each cell in requested area.
   for (SubmapIterator areaIterator(rawMapCopy, topLeftIndex, size); !areaIterator.isPastEnd(); ++areaIterator) {
@@ -517,6 +534,10 @@ bool ElevationMap::fuse(const grid_map::Index& topLeftIndex, const grid_map::Ind
   }
 
   fusedMap_.setTimestamp(rawMapCopy.getTimestamp());
+
+  // DEBUG:
+  std::cout << "Checkpoint 2 " << std::endl;
+
 
   const ros::WallDuration duration(ros::WallTime::now() - methodStartTime);
   ROS_INFO("Elevation map has been fused in %f s.", duration.toSec());
@@ -820,10 +841,10 @@ float ElevationMap::cumulativeDistributionFunction(float x, float mean, float st
 void ElevationMap::footTipStanceCallback(const quadruped_msgs::QuadrupedState& quadrupedState)
 {
 
-  boost::recursive_mutex::scoped_lock scopedLockForFootTipStanceProcessor(footTipStanceProcessorMutex_);
+  //boost::recursive_mutex::scoped_lock scopedLockForFootTipStanceProcessor(footTipStanceProcessorMutex_);
   //const auto& sizerawmap = rawMap_.getSize();
 
-
+  //std::cout << "FREQUENCY STUDIES!!!" << std::endl;
 
   // Set class variables.
   LFTipPostiion_(0) = (double)quadrupedState.contacts[0].position.x;
@@ -1140,7 +1161,12 @@ bool ElevationMap::footTipElevationMapComparison(std::string mode)
 
                 length[1] = length[0];
                 // HACKED!!!
-                //getFusedCellBounds(posLeft, length);
+                getFusedCellBounds(posLeft, length);
+
+                // TESTING:
+                //Position pos(xLeft+0.1, yLeft);
+                //std::cout << "fusedMAp: Nans? " << fusedMap_.atPosition("lower_bound", pos) << std::endl;
+
             }
             Index indexLeft;
             // TEST FOR CELL FUSION
@@ -1220,7 +1246,7 @@ bool ElevationMap::footTipElevationMapComparison(std::string mode)
 
                 length[1] = length[0];
                 // HACKED!!
-                //getFusedCellBounds(posRight, length);
+                getFusedCellBounds(posRight, length);
             }
             // For some reason the rawMap is sometimes empty..
             if(rawMap_.getSize()(0) > 1){
@@ -1318,10 +1344,7 @@ bool ElevationMap::footTipElevationMapComparison(std::string mode)
       //rawMap_.add("elevation_fast_addition"); // TODO: think if this only adds a layer or actually adds height to "elevation"
       //grid_map::GridMap map;
 
-
       frameCorrection();
-
-
 
       // IF NOT ADDING MAPS, but translating frames.
       if(transformInCorrectedFrame_) rawMap_["elevation_corrected"] = rawMap_["elevation"];
@@ -1330,11 +1353,8 @@ bool ElevationMap::footTipElevationMapComparison(std::string mode)
           //for(unsigned int n = 0; n < rawMap_.getLayers().size(); ++n){
           //    std::cout << "LAYER: " << n << " :" << rawMap_.getLayers()[n] << std::endl;
           //}
-
-
           rawMap_["elevation_corrected"] = rawMap_["elevation"] + rawMap_["elevation_corrected"];
       }
-
 
       grid_map_msgs::GridMap mapMessage;
       GridMapRosConverter::toMessage(rawMap_, mapMessage);
@@ -1463,19 +1483,22 @@ bool ElevationMap::getFusedCellBounds(const Eigen::Vector2d& position, const Eig
 //        std::cout << "This is the thread: " << this_id << std::endl;
 //        //! END TEST
 //        //float lower = rawMap_.atPosition("lower_bound", position);
-        //fuseArea(position, length);
+        fuseArea(position, length);
         std::cout << "HERE IT IS DONE" << std::endl;
         float upperFused, lowerFused, elevationFused;
         elevationFused = fusedMap_.atPosition("elevation", position); //HACKED!!
         lowerFused = fusedMap_.atPosition("lower_bound", position);
         upperFused = fusedMap_.atPosition("upper_bound", position);
 
+        // += 0.2; // HACKED!! REMOVE!!
+        std::cout << "TEST OUTPUT: " << fusedMap_.atPosition("lower_bound", position);
+
         // Debugging:
         Eigen::Array2d lengthFusedMap = fusedMap_.getLength();
         Eigen::Array2d lengthRawMap = rawMap_.getLength();
         std::cout << "Size of fused map: length 0: " << float(lengthFusedMap(0)) << " length 1: " << (float)lengthFusedMap(1) << std::endl;
         std::cout << "Size of raw map: length 0: " << float(lengthRawMap(0)) << " length 1: " << (float)lengthRawMap(1) << std::endl;
-        fusedMap_.clearAll();
+        //fusedMap_.clearAll();
 
         std::cout << "LOWER: " << lowerFused << "UPPER: " << upperFused << "ELEV: " << elevationFused << std::endl;
 //        // TODO return these and find useful algorithm
@@ -1503,7 +1526,9 @@ bool ElevationMap::frameCorrection()
 
 
     // TODO: Check sign later: (So far thinking minus is right)
+
     odomMapTransform.getOrigin()[2] -= heightDifferenceFromComparison_;  // HACKED!!!! TO CHECK THE TRANSFORM RATE
+    //odomMapTransform.getOrigin()[2] -=0.2 * heightDifferenceComponentCounter_;
     std::cout << "heightDifference inside frameCorrection: " << heightDifferenceFromComparison_ << std::endl;
     //odomMapTransform.getOrigin()[2] -= 0.5;
 
@@ -1527,7 +1552,7 @@ float ElevationMap::differenceCalculationUsingPID(float diff, float old_diff, fl
     // TODO: Tune these, they are only guessed so far.
     float kp = 0.1;
     float ki = 0.7;
-    float kd = -0.1;
+    float kd = -0.02;
 
     return kp * diff + ki * totalDiff + kd * (diff - old_diff);
 }
