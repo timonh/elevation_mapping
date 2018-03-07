@@ -79,7 +79,7 @@ ElevationMap::ElevationMap(ros::NodeHandle nodeHandle)
   estimatedDrift_ = 0;
   estimatedDriftVariance_ = 0;
   // Some Parameters.
-  transformInCorrectedFrame_ = false; // Use map layer addition if false..
+  transformInCorrectedFrame_ = true; // Use map layer addition if false..
 
   // END NEW
 
@@ -1157,8 +1157,9 @@ bool ElevationMap::footTipElevationMapComparison(std::string mode)
             Eigen::Array2d length;
             if(rawMap_.isInside(posLeft) && !std::isnan(rawMap_.atPosition("horizontal_variance_x",posLeft))){
                 std::cout << "Size of fused area: " << rawMap_.atPosition("horizontal_variance_x",posLeft) << " and: " << rawMap_.atPosition("horizontal_variance_y",posLeft) << std::endl;
-                length[0] = std::max(rawMap_.atPosition("horizontal_variance_x",posLeft), rawMap_.atPosition("horizontal_variance_y",posLeft));
 
+                // Use 3 standard deviations in each direction for robustness of fusion
+                length[0] = std::max(6 * sqrt(rawMap_.atPosition("horizontal_variance_x",posLeft)), 6 * sqrt(rawMap_.atPosition("horizontal_variance_y",posLeft)));
                 length[1] = length[0];
                 // HACKED!!!
                 getFusedCellBounds(posLeft, length);
@@ -1242,7 +1243,7 @@ bool ElevationMap::footTipElevationMapComparison(std::string mode)
             Eigen::Array2d length;
             if(rawMap_.isInside(posRight) && !std::isnan(rawMap_.atPosition("horizontal_variance_x",posRight))){
                 std::cout << "Size of fused area: " << rawMap_.atPosition("horizontal_variance_x",posRight) << " and: " << rawMap_.atPosition("horizontal_variance_y",posRight) << std::endl;
-                length[0] = std::max(rawMap_.atPosition("horizontal_variance_x",posRight), rawMap_.atPosition("horizontal_variance_y",posRight));
+                length[0] = std::max(6 * sqrt(rawMap_.atPosition("horizontal_variance_x",posRight)), 6 * sqrt(rawMap_.atPosition("horizontal_variance_y",posRight)));
 
                 length[1] = length[0];
                 // HACKED!!
@@ -1361,7 +1362,7 @@ bool ElevationMap::footTipElevationMapComparison(std::string mode)
 
 
       // Concept: publish elevation map in map_corrected
-      if(transformInCorrectedFrame_) mapMessage.info.header.frame_id = "map_corrected";
+      if(transformInCorrectedFrame_) mapMessage.info.header.frame_id = "odom_z_corrected";
 
 
       if(comparisonMode_ == "slow") elevationMapFastPublisher_.publish(mapMessage);
@@ -1371,16 +1372,16 @@ bool ElevationMap::footTipElevationMapComparison(std::string mode)
 
       /// SOME TESTS:
       ///
-      tf::StampedTransform trans;
-      try{
-            baseOdomTransformListener_.lookupTransform("/odom", "/map_corrected",
-                                     ros::Time(0), trans);
-          }
-          catch (tf::TransformException ex){
-            ROS_ERROR("%s",ex.what());
-          }
-      std::cout << "TRANSFORM LISTENED: z: " << trans.getOrigin()[2] << std::endl;
-      std::cout << "VS. Height Difference: " << heightDifferenceFromComparison_ << std::endl;
+//      tf::StampedTransform trans;
+//      try{
+//            baseOdomTransformListener_.lookupTransform("/odom", "odom_z_corrected",
+//                                     ros::Time(0), trans);
+//          }
+//          catch (tf::TransformException ex){
+//            ROS_ERROR("%s",ex.what());
+//          }
+//      std::cout << "TRANSFORM LISTENED: z: " << trans.getOrigin()[2] << std::endl;
+//      std::cout << "VS. Height Difference: " << heightDifferenceFromComparison_ << std::endl;
 
      // std::cout << "TRANSFORM LISTENED: frameid: " << trans.frame_id_ << std::endl;
      // std::cout << "TRANSFORM LISTENED: x: " << odomMapTransform.getOrigin()[0] << std::endl;
@@ -1421,9 +1422,6 @@ bool ElevationMap::initializeFootTipMarkers()
 
 double ElevationMap::filteredDriftEstimation(double diff, float estDrift, float PEstDrift)
 {
-
-
-
     float predDrift, PPredDrift, measDrift, PMeasDrift;
   //  measurement = newheightdiff - oldheightdiff
     float diffMeasurement = diff - oldDiff_;
@@ -1452,10 +1450,6 @@ double ElevationMap::filteredDriftEstimation(double diff, float estDrift, float 
 
 
     std::cout << "mean measDrift: " << measDrift << " per stance" << std::endl;
-
-
-
-
     // Attention: if nans are there, then drift is set to zero!
 
 
@@ -1512,27 +1506,27 @@ bool ElevationMap::frameCorrection()
 
     // TODO: check which direction odommap/mapodom is the correct one by checking the sign of the z offset (z should be negative)
     // -> Listening to transform: odom expressed in base frame
-    tf::StampedTransform odomMapTransform;
-    try{
-          baseOdomTransformListener_.lookupTransform("/base", "/odom",
-                                   ros::Time(0), odomMapTransform);
-        }
-        catch (tf::TransformException ex){
-          ROS_ERROR("%s",ex.what());
-        }
-    std::cout << "TRANSFORM LISTENED: z: " << odomMapTransform.getOrigin()[2] << std::endl;
-    std::cout << "TRANSFORM LISTENED: frameid: " << odomMapTransform.frame_id_ << std::endl;
-    std::cout << "TRANSFORM LISTENED: x: " << odomMapTransform.getOrigin()[0] << std::endl;
+    tf::Transform odomMapTransform;
+    //try{
+    //      baseOdomTransformListener_.lookupTransform("/base", "/odom",
+    //                               ros::Time(0), odomMapTransform);
+    //    }
+    //    catch (tf::TransformException ex){
+    //      ROS_ERROR("%s",ex.what());
+    //    }
+   // std::cout << "TRANSFORM LISTENED: z: " << odomMapTransform.getOrigin()[2] << std::endl;
+   // std::cout << "TRANSFORM LISTENED: frameid: " << odomMapTransform.frame_id_ << std::endl;
+   // std::cout << "TRANSFORM LISTENED: x: " << odomMapTransform.getOrigin()[0] << std::endl;
 
 
     // TODO: Check sign later: (So far thinking minus is right)
 
+    odomMapTransform.setIdentity();
     odomMapTransform.getOrigin()[2] -= heightDifferenceFromComparison_;  // HACKED!!!! TO CHECK THE TRANSFORM RATE
     //odomMapTransform.getOrigin()[2] -=0.2 * heightDifferenceComponentCounter_;
     std::cout << "heightDifference inside frameCorrection: " << heightDifferenceFromComparison_ << std::endl;
     //odomMapTransform.getOrigin()[2] -= 0.5;
 
-    odomMapTransform.setOrigin(odomMapTransform.getOrigin());
     std::cout << "TRANSFORM LISTENED AFTER OFFSET CORRECTION: z: " << odomMapTransform.getOrigin()[2] << std::endl;
 
     //baseOdomTransformListener_.
@@ -1540,9 +1534,10 @@ bool ElevationMap::frameCorrection()
     // Correct z element of transform:
 
     // Assign new frame name.
-    odomMapTransform.child_frame_id_ = "map_corrected";
+    //odomMapTransform.frame_id_ = "/odom";
+    //odomMapTransform.child_frame_id_ = "odom_z_corrected";
 
-    mapCorrectedOdomTransformBroadcaster_.sendTransform(odomMapTransform);
+    mapCorrectedOdomTransformBroadcaster_.sendTransform(tf::StampedTransform(odomMapTransform, ros::Time::now(), "odom", "odom_z_corrected"));
     // Transform listener and transform broadcaster.
     return true;
 }
@@ -1561,5 +1556,7 @@ bool ElevationMap::differenceCalculationUsingKalmanFilter()
 {
 
 }
+
+
 
 } /* namespace */
