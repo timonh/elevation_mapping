@@ -1154,21 +1154,7 @@ bool ElevationMap::footTipElevationMapComparison(std::string mode)
             //std::cout << "Left Touching the ground" << std::endl;
             //std::cout << "Left pos x: " << LFTipPostiion_(0) << "Right Pos y: " << LFTipPostiion_(1) << std::endl;
             Position posLeft(xLeft, yLeft);
-            Eigen::Array2d length;
-            if(rawMap_.isInside(posLeft) && !std::isnan(rawMap_.atPosition("horizontal_variance_x",posLeft))){
-                std::cout << "Size of fused area: " << rawMap_.atPosition("horizontal_variance_x",posLeft) << " and: " << rawMap_.atPosition("horizontal_variance_y",posLeft) << std::endl;
 
-                // Use 3 standard deviations in each direction for robustness of fusion
-                length[0] = std::max(6 * sqrt(rawMap_.atPosition("horizontal_variance_x",posLeft)), 6 * sqrt(rawMap_.atPosition("horizontal_variance_y",posLeft)));
-                length[1] = length[0];
-                // HACKED!!!
-                getFusedCellBounds(posLeft, length);
-
-                // TESTING:
-                //Position pos(xLeft+0.1, yLeft);
-                //std::cout << "fusedMAp: Nans? " << fusedMap_.atPosition("lower_bound", pos) << std::endl;
-
-            }
             Index indexLeft;
             // TEST FOR CELL FUSION
 
@@ -1227,6 +1213,20 @@ bool ElevationMap::footTipElevationMapComparison(std::string mode)
                         heightDifferenceComponentCounter_ += 1;
                     }
 
+                    // Fusion for robust error calculation.
+                    Eigen::Array2d length;
+                    if(rawMap_.isInside(posLeft) && !std::isnan(rawMap_.atPosition("horizontal_variance_x",posLeft))){
+                        std::cout << "Size of fused area: " << rawMap_.atPosition("horizontal_variance_x",posLeft) << " and: " << rawMap_.atPosition("horizontal_variance_y",posLeft) << std::endl;
+
+                        // Use 3 standard deviations in each direction for robustness of fusion
+                        length[0] = std::max(6 * sqrt(rawMap_.atPosition("horizontal_variance_x",posLeft)), 6 * sqrt(rawMap_.atPosition("horizontal_variance_y",posLeft)));
+                        length[1] = length[0];
+                        // HACKED!!!
+                        float upper, elev, lower = getFusedCellBounds(posLeft, length);
+                        float weightedDifference = gaussianWeightedDifference(upper, elev, lower, diff);
+
+                    }
+
                     // Filter for drift estimation.
                     estimatedDrift_, estimatedDriftVariance_ = filteredDriftEstimation(diff, estimatedDrift_, estimatedDriftVariance_);
 
@@ -1240,15 +1240,7 @@ bool ElevationMap::footTipElevationMapComparison(std::string mode)
         if(RFTipState_ == 1){
             //std::cout << "Right Touching the ground" << std::endl;
             Position posRight(xRight, yRight);
-            Eigen::Array2d length;
-            if(rawMap_.isInside(posRight) && !std::isnan(rawMap_.atPosition("horizontal_variance_x",posRight))){
-                std::cout << "Size of fused area: " << rawMap_.atPosition("horizontal_variance_x",posRight) << " and: " << rawMap_.atPosition("horizontal_variance_y",posRight) << std::endl;
-                length[0] = std::max(6 * sqrt(rawMap_.atPosition("horizontal_variance_x",posRight)), 6 * sqrt(rawMap_.atPosition("horizontal_variance_y",posRight)));
 
-                length[1] = length[0];
-                // HACKED!!
-                getFusedCellBounds(posRight, length);
-            }
             // For some reason the rawMap is sometimes empty..
             if(rawMap_.getSize()(0) > 1){
 
@@ -1289,6 +1281,19 @@ bool ElevationMap::footTipElevationMapComparison(std::string mode)
                         heightDifferenceComponentCounter_ += 1;
                     }
 
+                    // Fusion for robust error calculation.
+                    Eigen::Array2d length;
+                    if(rawMap_.isInside(posRight) && !std::isnan(rawMap_.atPosition("horizontal_variance_x",posRight))){
+                        std::cout << "Size of fused area: " << rawMap_.atPosition("horizontal_variance_x",posRight) << " and: " << rawMap_.atPosition("horizontal_variance_y",posRight) << std::endl;
+                        length[0] = std::max(6 * sqrt(rawMap_.atPosition("horizontal_variance_x",posRight)), 6 * sqrt(rawMap_.atPosition("horizontal_variance_y",posRight)));
+
+                        length[1] = length[0];
+                        // HACKED!!
+                        float lower, elev, upper = getFusedCellBounds(posRight, length);
+                        float weightedDifference = gaussianWeightedDifference(lower, elev, upper, diff);
+                    }
+
+
                     // Filter for drift estimation.
                     if(std::isnan(estimatedDrift_) || std::isnan(estimatedDriftVariance_)){
                         estimatedDrift_ = 0;
@@ -1307,12 +1312,6 @@ bool ElevationMap::footTipElevationMapComparison(std::string mode)
 
     }
 
-    //std::cout << "Frame transform z odom map " << quadrupedState.frame_transforms.at(0).transform.translation.z << std::endl;
-    //std::cout << "Frame transform z odom map_ga " << quadrupedState.frame_transforms.at(1).transform.translation.z << std::endl;
-
-    //! To add: consider horizontal variance for diff calculation
-    //! How is frequency of motion update.. Where stored?
-
     if(rawMap_.getSize()(0) > 1){
           // Actual Difference quantification:
           float heightDiff, heightDiffPID;
@@ -1321,17 +1320,10 @@ bool ElevationMap::footTipElevationMapComparison(std::string mode)
               heightDiffPID = differenceCalculationUsingPID(diff, oldDiff_, heightDiff);
           }
           else heightDiff = heightDiffPID = 0.0;
-          //std::cout << "heightDiff: " << heightDiff << "totDiff: " << totalHeightDifference_ << std::endl;
           if(heightDifferenceComponentCounter_ > 30 && mode == "fast"){
               totalHeightDifference_ = 0.0;
               heightDifferenceComponentCounter_ = 0;
       }
-
-
-
-      // TODO:
-      // Kalman Filter function
-      // PID Filter function
 
       // Old diff assignment for differential parts of the controllers.
       oldDiff_ = diff;
@@ -1456,7 +1448,7 @@ double ElevationMap::filteredDriftEstimation(double diff, float estDrift, float 
     return measDrift, PMeasDrift;
 }
 
-bool ElevationMap::getFusedCellBounds(const Eigen::Vector2d& position, const Eigen::Array2d& length)
+float ElevationMap::getFusedCellBounds(const Eigen::Vector2d& position, const Eigen::Array2d& length)
 {
 
     // TODO: IF argumentation on vs. off fus
@@ -1469,6 +1461,7 @@ bool ElevationMap::getFusedCellBounds(const Eigen::Vector2d& position, const Eig
 
     //boost::recursive_mutex::scoped_lock scopedLockForFootTipComparison(footTipStanceComparisonMutex_);
     std::cout << "CALLED THE FUSED BOUNDS FUNCTION" << std::endl;
+    float upperFused, lowerFused, elevationFused;
     bool doFuseEachStep = true;
     if(rawMap_.isInside(position) && heightDifferenceFromComparison_ == heightDifferenceFromComparison_ && doFuseEachStep){
         std::cout << "CALLED THE FUSED BOUNDS FUNCTION INSIDE!!!" << std::endl;
@@ -1479,7 +1472,7 @@ bool ElevationMap::getFusedCellBounds(const Eigen::Vector2d& position, const Eig
 //        //float lower = rawMap_.atPosition("lower_bound", position);
         fuseArea(position, length);
         std::cout << "HERE IT IS DONE" << std::endl;
-        float upperFused, lowerFused, elevationFused;
+
         elevationFused = fusedMap_.atPosition("elevation", position); //HACKED!!
         lowerFused = fusedMap_.atPosition("lower_bound", position);
         upperFused = fusedMap_.atPosition("upper_bound", position);
@@ -1497,48 +1490,22 @@ bool ElevationMap::getFusedCellBounds(const Eigen::Vector2d& position, const Eig
         std::cout << "LOWER: " << lowerFused << "UPPER: " << upperFused << "ELEV: " << elevationFused << std::endl;
 //        // TODO return these and find useful algorithm
     }
-    return true;
+    return lowerFused, elevationFused, upperFused;
 }
 
 bool ElevationMap::frameCorrection()
 {
-
-
-    // TODO: check which direction odommap/mapodom is the correct one by checking the sign of the z offset (z should be negative)
-    // -> Listening to transform: odom expressed in base frame
+    // Transform Broadcaster for the /odom_z_corrected frame.
     tf::Transform odomMapTransform;
-    //try{
-    //      baseOdomTransformListener_.lookupTransform("/base", "/odom",
-    //                               ros::Time(0), odomMapTransform);
-    //    }
-    //    catch (tf::TransformException ex){
-    //      ROS_ERROR("%s",ex.what());
-    //    }
-   // std::cout << "TRANSFORM LISTENED: z: " << odomMapTransform.getOrigin()[2] << std::endl;
-   // std::cout << "TRANSFORM LISTENED: frameid: " << odomMapTransform.frame_id_ << std::endl;
-   // std::cout << "TRANSFORM LISTENED: x: " << odomMapTransform.getOrigin()[0] << std::endl;
-
-
-    // TODO: Check sign later: (So far thinking minus is right)
 
     odomMapTransform.setIdentity();
     odomMapTransform.getOrigin()[2] -= heightDifferenceFromComparison_;  // HACKED!!!! TO CHECK THE TRANSFORM RATE
-    //odomMapTransform.getOrigin()[2] -=0.2 * heightDifferenceComponentCounter_;
-    std::cout << "heightDifference inside frameCorrection: " << heightDifferenceFromComparison_ << std::endl;
-    //odomMapTransform.getOrigin()[2] -= 0.5;
 
+    std::cout << "heightDifference inside frameCorrection: " << heightDifferenceFromComparison_ << std::endl;
     std::cout << "TRANSFORM LISTENED AFTER OFFSET CORRECTION: z: " << odomMapTransform.getOrigin()[2] << std::endl;
 
-    //baseOdomTransformListener_.
-
-    // Correct z element of transform:
-
-    // Assign new frame name.
-    //odomMapTransform.frame_id_ = "/odom";
-    //odomMapTransform.child_frame_id_ = "odom_z_corrected";
-
     mapCorrectedOdomTransformBroadcaster_.sendTransform(tf::StampedTransform(odomMapTransform, ros::Time::now(), "odom", "odom_z_corrected"));
-    // Transform listener and transform broadcaster.
+
     return true;
 }
 
@@ -1550,6 +1517,26 @@ float ElevationMap::differenceCalculationUsingPID(float diff, float old_diff, fl
     float kd = -0.02;
 
     return kp * diff + ki * totalDiff + kd * (diff - old_diff);
+}
+
+float ElevationMap::gaussianWeightedDifference(float &lowerBound, float &elevation, float &upperBound, float diff)
+{
+    // TODO: write normal function by hand!
+    // Error difference weighted as (1 - gaussian), s.t. intervall from elevation map to bound contains three standard deviations
+    float weight = 0;
+    if(diff < elevation){
+        std::normal_distribution<float> distribution_lower(elevation,abs(elevation-lowerBound)/3.0);
+        //weight = distribution_lower(abs(elevation - diff));
+    }
+    else{
+    std::normal_distribution<float> distribution_upper(elevation,abs(elevation-upperBound)/3.0);
+        //weight = distribution_upper(abs(elevation-diff));
+    }
+
+    std::cout << "WEIGHT: " << weight << " diff: " << diff << " elevation: " << elevation <<
+                 " lower: " << lowerBound << " upper: " << upperBound << std::endl;
+
+    return weight * diff;
 }
 
 bool ElevationMap::differenceCalculationUsingKalmanFilter()

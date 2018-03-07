@@ -293,7 +293,7 @@ class ElevationMap
   bool initializeFootTipMarkers();
 
   //! TODO: Description:
-  bool getFusedCellBounds(const Eigen::Vector2d& position, const Eigen::Array2d& length);
+  float getFusedCellBounds(const Eigen::Vector2d& position, const Eigen::Array2d& length);
 
   //! TODO: Description:
   bool frameCorrection();
@@ -305,7 +305,7 @@ class ElevationMap
   bool differenceCalculationUsingKalmanFilter();
 
   //! TODO: Description:
-//  bool fuseCorrected(const grid_map::Index& topLeftIndex, const grid_map::Index& size);
+  float gaussianWeightedDifference(float &lowerBound, float &elevation, float &upperbound, float diff);
 
   //! TODO: Description:
 //  bool fuseCorrectedArea(const Eigen::Vector2d& position, const Eigen::Array2d& length);
