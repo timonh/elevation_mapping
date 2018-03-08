@@ -79,7 +79,7 @@ ElevationMap::ElevationMap(ros::NodeHandle nodeHandle)
   estimatedDrift_ = 0;
   estimatedDriftVariance_ = 0;
   // Some Parameters.
-  transformInCorrectedFrame_ = true; // Use map layer addition if false..
+  transformInCorrectedFrame_ = false; // Use map layer addition if false..
 
   // END NEW
 
@@ -281,7 +281,7 @@ bool ElevationMap::update(const grid_map::Matrix& varianceUpdate, const grid_map
           std::cout << "Var Left: " << varLeft << std::endl;
           std::cout << "Diff: " << heightLeft - LFTipPostiion_(2) << std::endl;
           double diff = heightLeft - LFTipPostiion_(2);
-          if(abs(diff) < 1.0) totalDiff += diff/2.5;
+          if(fabs(diff) < 1.0) totalDiff += diff/2.5;
           else std::cout << "WARNING, big error" << std::endl;
       }
       else std::cout << "LEFT LIFTED!!!" << std::endl;
@@ -297,7 +297,7 @@ bool ElevationMap::update(const grid_map::Matrix& varianceUpdate, const grid_map
           std::cout << "Var Right: " << varRight << std::endl;
           std::cout << "Diff: " << heightRight - RFTipPostiion_(2) << std::endl;
           double diff = heightRight - RFTipPostiion_(2);
-          if(abs(diff) < 1.0) totalDiff += diff/2.5;
+          if(fabs(diff) < 1.0) totalDiff += diff/2.5;
           else std::cout << "WARNING, big error" << std::endl;
       }
       else std::cout << "RIGHT LIFTED!!!" << std::endl;
@@ -1208,7 +1208,7 @@ bool ElevationMap::footTipElevationMapComparison(std::string mode)
                     diff = heightLeft - zLeft;
                     double diffCorrected = heightLeftOffsetCorrected - zLeft;
                     std::cout << "HeightDifference classical: " << diff << "HeightDifference corrected: " << diffCorrected << std::endl;
-                    if(abs(diff) < 10.0){
+                    if(fabs(diff) < 10.0){
                         totalHeightDifference_ += diff;
                         heightDifferenceComponentCounter_ += 1;
                     }
@@ -1222,7 +1222,11 @@ bool ElevationMap::footTipElevationMapComparison(std::string mode)
                         length[0] = std::max(6 * sqrt(rawMap_.atPosition("horizontal_variance_x",posLeft)), 6 * sqrt(rawMap_.atPosition("horizontal_variance_y",posLeft)));
                         length[1] = length[0];
                         // HACKED!!!
-                        float upper, elev, lower = getFusedCellBounds(posLeft, length);
+                        auto boundTuple = getFusedCellBounds(posLeft, length);
+                        std::cout << "lower: " << std::get<0>(boundTuple) << " elev: " << std::get<1>(boundTuple) << " upper: " << std::get<2>(boundTuple) << std::endl;
+                        double lower = std::get<0>(boundTuple);
+                        double elev = std::get<1>(boundTuple);
+                        double upper = std::get<2>(boundTuple);
                         float weightedDifference = gaussianWeightedDifference(upper, elev, lower, diff);
 
                     }
@@ -1276,7 +1280,7 @@ bool ElevationMap::footTipElevationMapComparison(std::string mode)
                     diff = heightRight - zRight;
                     double diffCorrected = heightRightOffsetCorrected - zRight;
                     std::cout << "HeightDifference classical: " << diff << "HeightDifference corrected: " << diffCorrected << std::endl;
-                    if(abs(diff) < 10.0){
+                    if(fabs(diff) < 10.0){
                         totalHeightDifference_ += diff;
                         heightDifferenceComponentCounter_ += 1;
                     }
@@ -1289,7 +1293,11 @@ bool ElevationMap::footTipElevationMapComparison(std::string mode)
 
                         length[1] = length[0];
                         // HACKED!!
-                        float lower, elev, upper = getFusedCellBounds(posRight, length);
+                        auto boundTuple = getFusedCellBounds(posRight, length);
+                        std::cout << "lower: " << std::get<0>(boundTuple) << " elev: " << std::get<1>(boundTuple) << " upper: " << std::get<2>(boundTuple) << std::endl;
+                        double lower = std::get<0>(boundTuple);
+                        double elev = std::get<1>(boundTuple);
+                        double upper = std::get<2>(boundTuple);
                         float weightedDifference = gaussianWeightedDifference(lower, elev, upper, diff);
                     }
 
@@ -1329,7 +1337,12 @@ bool ElevationMap::footTipElevationMapComparison(std::string mode)
       oldDiff_ = diff;
 
       // Assign class Variable.
-      heightDifferenceFromComparison_ = heightDiff;
+
+      //heightDifferenceFromComparison_ = heightDiff;
+      //! TEST:
+      heightDifferenceFromComparison_ = heightDiffPID;
+      //! END TEST
+
 
       std::cout << "Height Diff after calculation: " << heightDiff << "and Height diff PID: " << heightDiffPID << std::endl;
 
@@ -1420,14 +1433,6 @@ double ElevationMap::filteredDriftEstimation(double diff, float estDrift, float 
     std::cout << "diff measurement: " << diffMeasurement << std::endl;
     std::cout << "diff old: " << oldDiff_ << std::endl;
     std::cout << "est Drift: " << estDrift << std::endl;
-
-    // TODO: check what the height difference exactly is so far!
-    //std::cout << "Heightdifference: " << heightDifferenceFromComparison_ << std::endl;
-    // Kalman FIltering
-    // Inputs: Comparison values
-    // Output: Map values!
-
-
     float R = 0.5;
     float Q = 0.01;
 //    // Prediction Step.
@@ -1443,22 +1448,11 @@ double ElevationMap::filteredDriftEstimation(double diff, float estDrift, float 
 
     std::cout << "mean measDrift: " << measDrift << " per stance" << std::endl;
     // Attention: if nans are there, then drift is set to zero!
-
-
     return measDrift, PMeasDrift;
 }
 
-float ElevationMap::getFusedCellBounds(const Eigen::Vector2d& position, const Eigen::Array2d& length)
+std::tuple<double, double, double> ElevationMap::getFusedCellBounds(const Eigen::Vector2d& position, const Eigen::Array2d& length)
 {
-
-    // TODO: IF argumentation on vs. off fus
-    // TODO: MAKE SURE TO BE SAFE IN TERMS OF BEING INSIDE THE ELEVATION MAP!
-
-    //! TEST about the two threads
-    //std::thread::id this_id = std::this_thread::get_id();
-    //std::cout << "This is the thread: " << this_id << std::endl;
-    //! END TEST
-
     //boost::recursive_mutex::scoped_lock scopedLockForFootTipComparison(footTipStanceComparisonMutex_);
     std::cout << "CALLED THE FUSED BOUNDS FUNCTION" << std::endl;
     float upperFused, lowerFused, elevationFused;
@@ -1490,7 +1484,7 @@ float ElevationMap::getFusedCellBounds(const Eigen::Vector2d& position, const Ei
         std::cout << "LOWER: " << lowerFused << "UPPER: " << upperFused << "ELEV: " << elevationFused << std::endl;
 //        // TODO return these and find useful algorithm
     }
-    return lowerFused, elevationFused, upperFused;
+    return std::make_tuple(lowerFused, elevationFused, upperFused);
 }
 
 bool ElevationMap::frameCorrection()
@@ -1519,24 +1513,30 @@ float ElevationMap::differenceCalculationUsingPID(float diff, float old_diff, fl
     return kp * diff + ki * totalDiff + kd * (diff - old_diff);
 }
 
-float ElevationMap::gaussianWeightedDifference(float &lowerBound, float &elevation, float &upperBound, float diff)
+float ElevationMap::gaussianWeightedDifference(double lowerBound, double elevation, double upperBound, double diff)
 {
     // TODO: write normal function by hand!
     // Error difference weighted as (1 - gaussian), s.t. intervall from elevation map to bound contains three standard deviations
-    float weight = 0;
-    if(diff < elevation){
-        std::normal_distribution<float> distribution_lower(elevation,abs(elevation-lowerBound)/3.0);
+    double weight = 0.0;
+    if(diff < 0.0){
+        //std::normal_distribution<float> distribution_lower(elevation,abs(elevation-lowerBound)/3.0);
+        weight = normalDistribution(diff, 0.0, fabs(elevation-lowerBound)/3.0);
         //weight = distribution_lower(abs(elevation - diff));
     }
     else{
-    std::normal_distribution<float> distribution_upper(elevation,abs(elevation-upperBound)/3.0);
+        //std::normal_distribution<float> distribution_upper(elevation,abs(elevation-upperBound)/3.0);
         //weight = distribution_upper(abs(elevation-diff));
+        weight = normalDistribution(diff, 0.0, fabs(elevation-upperBound)/3.0);
     }
 
-    std::cout << "WEIGHT: " << weight << " diff: " << diff << " elevation: " << elevation <<
+    // Constrain to be maximally 1.
+    if(weight > 1.0) weight = 1.0;
+
+    std::cout << "WEIGHT: " << (1-weight) << " diff: " << diff << " elevation: " << elevation <<
                  " lower: " << lowerBound << " upper: " << upperBound << std::endl;
 
-    return weight * diff;
+
+    return (1.0 - weight) * diff;
 }
 
 bool ElevationMap::differenceCalculationUsingKalmanFilter()
@@ -1544,6 +1544,13 @@ bool ElevationMap::differenceCalculationUsingKalmanFilter()
 
 }
 
+float ElevationMap::normalDistribution(float arg, float mean, float stdDev)
+{
+    double e = exp(-pow((arg-mean),2)/(2.0*pow(stdDev,2)));
+    std::cout << "E FUNCTION!!: " << e << "\n";
+    //Leaving away the weighting, as the maximum value should be one.
+    return e; // (stdDev * sqrt(2*M_PI));
+}
 
 
 } /* namespace */
