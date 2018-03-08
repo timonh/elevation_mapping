@@ -1205,8 +1205,8 @@ bool ElevationMap::footTipElevationMapComparison(std::string mode)
                     }
 
 
-                    diff = heightLeft - zLeft;
-                    double diffCorrected = heightLeftOffsetCorrected - zLeft;
+                    diff = zLeft - heightLeft;
+                    double diffCorrected = zLeft - heightLeftOffsetCorrected;
                     std::cout << "HeightDifference classical: " << diff << "HeightDifference corrected: " << diffCorrected << std::endl;
                     if(fabs(diff) < 10.0){
                         totalHeightDifference_ += diff;
@@ -1277,8 +1277,8 @@ bool ElevationMap::footTipElevationMapComparison(std::string mode)
                         std::cout << "Right: horizontal_variance_xy: " << rawMap_.atPosition("horizontal_variance_xy",posRight) << std::endl;
                     }
 
-                    diff = heightRight - zRight;
-                    double diffCorrected = heightRightOffsetCorrected - zRight;
+                    diff = zRight - heightRight;
+                    double diffCorrected = zRight - heightRightOffsetCorrected;
                     std::cout << "HeightDifference classical: " << diff << "HeightDifference corrected: " << diffCorrected << std::endl;
                     if(fabs(diff) < 10.0){
                         totalHeightDifference_ += diff;
@@ -1355,7 +1355,7 @@ bool ElevationMap::footTipElevationMapComparison(std::string mode)
       // IF NOT ADDING MAPS, but translating frames.
       if(transformInCorrectedFrame_) rawMap_["elevation_corrected"] = rawMap_["elevation"];
       else{
-          rawMap_["elevation_corrected"].setConstant(-heightDiff); // HACKED FOR TESTING!! -> TODO: create nice Kalman Filter!!
+          rawMap_["elevation_corrected"].setConstant(heightDifferenceFromComparison_); // HACKED FOR TESTING!! -> TODO: create nice Kalman Filter!!
           //for(unsigned int n = 0; n < rawMap_.getLayers().size(); ++n){
           //    std::cout << "LAYER: " << n << " :" << rawMap_.getLayers()[n] << std::endl;
           //}
@@ -1493,7 +1493,7 @@ bool ElevationMap::frameCorrection()
     tf::Transform odomMapTransform;
 
     odomMapTransform.setIdentity();
-    odomMapTransform.getOrigin()[2] -= heightDifferenceFromComparison_;  // HACKED!!!! TO CHECK THE TRANSFORM RATE
+    odomMapTransform.getOrigin()[2] += heightDifferenceFromComparison_;  // HACKED!!!! TO CHECK THE TRANSFORM RATE
 
     std::cout << "heightDifference inside frameCorrection: " << heightDifferenceFromComparison_ << std::endl;
     std::cout << "TRANSFORM LISTENED AFTER OFFSET CORRECTION: z: " << odomMapTransform.getOrigin()[2] << std::endl;
@@ -1506,9 +1506,9 @@ bool ElevationMap::frameCorrection()
 float ElevationMap::differenceCalculationUsingPID(float diff, float old_diff, float totalDiff)
 {
     // TODO: Tune these, they are only guessed so far.
-    float kp = 0.1;
+    float kp = 0.3;
     float ki = 0.7;
-    float kd = -0.02;
+    float kd = 0.1;
 
     return kp * diff + ki * totalDiff + kd * (diff - old_diff);
 }
