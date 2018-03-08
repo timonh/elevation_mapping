@@ -280,6 +280,12 @@ class ElevationMap
   //! TODO: Description!
   bool processStance(std::string tip);
 
+  //! TODO: Description!
+  bool getAverageFootTipPositions();
+
+  //! TODO: Description!
+  bool publishAveragedFootTipPositionMarkers();
+
   //! TODO: Description:
   bool detectStancePhase();
 
