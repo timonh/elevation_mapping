@@ -281,7 +281,9 @@ class ElevationMap
   bool processStance(std::string tip);
 
   //! TODO: Description:
-  bool detectStancePhase(std::string footTip);
+  bool detectStancePhase();
+
+  bool templateMatchingForStanceDetection(std::string tip, std::vector<bool> &stateVector);
 
   //! TODO: Description:
   bool footTipElevationMapComparison(std::string mode);

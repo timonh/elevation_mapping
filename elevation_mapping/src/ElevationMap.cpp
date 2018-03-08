@@ -842,10 +842,6 @@ void ElevationMap::footTipStanceCallback(const quadruped_msgs::QuadrupedState& q
 {
 
   //boost::recursive_mutex::scoped_lock scopedLockForFootTipStanceProcessor(footTipStanceProcessorMutex_);
-  //const auto& sizerawmap = rawMap_.getSize();
-
-  //std::cout << "FREQUENCY STUDIES!!!" << std::endl;
-
   // Set class variables.
   LFTipPostiion_(0) = (double)quadrupedState.contacts[0].position.x;
   LFTipPostiion_(1) = (double)quadrupedState.contacts[0].position.y;
@@ -856,41 +852,15 @@ void ElevationMap::footTipStanceCallback(const quadruped_msgs::QuadrupedState& q
   LFTipState_ = quadrupedState.contacts[0].state;
   RFTipState_ = quadrupedState.contacts[1].state;
 
-  //std::cout << "RFTippos x: " << RFTipPostiion_(0) << std::endl;
-  //std::cout << "RFTippos y: " << RFTipPostiion_(1) << std::endl;
-  //std::cout << "RFTippos z: " << RFTipPostiion_(2) << std::endl;
-
   // Detect start and end of stances for each of the two front foot tips.
-  detectStancePhase("left");
+  detectStancePhase();
   //detectStancePhase("right");
-
-//  for(unsigned int i; i <= 3; ++i){
-//      geometry_msgs::Point p;
-//      p.x = quadrupedState.contacts[i].position.x;
-//      p.y = quadrupedState.contacts[i].position.y;
-//      p.z = quadrupedState.contacts[i].position.z;
-
-//      if(quadrupedState.contacts[i].state == 1){
-//          footContactMarkerList_.points.push_back(p);
-//      }
-
-//      // Clear some foot tip markers after a certain time (and move them to the beginning of the list, as no pop_front exists)
-//      int size =footContactMarkerList_.points.size();
-//      if(size > 1200){
-//          for(unsigned int j = 0; j<400; ++j){
-//              footContactMarkerList_.points[j] = footContactMarkerList_.points[size - 400 + j];
-//          }
-//          for (unsigned int n = 0; n < (size-400); ++n){
-//              footContactMarkerList_.points.pop_back();
-//          }
-//      }
-//  }
 
   //! If called here: Called at 400 Hz using the foot tip positions from quadruped state directly. -> If called in process function -> At lower rate after each stance phase!
   if(comparisonMode_ == "fast") footTipElevationMapComparison(comparisonMode_);
 }
 
-bool ElevationMap::detectStancePhase(std::string footTip)
+bool ElevationMap::detectStancePhase()
 {
 
     boost::recursive_mutex::scoped_lock scopedLockForFootTipStanceProcessor(footTipStanceProcessorMutex_);
@@ -904,10 +874,7 @@ bool ElevationMap::detectStancePhase(std::string footTip)
     processStanceTriggerLeft_.push_back(LFTipState_);
     processStanceTriggerRight_.push_back(RFTipState_);
 
-    // Generalize.
-
-
-
+    // Constrain the size of the state arrays.
     if(processStanceTriggerLeft_.size() > 1000){
         std::cout << "DELETED SOME ENTRIES AS LONG TIME IN SAME STATE!!   LEFT" << std::endl;
         processStanceTriggerLeft_.erase(processStanceTriggerLeft_.begin());
@@ -916,8 +883,6 @@ bool ElevationMap::detectStancePhase(std::string footTip)
         std::cout << "DELETED SOME ENTRIES AS LONG TIME IN SAME STATE!!   RIGHT" << std::endl;
         processStanceTriggerRight_.erase(processStanceTriggerRight_.begin());
     }
-
-
 
     // Collect the foot tip position data (if foot tip in contact). (Prevent nans)
     if(LFTipState_ && isInStanceLeft_){
@@ -929,60 +894,107 @@ bool ElevationMap::detectStancePhase(std::string footTip)
         //std::cout << "RTipPosition x: " << RFTipPostiion_(0) << std::endl;
     }
 
+    // TODO: Create Template Matching function, wich saves coding lines
+    templateMatchingForStanceDetection("left", processStanceTriggerLeft_);
+    templateMatchingForStanceDetection("right", processStanceTriggerRight_);
+
+
+//    // Recognition of the end of a stance phase of the front legs.
+//    if(processStanceTriggerLeft_.size() >= 20 && processStanceTriggerLeft_.end()[-1]+processStanceTriggerLeft_.end()[-2]+
+//            processStanceTriggerLeft_.end()[-3]+processStanceTriggerLeft_.end()[-4]+processStanceTriggerLeft_.end()[-5]+
+//            processStanceTriggerLeft_.end()[-6]+processStanceTriggerLeft_.end()[-7]+processStanceTriggerLeft_.end()[-8]+
+//            processStanceTriggerLeft_.end()[-9]+processStanceTriggerLeft_.end()[-10] >= 8 &&
+//            processStanceTriggerLeft_.end()[-11]+processStanceTriggerLeft_.end()[-12]+ processStanceTriggerLeft_.end()[-13]+
+//            processStanceTriggerLeft_.end()[-14]+processStanceTriggerLeft_.end()[-15]+processStanceTriggerLeft_.end()[-16] +
+//            processStanceTriggerLeft_.end()[-17]+processStanceTriggerLeft_.end()[-18]+processStanceTriggerLeft_.end()[-19] <= 10 &&
+//            !isInStanceLeft_){
+//        std::cout << "Start of LEFT stance" << std::endl;
+//        isInStanceLeft_ = 1;
+//    }
+
+//    if(processStanceTriggerRight_.size() >= 20 && processStanceTriggerRight_.end()[-1]+processStanceTriggerRight_.end()[-2]+
+//            processStanceTriggerRight_.end()[-3]+processStanceTriggerRight_.end()[-4]+processStanceTriggerRight_.end()[-5] +
+//            processStanceTriggerRight_.end()[-6]+processStanceTriggerRight_.end()[-7]+processStanceTriggerRight_.end()[-8]+
+//            processStanceTriggerRight_.end()[-9]+processStanceTriggerRight_.end()[-10] >= 8 &&
+//            processStanceTriggerRight_.end()[-11]+processStanceTriggerRight_.end()[-12]+processStanceTriggerRight_.end()[-13]+
+//            processStanceTriggerRight_.end()[-14]+processStanceTriggerRight_.end()[-15]+processStanceTriggerRight_.end()[-16]+
+//            processStanceTriggerRight_.end()[-17]+processStanceTriggerRight_.end()[-18]+processStanceTriggerRight_.end()[-19] <= 10 &&
+//            !isInStanceRight_){
+//        std::cout << "Start of RIGHT stance" << std::endl;
+//        isInStanceRight_ = 1;
+//    }
+
+//    // Recognition of the start of a stance phase of the front legs.
+//    if(processStanceTriggerLeft_.size() >= 20 &&
+//            processStanceTriggerLeft_.end()[-1] + processStanceTriggerLeft_.end()[-2] + processStanceTriggerLeft_.end()[-3]+
+//            processStanceTriggerLeft_.end()[-4]+processStanceTriggerLeft_.end()[-5] + processStanceTriggerLeft_.end()[-6]+
+//            processStanceTriggerLeft_.end()[-7]+processStanceTriggerLeft_.end()[-8]+
+//            processStanceTriggerLeft_.end()[-9]+processStanceTriggerLeft_.end()[-10] <= 3 &&
+//            processStanceTriggerLeft_.end()[-11]+processStanceTriggerLeft_.end()[-12]+ processStanceTriggerLeft_.end()[-13]+
+//            processStanceTriggerLeft_.end()[-14]+processStanceTriggerLeft_.end()[-15]+processStanceTriggerLeft_.end()[-16] +
+//            processStanceTriggerLeft_.end()[-17]+processStanceTriggerLeft_.end()[-18]+processStanceTriggerLeft_.end()[-19] >=1 &&
+//            isInStanceLeft_){
+//        if(!processStance("Left")) return false;
+//        isInStanceLeft_ = 0;
+//    }
+
+//    // Recognition of the start of a stance phase of the front legs.
+//    if(processStanceTriggerRight_.size() >= 20 &&
+//            processStanceTriggerRight_.end()[-1] + processStanceTriggerRight_.end()[-2] + processStanceTriggerRight_.end()[-3]+
+//            processStanceTriggerRight_.end()[-4]+processStanceTriggerRight_.end()[-5] + processStanceTriggerRight_.end()[-6]+
+//            processStanceTriggerRight_.end()[-7]+processStanceTriggerRight_.end()[-8]+
+//            processStanceTriggerRight_.end()[-9]+processStanceTriggerRight_.end()[-10] <= 3 &&
+//            processStanceTriggerRight_.end()[-11]+processStanceTriggerRight_.end()[-12]+processStanceTriggerRight_.end()[-13]+
+//            processStanceTriggerRight_.end()[-14]+processStanceTriggerRight_.end()[-15]+processStanceTriggerRight_.end()[-16]+
+//            processStanceTriggerRight_.end()[-17]+processStanceTriggerRight_.end()[-18]+processStanceTriggerRight_.end()[-19] >=1 &&
+//            isInStanceRight_){
+//        if(!processStance("Right")) return false;
+//        isInStanceRight_ = 0;
+//    }
+
+    return true;
+}
+
+bool ElevationMap::templateMatchingForStanceDetection(std::string tip, std::vector<bool> &stateVector)
+{
+    //std::cout << "TIP TYPE: " << tip << " state vec size: " << stateVector.size() << "\n";
 
     // Recognition of the end of a stance phase of the front legs.
-    if(processStanceTriggerLeft_.size() >= 20 && processStanceTriggerLeft_.end()[-1]+processStanceTriggerLeft_.end()[-2]+
-            processStanceTriggerLeft_.end()[-3]+processStanceTriggerLeft_.end()[-4]+processStanceTriggerLeft_.end()[-5]+
-            processStanceTriggerLeft_.end()[-6]+processStanceTriggerLeft_.end()[-7]+processStanceTriggerLeft_.end()[-8]+
-            processStanceTriggerLeft_.end()[-9]+processStanceTriggerLeft_.end()[-10] >= 8 &&
-            processStanceTriggerLeft_.end()[-11]+processStanceTriggerLeft_.end()[-12]+ processStanceTriggerLeft_.end()[-13]+
-            processStanceTriggerLeft_.end()[-14]+processStanceTriggerLeft_.end()[-15]+processStanceTriggerLeft_.end()[-16] +
-            processStanceTriggerLeft_.end()[-17]+processStanceTriggerLeft_.end()[-18]+processStanceTriggerLeft_.end()[-19] <= 10 &&
-            !isInStanceLeft_){
-        std::cout << "Start of LEFT stance" << std::endl;
-        isInStanceLeft_ = 1;
-    }
-
-    if(processStanceTriggerRight_.size() >= 20 && processStanceTriggerRight_.end()[-1]+processStanceTriggerRight_.end()[-2]+
-            processStanceTriggerRight_.end()[-3]+processStanceTriggerRight_.end()[-4]+processStanceTriggerRight_.end()[-5] +
-            processStanceTriggerRight_.end()[-6]+processStanceTriggerRight_.end()[-7]+processStanceTriggerRight_.end()[-8]+
-            processStanceTriggerRight_.end()[-9]+processStanceTriggerRight_.end()[-10] >= 8 &&
-            processStanceTriggerRight_.end()[-11]+processStanceTriggerRight_.end()[-12]+processStanceTriggerRight_.end()[-13]+
-            processStanceTriggerRight_.end()[-14]+processStanceTriggerRight_.end()[-15]+processStanceTriggerRight_.end()[-16]+
-            processStanceTriggerRight_.end()[-17]+processStanceTriggerRight_.end()[-18]+processStanceTriggerRight_.end()[-19] <= 10 &&
-            !isInStanceRight_){
-        std::cout << "Start of RIGHT stance" << std::endl;
-        isInStanceRight_ = 1;
+    if(stateVector.size() >= 20 && stateVector.end()[-1]+stateVector.end()[-2]+
+            stateVector.end()[-3]+stateVector.end()[-4]+stateVector.end()[-5]+
+            stateVector.end()[-6]+stateVector.end()[-7]+stateVector.end()[-8]+
+            stateVector.end()[-9]+stateVector.end()[-10] >= 8 &&
+            stateVector.end()[-11]+stateVector.end()[-12]+ stateVector.end()[-13]+
+            stateVector.end()[-14]+stateVector.end()[-15]+stateVector.end()[-16] +
+            stateVector.end()[-17]+stateVector.end()[-18]+stateVector.end()[-19] <= 10){
+        if(tip == "left" && !isInStanceLeft_){
+            std::cout << "Start of LEFT stance" << std::endl;
+            isInStanceLeft_ = 1;
+        }
+        if(tip == "right" && !isInStanceRight_){
+            std::cout << "Start of Right stance" << std::endl;
+            isInStanceRight_ = 1;
+        }
     }
 
     // Recognition of the start of a stance phase of the front legs.
-    if(processStanceTriggerLeft_.size() >= 20 &&
-            processStanceTriggerLeft_.end()[-1] + processStanceTriggerLeft_.end()[-2] + processStanceTriggerLeft_.end()[-3]+
-            processStanceTriggerLeft_.end()[-4]+processStanceTriggerLeft_.end()[-5] + processStanceTriggerLeft_.end()[-6]+
-            processStanceTriggerLeft_.end()[-7]+processStanceTriggerLeft_.end()[-8]+
-            processStanceTriggerLeft_.end()[-9]+processStanceTriggerLeft_.end()[-10] <= 3 &&
-            processStanceTriggerLeft_.end()[-11]+processStanceTriggerLeft_.end()[-12]+ processStanceTriggerLeft_.end()[-13]+
-            processStanceTriggerLeft_.end()[-14]+processStanceTriggerLeft_.end()[-15]+processStanceTriggerLeft_.end()[-16] +
-            processStanceTriggerLeft_.end()[-17]+processStanceTriggerLeft_.end()[-18]+processStanceTriggerLeft_.end()[-19] >=1 &&
-            isInStanceLeft_){
-        if(!processStance("Left")) return false;
-        isInStanceLeft_ = 0;
+    if(stateVector.size() >= 20 &&
+            stateVector.end()[-1] + stateVector.end()[-2] + stateVector.end()[-3]+
+            stateVector.end()[-4]+stateVector.end()[-5] + stateVector.end()[-6]+
+            stateVector.end()[-7]+stateVector.end()[-8]+
+            stateVector.end()[-9]+stateVector.end()[-10] <= 3 &&
+            stateVector.end()[-11]+stateVector.end()[-12]+ stateVector.end()[-13]+
+            stateVector.end()[-14]+stateVector.end()[-15]+stateVector.end()[-16] +
+            stateVector.end()[-17]+stateVector.end()[-18]+stateVector.end()[-19] >=1){
+        if(tip == "left" && isInStanceLeft_){
+            if(!processStance("Left")) return false;
+            isInStanceLeft_ = 0;
+        }
+        if(tip == "right" && isInStanceRight_){
+            if(!processStance("Right")) return false;
+            isInStanceRight_ = 0;
+        }
     }
-
-    // Recognition of the start of a stance phase of the front legs.
-    if(processStanceTriggerRight_.size() >= 20 &&
-            processStanceTriggerRight_.end()[-1] + processStanceTriggerRight_.end()[-2] + processStanceTriggerRight_.end()[-3]+
-            processStanceTriggerRight_.end()[-4]+processStanceTriggerRight_.end()[-5] + processStanceTriggerRight_.end()[-6]+
-            processStanceTriggerRight_.end()[-7]+processStanceTriggerRight_.end()[-8]+
-            processStanceTriggerRight_.end()[-9]+processStanceTriggerRight_.end()[-10] <= 3 &&
-            processStanceTriggerRight_.end()[-11]+processStanceTriggerRight_.end()[-12]+processStanceTriggerRight_.end()[-13]+
-            processStanceTriggerRight_.end()[-14]+processStanceTriggerRight_.end()[-15]+processStanceTriggerRight_.end()[-16]+
-            processStanceTriggerRight_.end()[-17]+processStanceTriggerRight_.end()[-18]+processStanceTriggerRight_.end()[-19] >=1 &&
-            isInStanceRight_){
-        if(!processStance("Right")) return false;
-        isInStanceRight_ = 0;
-    }
-
     return true;
 }
 
@@ -1012,11 +1024,6 @@ bool ElevationMap::processStance(std::string tip)
         std::cout << "WARNING: RIGHT STANCE PHASE HAS TOO LITTLE ENTRIES TO BE PROCESSED" << std::endl;
         return false;
     }
-
-    //std::cout << "Size of left stance vector: " << LFTipStance_.size() << std::endl;
-    //std::cout << "Size of right stance vector: " << RFTipStance_.size() << std::endl;
-
-
 
     //std::cout << "LFTipsStance Size: " << LFTipStance_.size() << std::endl;
 
@@ -1459,11 +1466,7 @@ std::tuple<double, double, double> ElevationMap::getFusedCellBounds(const Eigen:
     bool doFuseEachStep = true;
     if(rawMap_.isInside(position) && heightDifferenceFromComparison_ == heightDifferenceFromComparison_ && doFuseEachStep){
         std::cout << "CALLED THE FUSED BOUNDS FUNCTION INSIDE!!!" << std::endl;
-//        //! TEST about the two threads
-//        std::thread::id this_id = std::this_thread::get_id();
-//        std::cout << "This is the thread: " << this_id << std::endl;
-//        //! END TEST
-//        //float lower = rawMap_.atPosition("lower_bound", position);
+
         fuseArea(position, length);
         std::cout << "HERE IT IS DONE" << std::endl;
 
@@ -1471,18 +1474,7 @@ std::tuple<double, double, double> ElevationMap::getFusedCellBounds(const Eigen:
         lowerFused = fusedMap_.atPosition("lower_bound", position);
         upperFused = fusedMap_.atPosition("upper_bound", position);
 
-        // += 0.2; // HACKED!! REMOVE!!
-        std::cout << "TEST OUTPUT: " << fusedMap_.atPosition("lower_bound", position);
-
-        // Debugging:
-        Eigen::Array2d lengthFusedMap = fusedMap_.getLength();
-        Eigen::Array2d lengthRawMap = rawMap_.getLength();
-        std::cout << "Size of fused map: length 0: " << float(lengthFusedMap(0)) << " length 1: " << (float)lengthFusedMap(1) << std::endl;
-        std::cout << "Size of raw map: length 0: " << float(lengthRawMap(0)) << " length 1: " << (float)lengthRawMap(1) << std::endl;
-        //fusedMap_.clearAll();
-
         std::cout << "LOWER: " << lowerFused << "UPPER: " << upperFused << "ELEV: " << elevationFused << std::endl;
-//        // TODO return these and find useful algorithm
     }
     return std::make_tuple(lowerFused, elevationFused, upperFused);
 }
@@ -1510,32 +1502,27 @@ float ElevationMap::differenceCalculationUsingPID(float diff, float old_diff, fl
     float ki = 0.7;
     float kd = 0.1;
 
-    return kp * diff + ki * totalDiff + kd * (diff - old_diff);
+    // Nan prevention.
+    if(isnan(old_diff)) return 0.0;
+    else return kp * diff + ki * totalDiff + kd * (diff - old_diff);
 }
 
 float ElevationMap::gaussianWeightedDifference(double lowerBound, double elevation, double upperBound, double diff)
 {
-    // TODO: write normal function by hand!
     // Error difference weighted as (1 - gaussian), s.t. intervall from elevation map to bound contains three standard deviations
     double weight = 0.0;
     if(diff < 0.0){
-        //std::normal_distribution<float> distribution_lower(elevation,abs(elevation-lowerBound)/3.0);
         weight = normalDistribution(diff, 0.0, fabs(elevation-lowerBound)/3.0);
-        //weight = distribution_lower(abs(elevation - diff));
     }
     else{
-        //std::normal_distribution<float> distribution_upper(elevation,abs(elevation-upperBound)/3.0);
-        //weight = distribution_upper(abs(elevation-diff));
         weight = normalDistribution(diff, 0.0, fabs(elevation-upperBound)/3.0);
     }
 
     // Constrain to be maximally 1.
-    if(weight > 1.0) weight = 1.0;
+    if(weight > 1.0) weight = 1.0; // For security, basically not necessary
 
     std::cout << "WEIGHT: " << (1-weight) << " diff: " << diff << " elevation: " << elevation <<
                  " lower: " << lowerBound << " upper: " << upperBound << std::endl;
-
-
     return (1.0 - weight) * diff;
 }
 
@@ -1548,9 +1535,8 @@ float ElevationMap::normalDistribution(float arg, float mean, float stdDev)
 {
     double e = exp(-pow((arg-mean),2)/(2.0*pow(stdDev,2)));
     std::cout << "E FUNCTION!!: " << e << "\n";
-    //Leaving away the weighting, as the maximum value should be one.
+    //Leaving away the weighting, as the maximum value should be one, which is sensible for weighting.
     return e; // (stdDev * sqrt(2*M_PI));
 }
-
 
 } /* namespace */
