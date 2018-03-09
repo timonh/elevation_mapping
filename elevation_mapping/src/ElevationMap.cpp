@@ -987,11 +987,11 @@ bool ElevationMap::templateMatchingForStanceDetection(std::string tip, std::vect
             stateVector.end()[-14]+stateVector.end()[-15]+stateVector.end()[-16] +
             stateVector.end()[-17]+stateVector.end()[-18]+stateVector.end()[-19] >=1){
         if(tip == "left" && isInStanceLeft_){
-            if(!processStance("Left")) return false;
+            if(!processStance("left")) return false;
             isInStanceLeft_ = 0;
         }
         if(tip == "right" && isInStanceRight_){
-            if(!processStance("Right")) return false;
+            if(!processStance("right")) return false;
             isInStanceRight_ = 0;
         }
     }
@@ -1003,71 +1003,182 @@ bool ElevationMap::processStance(std::string tip)
     std::cout << "Processing: " << tip <<std::endl;
 
     // Delete the last 10 entries of the Foot Stance Position Vector, as these are used for transition detection
-    if(LFTipStance_.size() > 10 && tip == "Left"){
-        for(unsigned int i = 0; i < 10; ++i){
-            LFTipStance_.pop_back();
-        }
-    }
-    else if(tip == "Left"){
-        std::cout << "WARNING: LEFT STANCE PHASE HAS TOO LITTLE ENTRIES TO BE PROCESSED" << std::endl;
-        return false;
-    }
+    deleteLastEntriesOfStances(tip);
+    getAverageFootTipPositions(tip);
+    publishAveragedFootTipPositionMarkers();
 
-    // Delete the last 10 entries of the Foot Stance Position Vector, as these are used for transition detection
-    if(RFTipStance_.size() > 10 && tip == "Right"){
-        for(unsigned int i = 0; i < 10; ++i){
-            RFTipStance_.pop_back();
-        }
-    }
-    else if(tip == "Right"){
-        std::cout << "WARNING: RIGHT STANCE PHASE HAS TOO LITTLE ENTRIES TO BE PROCESSED" << std::endl;
-        return false;
-    }
+//    // Delete the last 10 entries of the Foot Stance Position Vector, as these are used for transition detection
+//    if(LFTipStance_.size() > 10 && tip == "Left"){
+//        for(unsigned int i = 0; i < 10; ++i){
+//            LFTipStance_.pop_back();
+//        }
+//    }
+//    else if(tip == "Left"){
+//        std::cout << "WARNING: LEFT STANCE PHASE HAS TOO LITTLE ENTRIES TO BE PROCESSED" << std::endl;
+//        return false;
+//    }
+
+//    // Delete the last 10 entries of the Foot Stance Position Vector, as these are used for transition detection
+//    if(RFTipStance_.size() > 10 && tip == "Right"){
+//        for(unsigned int i = 0; i < 10; ++i){
+//            RFTipStance_.pop_back();
+//        }
+//    }
+//    else if(tip == "Right"){
+//        std::cout << "WARNING: RIGHT STANCE PHASE HAS TOO LITTLE ENTRIES TO BE PROCESSED" << std::endl;
+//        return false;
+//    }
 
 
     // TODO: Averaging function here!!
 
 
-    double xTotalLeft = 0.0;
-    double yTotalLeft = 0.0;
-    double zTotalLeft = 0.0;
-    double xTotalRight = 0.0;
-    double yTotalRight = 0.0;
-    double zTotalRight = 0.0;
+//    double xTotalLeft = 0.0;
+//    double yTotalLeft = 0.0;
+//    double zTotalLeft = 0.0;
+//    double xTotalRight = 0.0;
+//    double yTotalRight = 0.0;
+//    double zTotalRight = 0.0;
 
+
+//    // For publisher of mean foot tip positions
+//    if(tip == "left" && LFTipStance_.size() > 1){
+
+//        geometry_msgs::Point p;
+//        for (auto& n : LFTipStance_){
+//            // Consider only those with state = 1
+//            xTotalLeft += n(0);
+//            yTotalLeft += n(1);
+//            zTotalLeft += n(2);
+//        }
+
+//        xMeanStanceLeft_ = xTotalLeft / float(LFTipStance_.size());
+//        yMeanStanceLeft_ = yTotalLeft / float(LFTipStance_.size());
+//        zMeanStanceLeft_ = zTotalLeft / float(LFTipStance_.size());
+
+//        std::cout << "x Mean Left: " << xMeanStanceLeft_ << "Stance size: " << LFTipStance_.size() << std::endl;
+//        std::cout << "y Mean Left: " << yMeanStanceLeft_ << "Stance size: " << LFTipStance_.size() << std::endl;
+//        std::cout << "z Mean Left: " << zMeanStanceLeft_ << "Stance size: " << LFTipStance_.size() << std::endl;
+
+//        //std::cout << "LSIZE: " << LFTipStance_.size() << std::endl;
+//        LFTipStance_.clear();
+//        processStanceTriggerLeft_.clear();
+//        //std::cout << "LSIZE: " << LFTipStance_.size() << std::endl;
+
+
+//        // TODO: Foot Tip Publisher function here!!
+
+
+//        // Positions for publisher
+//        p.x = xMeanStanceLeft_;
+//        p.y = yMeanStanceLeft_;
+//        p.z = zMeanStanceLeft_;
+
+//        // Check for nans
+//        if(p.x != p.x || p.y != p.y || p.z != p.z){
+//            std::cout << "NAN FOUND!!" << std::endl;
+//        }
+//        else footContactMarkerList_.points.push_back(p);
+//    }
+
+//    if(tip == "right" && RFTipStance_.size() > 1){
+
+//        geometry_msgs::Point p;
+//        for (auto& n : RFTipStance_){
+//            // Consider only those with state = 1
+//            xTotalRight += n(0);
+//            yTotalRight += n(1);
+//            zTotalRight += n(2);
+//        }
+//        xMeanStanceRight_ = xTotalRight / float(RFTipStance_.size());
+//        yMeanStanceRight_ = yTotalRight / float(RFTipStance_.size());
+//        zMeanStanceRight_ = zTotalRight / float(RFTipStance_.size());
+
+
+//        std::cout << "x Mean Right: " << xMeanStanceRight_ << "Stance Size: " << RFTipStance_.size() << std::endl;
+//        std::cout << "y Mean Right: " << yMeanStanceRight_ << "Stance Size: " << RFTipStance_.size() << std::endl;
+//        std::cout << "z Mean Right: " << zMeanStanceRight_ << "Stance Size: " << RFTipStance_.size() << std::endl;
+//        std::cout << "z total Right: " << zTotalRight << std::endl;
+
+//        //std::cout << "RSIZE: " << RFTipStance_.size() << std::endl;
+//        RFTipStance_.clear();
+//        processStanceTriggerRight_.clear();
+//        //std::cout << "RSIZE: " << RFTipStance_.size() << std::endl;
+
+//        // Positions for publisher
+//        p.x = xMeanStanceRight_;
+//        p.y = yMeanStanceRight_;
+//        p.z = zMeanStanceRight_;
+
+//        // Check for nans
+//        if(p.x != p.x || p.y != p.y || p.z != p.z){
+//            std::cout << "NAN FOUND!!" << std::endl;
+//        }
+//        else footContactMarkerList_.points.push_back(p);
+//    }
+
+
+
+
+    return true;
+}
+
+bool ElevationMap::deleteLastEntriesOfStances(std::string tip)
+{
+
+    if(LFTipStance_.size() < 10){
+        std::cout << "WARNING: LEFT STANCE PHASE HAS TOO LITTLE ENTRIES TO BE PROCESSED" << std::endl;
+    }
+    else if(RFTipStance_.size() < 10){
+        std::cout << "WARNING: RIGHT STANCE PHASE HAS TOO LITTLE ENTRIES TO BE PROCESSED" << std::endl;
+    }
+    else{
+        for(unsigned int i = 0; i < 10; ++i){
+            if(tip == "left"){
+                std::cout << "POPPING LEFT!!" << std::endl;
+                LFTipStance_.pop_back();
+            }
+            else if(tip == "right"){
+                RFTipStance_.pop_back();
+            }
+        }
+    }
+
+    return true;
+}
+
+bool ElevationMap::getAverageFootTipPositions(std::string tip)
+{
+    Eigen::Vector3f totalStanceLeft(0, 0, 0);
+    Eigen::Vector3f totalStanceRight(0, 0, 0);
+
+
+    // TODO: Assign central variables here and connect left and right!
 
     // For publisher of mean foot tip positions
-    if(tip == "Left" && LFTipStance_.size() > 1){
+    if(tip == "left" && LFTipStance_.size() > 1){
 
         geometry_msgs::Point p;
         for (auto& n : LFTipStance_){
             // Consider only those with state = 1
-            xTotalLeft += n(0);
-            yTotalLeft += n(1);
-            zTotalLeft += n(2);
+            totalStanceLeft += n;
         }
 
-        xMeanStanceLeft_ = xTotalLeft / float(LFTipStance_.size());
-        yMeanStanceLeft_ = yTotalLeft / float(LFTipStance_.size());
-        zMeanStanceLeft_ = zTotalLeft / float(LFTipStance_.size());
+        meanStanceLeft_ = totalStanceLeft / float(LFTipStance_.size());
 
-        std::cout << "x Mean Left: " << xMeanStanceLeft_ << "Stance size: " << LFTipStance_.size() << std::endl;
-        std::cout << "y Mean Left: " << yMeanStanceLeft_ << "Stance size: " << LFTipStance_.size() << std::endl;
-        std::cout << "z Mean Left: " << zMeanStanceLeft_ << "Stance size: " << LFTipStance_.size() << std::endl;
+        std::cout << "x Mean Left: " << meanStanceLeft_(0) << "Stance size: " << LFTipStance_.size() << std::endl;
+        std::cout << "y Mean Left: " << meanStanceLeft_(1) << "Stance size: " << LFTipStance_.size() << std::endl;
+        std::cout << "z Mean Left: " << meanStanceLeft_(2) << "Stance size: " << LFTipStance_.size() << std::endl;
 
         //std::cout << "LSIZE: " << LFTipStance_.size() << std::endl;
         LFTipStance_.clear();
         processStanceTriggerLeft_.clear();
         //std::cout << "LSIZE: " << LFTipStance_.size() << std::endl;
 
-
-        // TODO: Foot Tip Publisher function here!!
-
-
         // Positions for publisher
-        p.x = xMeanStanceLeft_;
-        p.y = yMeanStanceLeft_;
-        p.z = zMeanStanceLeft_;
+        p.x = meanStanceLeft_(0);
+        p.y = meanStanceLeft_(1);
+        p.z = meanStanceLeft_(2);
 
         // Check for nans
         if(p.x != p.x || p.y != p.y || p.z != p.z){
@@ -1076,24 +1187,19 @@ bool ElevationMap::processStance(std::string tip)
         else footContactMarkerList_.points.push_back(p);
     }
 
-    if(tip == "Right" && RFTipStance_.size() > 1){
+    if(tip == "right" && RFTipStance_.size() > 1){
 
         geometry_msgs::Point p;
         for (auto& n : RFTipStance_){
             // Consider only those with state = 1
-            xTotalRight += n(0);
-            yTotalRight += n(1);
-            zTotalRight += n(2);
+            totalStanceRight += n;
         }
-        xMeanStanceRight_ = xTotalRight / float(RFTipStance_.size());
-        yMeanStanceRight_ = yTotalRight / float(RFTipStance_.size());
-        zMeanStanceRight_ = zTotalRight / float(RFTipStance_.size());
 
+        meanStanceRight_ = totalStanceRight / float(RFTipStance_.size());
 
-        std::cout << "x Mean Right: " << xMeanStanceRight_ << "Stance Size: " << RFTipStance_.size() << std::endl;
-        std::cout << "y Mean Right: " << yMeanStanceRight_ << "Stance Size: " << RFTipStance_.size() << std::endl;
-        std::cout << "z Mean Right: " << zMeanStanceRight_ << "Stance Size: " << RFTipStance_.size() << std::endl;
-        std::cout << "z total Right: " << zTotalRight << std::endl;
+        std::cout << "x Mean Right: " << meanStanceRight_(0) << "Stance Size: " << RFTipStance_.size() << std::endl;
+        std::cout << "y Mean Right: " << meanStanceRight_(1) << "Stance Size: " << RFTipStance_.size() << std::endl;
+        std::cout << "z Mean Right: " << meanStanceRight_(2) << "Stance Size: " << RFTipStance_.size() << std::endl;
 
         //std::cout << "RSIZE: " << RFTipStance_.size() << std::endl;
         RFTipStance_.clear();
@@ -1101,9 +1207,9 @@ bool ElevationMap::processStance(std::string tip)
         //std::cout << "RSIZE: " << RFTipStance_.size() << std::endl;
 
         // Positions for publisher
-        p.x = xMeanStanceRight_;
-        p.y = yMeanStanceRight_;
-        p.z = zMeanStanceRight_;
+        p.x = meanStanceRight_(0);
+        p.y = meanStanceRight_(1);
+        p.z = meanStanceRight_(2);
 
         // Check for nans
         if(p.x != p.x || p.y != p.y || p.z != p.z){
@@ -1112,25 +1218,16 @@ bool ElevationMap::processStance(std::string tip)
         else footContactMarkerList_.points.push_back(p);
     }
 
-
-    // Prevent Nans to be published.
-    footContactPublisher_.publish(footContactMarkerList_);
-
-    if(comparisonMode_ == "slow") footTipElevationMapComparison(comparisonMode_);
-    //std::cout << "LFTipsStance Size: " << LFTipStance_.size() << std::endl;
-
-    return true;
-}
-
-bool ElevationMap::getAverageFootTipPositions()
-{
-
     return true;
 }
 
 bool ElevationMap::publishAveragedFootTipPositionMarkers()
 {
+    // Prevent Nans to be published.
+    footContactPublisher_.publish(footContactMarkerList_);
 
+    if(comparisonMode_ == "slow") footTipElevationMapComparison(comparisonMode_);
+    //std::cout << "LFTipsStance Size: " << LFTipStance_.size() << std::endl;
     return true;
 }
 
@@ -1144,12 +1241,12 @@ bool ElevationMap::footTipElevationMapComparison(std::string mode)
     // TODO: finish difference comparison flexibility adjustment!!
     float xLeft, yLeft, zLeft, xRight, yRight, zRight;
     if(mode == "slow"){
-        xLeft = xMeanStanceLeft_;
-        yLeft = yMeanStanceLeft_;
-        zLeft = zMeanStanceLeft_;
-        xRight = xMeanStanceRight_;
-        yRight = yMeanStanceRight_;
-        zRight = zMeanStanceRight_;
+        xLeft = meanStanceLeft_(0);
+        yLeft = meanStanceLeft_(1);
+        zLeft = meanStanceLeft_(2);
+        xRight = meanStanceRight_(0);
+        yRight = meanStanceRight_(1);
+        zRight = meanStanceRight_(2);
 
     }
     if(mode == "fast"){

@@ -280,8 +280,10 @@ class ElevationMap
   //! TODO: Description!
   bool processStance(std::string tip);
 
+  bool deleteLastEntriesOfStances(std::string tip);
+
   //! TODO: Description!
-  bool getAverageFootTipPositions();
+  bool getAverageFootTipPositions(std::string tip);
 
   //! TODO: Description!
   bool publishAveragedFootTipPositionMarkers();
@@ -403,7 +405,7 @@ class ElevationMap
   float oldDiff_;
 
   //! Mean foot tip positions
-  double xMeanStanceLeft_, yMeanStanceLeft_, zMeanStanceLeft_, xMeanStanceRight_, yMeanStanceRight_, zMeanStanceRight_;
+  Eigen::Vector3f meanStanceLeft_, meanStanceRight_;
 
   //! Transform Listener and broadcaster for generating the corrected frame
   tf::TransformListener baseOdomTransformListener_;
