@@ -2,7 +2,7 @@
 
 <launch>
 
-  <node pkg="rosbag" type="play" name="player" output="screen" args="--clock /home/timon/elevation_mapping_2018-02-20-19-01-35.bag -r 0.3">
+  <node pkg="rosbag" type="play" name="player" output="screen" args="--clock /home/timon/elevation_mapping_2018-02-20-19-01-35.bag -r 0.2">
      <remap from="/state_estimator/quadruped_state" to="/state_estimator/quadruped_state_remapped"/>
      <remap from="/realsense_zr300/points2" to="realsense_zr300/points2_remapped"/>
   </node>

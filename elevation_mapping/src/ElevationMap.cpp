@@ -1117,9 +1117,6 @@ bool ElevationMap::processStance(std::string tip)
 //        else footContactMarkerList_.points.push_back(p);
 //    }
 
-
-
-
     return true;
 }
 
@@ -1149,36 +1146,43 @@ bool ElevationMap::deleteLastEntriesOfStances(std::string tip)
 
 bool ElevationMap::getAverageFootTipPositions(std::string tip)
 {
-    Eigen::Vector3f totalStanceLeft(0, 0, 0);
-    Eigen::Vector3f totalStanceRight(0, 0, 0);
+    Eigen::Vector3f totalStance(0, 0, 0);
 
-
-    // TODO: Assign central variables here and connect left and right!
+    // TODO: check if this is valid!
+    std::vector<Eigen::Vector3f> stance;
+    if(tip == "left") stance = LFTipStance_;
+    if(tip == "right") stance = RFTipStance_;
 
     // For publisher of mean foot tip positions
-    if(tip == "left" && LFTipStance_.size() > 1){
+    if(stance.size() > 1){
 
         geometry_msgs::Point p;
-        for (auto& n : LFTipStance_){
-            // Consider only those with state = 1
-            totalStanceLeft += n;
+        for (auto& n : stance){
+            // Consider only those with state = 1  TODO!!!
+            totalStance += n;
         }
 
-        meanStanceLeft_ = totalStanceLeft / float(LFTipStance_.size());
-
-        std::cout << "x Mean Left: " << meanStanceLeft_(0) << "Stance size: " << LFTipStance_.size() << std::endl;
-        std::cout << "y Mean Left: " << meanStanceLeft_(1) << "Stance size: " << LFTipStance_.size() << std::endl;
-        std::cout << "z Mean Left: " << meanStanceLeft_(2) << "Stance size: " << LFTipStance_.size() << std::endl;
-
-        //std::cout << "LSIZE: " << LFTipStance_.size() << std::endl;
-        LFTipStance_.clear();
-        processStanceTriggerLeft_.clear();
-        //std::cout << "LSIZE: " << LFTipStance_.size() << std::endl;
-
-        // Positions for publisher
-        p.x = meanStanceLeft_(0);
-        p.y = meanStanceLeft_(1);
-        p.z = meanStanceLeft_(2);
+        if(tip == "left"){
+            meanStanceLeft_ = totalStance / float(stance.size());
+            LFTipStance_.clear();
+            processStanceTriggerLeft_.clear();
+            // Positions for publisher
+            p.x = meanStanceLeft_(0);
+            p.y = meanStanceLeft_(1);
+            p.z = meanStanceLeft_(2);
+        }
+        if(tip == "right"){
+            meanStanceRight_ = totalStance / float(stance.size());
+            RFTipStance_.clear();
+            processStanceTriggerRight_.clear();
+            // Positions for publisher
+            p.x = meanStanceRight_(0);
+            p.y = meanStanceRight_(1);
+            p.z = meanStanceRight_(2);
+        }
+        std::cout << "x Mean Left: " << meanStanceLeft_(0) << "Stance size: " << stance.size() << std::endl;
+        std::cout << "y Mean Left: " << meanStanceLeft_(1) << "Stance size: " << stance.size() << std::endl;
+        std::cout << "z Mean Left: " << meanStanceLeft_(2) << "Stance size: " << stance.size() << std::endl;
 
         // Check for nans
         if(p.x != p.x || p.y != p.y || p.z != p.z){
@@ -1186,38 +1190,6 @@ bool ElevationMap::getAverageFootTipPositions(std::string tip)
         }
         else footContactMarkerList_.points.push_back(p);
     }
-
-    if(tip == "right" && RFTipStance_.size() > 1){
-
-        geometry_msgs::Point p;
-        for (auto& n : RFTipStance_){
-            // Consider only those with state = 1
-            totalStanceRight += n;
-        }
-
-        meanStanceRight_ = totalStanceRight / float(RFTipStance_.size());
-
-        std::cout << "x Mean Right: " << meanStanceRight_(0) << "Stance Size: " << RFTipStance_.size() << std::endl;
-        std::cout << "y Mean Right: " << meanStanceRight_(1) << "Stance Size: " << RFTipStance_.size() << std::endl;
-        std::cout << "z Mean Right: " << meanStanceRight_(2) << "Stance Size: " << RFTipStance_.size() << std::endl;
-
-        //std::cout << "RSIZE: " << RFTipStance_.size() << std::endl;
-        RFTipStance_.clear();
-        processStanceTriggerRight_.clear();
-        //std::cout << "RSIZE: " << RFTipStance_.size() << std::endl;
-
-        // Positions for publisher
-        p.x = meanStanceRight_(0);
-        p.y = meanStanceRight_(1);
-        p.z = meanStanceRight_(2);
-
-        // Check for nans
-        if(p.x != p.x || p.y != p.y || p.z != p.z){
-            std::cout << "NAN FOUND!!" << std::endl;
-        }
-        else footContactMarkerList_.points.push_back(p);
-    }
-
     return true;
 }
 
@@ -1263,6 +1235,7 @@ bool ElevationMap::footTipElevationMapComparison(std::string mode)
 
     // Offset of each step versus Elevation map.
     float diff = 0;
+    float weightedDifference = 0;
 
     // Test:
     bool fastComparison = true;
@@ -1283,10 +1256,7 @@ bool ElevationMap::footTipElevationMapComparison(std::string mode)
                     diff = zLeft - heightLeft;
                     double diffCorrected = zLeft - heightLeftOffsetCorrected;
                     std::cout << "HeightDifference classical: " << diff << "HeightDifference corrected: " << diffCorrected << std::endl;
-                    if(fabs(diff) < 10.0){
-                        totalHeightDifference_ += diff;
-                        heightDifferenceComponentCounter_ += 1;
-                    }
+
 
                     // Fusion for robust error calculation.
                     Eigen::Array2d length;
@@ -1302,12 +1272,18 @@ bool ElevationMap::footTipElevationMapComparison(std::string mode)
                         double lower = std::get<0>(boundTuple);
                         double elev = std::get<1>(boundTuple);
                         double upper = std::get<2>(boundTuple);
-                        float weightedDifference = gaussianWeightedDifference(lower, elev, upper, diff);
+                        weightedDifference = gaussianWeightedDifference(lower, elev, upper, diff);
+                        std::cout << "Weighted Height Difference: " << weightedDifference << "\n";
+                    }
 
+                    // Preparing integral part for PID
+                    if(fabs(weightedDifference) < 10.0){
+                        totalHeightDifference_ += weightedDifference;
+                        heightDifferenceComponentCounter_ += 1;
                     }
 
                     // Filter for drift estimation.
-                    estimatedDrift_, estimatedDriftVariance_ = filteredDriftEstimation(diff, estimatedDrift_, estimatedDriftVariance_);
+                    estimatedDrift_, estimatedDriftVariance_ = filteredDriftEstimation(weightedDifference, estimatedDrift_, estimatedDriftVariance_);
                 }
                 else std::cout << "posLEft is outside of range!" << std::endl;
             }
@@ -1340,19 +1316,15 @@ bool ElevationMap::footTipElevationMapComparison(std::string mode)
                     diff = zRight - heightRight;
                     double diffCorrected = zRight - heightRightOffsetCorrected;
                     std::cout << "HeightDifference classical: " << diff << "HeightDifference corrected: " << diffCorrected << std::endl;
-                    if(fabs(diff) < 10.0){
-                        totalHeightDifference_ += diff;
-                        heightDifferenceComponentCounter_ += 1;
-                    }
+
 
                     // Fusion for robust error calculation.
                     Eigen::Array2d length;
                     if(rawMap_.isInside(posRight) && !std::isnan(rawMap_.atPosition("horizontal_variance_x",posRight))){
                         std::cout << "Size of fused area: " << rawMap_.atPosition("horizontal_variance_x",posRight) << " and: " << rawMap_.atPosition("horizontal_variance_y",posRight) << std::endl;
                         length[0] = std::max(6 * sqrt(rawMap_.atPosition("horizontal_variance_x",posRight)), 6 * sqrt(rawMap_.atPosition("horizontal_variance_y",posRight)));
-
                         length[1] = length[0];
-                        // HACKED!!
+
                         auto boundTuple = getFusedCellBounds(posRight, length);
                         std::cout << "lower: " << std::get<0>(boundTuple) << " elev: " << std::get<1>(boundTuple) << " upper: " << std::get<2>(boundTuple) << std::endl;
                         /// DEBUG!
@@ -1360,7 +1332,14 @@ bool ElevationMap::footTipElevationMapComparison(std::string mode)
                         double lower = std::get<0>(boundTuple);
                         double elev = std::get<1>(boundTuple);
                         double upper = std::get<2>(boundTuple);
-                        float weightedDifference = gaussianWeightedDifference(lower, elev, upper, diff);
+                        weightedDifference = gaussianWeightedDifference(lower, elev, upper, diff);
+                        std::cout << "Weighted Height Difference: " << weightedDifference << "\n";
+                    }
+
+                    // Preparing integral part for PID
+                    if(fabs(weightedDifference) < 10.0){
+                        totalHeightDifference_ += weightedDifference;
+                        heightDifferenceComponentCounter_ += 1;
                     }
 
 
@@ -1369,7 +1348,7 @@ bool ElevationMap::footTipElevationMapComparison(std::string mode)
                         estimatedDrift_ = 0;
                         estimatedDriftVariance_ = 0;
                     }
-                    estimatedDrift_, estimatedDriftVariance_ = filteredDriftEstimation(diff, estimatedDrift_, estimatedDriftVariance_);
+                    estimatedDrift_, estimatedDriftVariance_ = filteredDriftEstimation(weightedDifference, estimatedDrift_, estimatedDriftVariance_);
                 }
                 else std::cout << "posLEft is outside of range!" << std::endl;
             }
@@ -1381,7 +1360,7 @@ bool ElevationMap::footTipElevationMapComparison(std::string mode)
           float heightDiff, heightDiffPID;
           if(heightDifferenceComponentCounter_ > 0.0){
               heightDiff = totalHeightDifference_ / double(heightDifferenceComponentCounter_);
-              heightDiffPID = differenceCalculationUsingPID(diff, oldDiff_, heightDiff);
+              heightDiffPID = differenceCalculationUsingPID(weightedDifference, oldDiff_, heightDiff);
           }
           else heightDiff = heightDiffPID = 0.0;
           if(heightDifferenceComponentCounter_ > 30 && mode == "fast"){
@@ -1390,7 +1369,7 @@ bool ElevationMap::footTipElevationMapComparison(std::string mode)
       }
 
       // Old diff assignment for differential parts of the controllers.
-      oldDiff_ = diff;
+      oldDiff_ = weightedDifference;
 
       // Assign class Variable.
 
@@ -1420,6 +1399,22 @@ bool ElevationMap::footTipElevationMapComparison(std::string mode)
 
       grid_map_msgs::GridMap mapMessage;
       GridMapRosConverter::toMessage(rawMap_, mapMessage);
+
+
+
+      // Listen to tf to transform the grid map message
+      tf::StampedTransform trans;
+      try{
+            baseOdomTransformListener_.lookupTransform("/odom", "odom_z_corrected",
+                                     ros::Time(0), trans);
+          }
+          catch (tf::TransformException ex){
+            ROS_ERROR("%s",ex.what());
+          }
+      std::cout << "TRANSFORM LISTENED: z: " << trans.getOrigin()[2] << std::endl;
+      std::cout << "VS. Height Difference: " << heightDifferenceFromComparison_ << std::endl;
+
+
 
 
       // Concept: publish elevation map in map_corrected
@@ -1560,15 +1555,16 @@ float ElevationMap::gaussianWeightedDifference(double lowerBound, double elevati
 {
     // Error difference weighted as (1 - gaussian), s.t. intervall from elevation map to bound contains two standard deviations
     double weight = 0.0;
+    float standardDeviationFactor = 0.5;  //! THIS MAY BE A LEARNING FUNCTION IN FUTURE!!
     if(diff < 0.0){
-        weight = normalDistribution(diff, 0.0, fabs(elevation-lowerBound)/2.0);
+        weight = normalDistribution(diff, 0.0, fabs(elevation-lowerBound)*standardDeviationFactor);
     }
     else{
-        weight = normalDistribution(diff, 0.0, fabs(elevation-upperBound)/2.0);
+        weight = normalDistribution(diff, 0.0, fabs(elevation-upperBound)*standardDeviationFactor);
     }
 
     // Constrain to be maximally 1.
-    if(weight > 1.0) weight = 1.0; // For security, basically not necessary
+    if(weight > 1.0) weight = 1.0; // For security, basically not necessary (as the weighting term is left away in the normalDistribution function)
 
     std::cout << "WEIGHT: " << (1-weight) << " diff: " << diff << " elevation: " << elevation <<
                  " lower: " << lowerBound << " upper: " << upperBound << std::endl;
