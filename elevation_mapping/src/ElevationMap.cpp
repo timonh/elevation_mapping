@@ -63,7 +63,7 @@ ElevationMap::ElevationMap(ros::NodeHandle nodeHandle)
   visbilityCleanupMapPublisher_ = nodeHandle_.advertise<grid_map_msgs::GridMap>("visibility_cleanup_map", 1);
 
   // (New:) Foot tip position Subscriber for Foot tip - Elevation comparison
-  bool use_bag = false;
+  bool use_bag = true;
   if(!use_bag) footTipStanceSubscriber_ = nodeHandle_.subscribe("/state_estimator/quadruped_state", 1, &ElevationMap::footTipStanceCallback, this);
   else footTipStanceSubscriber_ = nodeHandle_.subscribe("/state_estimator/quadruped_state_remapped", 1, &ElevationMap::footTipStanceCallback, this);
 
@@ -79,7 +79,7 @@ ElevationMap::ElevationMap(ros::NodeHandle nodeHandle)
   estimatedDrift_ = 0;
   estimatedDriftVariance_ = 0;
   // Some Parameters.
-  transformInCorrectedFrame_ = false; // Use map layer addition if false..
+  transformInCorrectedFrame_ = true; // Use map layer addition if false..
 
   // END NEW
 
@@ -118,8 +118,11 @@ bool ElevationMap::add(const pcl::PointCloud<pcl::PointXYZRGB>::Ptr pointCloud, 
   //std::cout << "TRANSFORMATION                                                          Z: " << someothervalue << std::endl;
   // END NEW TESTING
 
+  // NEW DEBUGGING
+  std::cout << "ELEVATION MAP ADD FUNCTION Checkpoint!! " << std::endl;
+  std::cout << " ...  " << std::endl;
 
-
+  // DEBUGGING
 
 
   if (pointCloud->size() != pointCloudVariances.size()) {
@@ -1388,7 +1391,7 @@ bool ElevationMap::footTipElevationMapComparison(std::string mode)
       frameCorrection();
 
       // IF NOT ADDING MAPS, but translating frames.
-      if(transformInCorrectedFrame_) rawMap_["elevation_corrected"] = rawMap_["elevation"];
+      if(false) rawMap_["elevation_corrected"] = rawMap_["elevation"]; // HACKED!!!
       else{
           rawMap_["elevation_corrected"].setConstant(heightDifferenceFromComparison_); // HACKED FOR TESTING!! -> TODO: create nice Kalman Filter!!
           //for(unsigned int n = 0; n < rawMap_.getLayers().size(); ++n){
@@ -1418,7 +1421,7 @@ bool ElevationMap::footTipElevationMapComparison(std::string mode)
 
 
       // Concept: publish elevation map in map_corrected
-      if(transformInCorrectedFrame_) mapMessage.info.header.frame_id = "odom_z_corrected";
+      //if(transformInCorrectedFrame_) mapMessage.info.header.frame_id = "odom_z_corrected";
 
 
       if(comparisonMode_ == "slow") elevationMapFastPublisher_.publish(mapMessage);
@@ -1514,7 +1517,7 @@ std::tuple<double, double, double> ElevationMap::getFusedCellBounds(const Eigen:
         fuseArea(position, length);
         std::cout << "HERE IT IS DONE" << std::endl;
 
-        elevationFused = fusedMap_.atPosition("elevation", position); //HACKED!!
+        elevationFused = fusedMap_.atPosition("elevation", position);
         lowerFused = fusedMap_.atPosition("lower_bound", position);
         upperFused = fusedMap_.atPosition("upper_bound", position);
 
@@ -1529,12 +1532,19 @@ bool ElevationMap::frameCorrection()
     tf::Transform odomMapTransform;
 
     odomMapTransform.setIdentity();
-    odomMapTransform.getOrigin()[2] += heightDifferenceFromComparison_;  // HACKED!!!! TO CHECK THE TRANSFORM RATE
+    odomMapTransform.getOrigin()[2] += heightDifferenceFromComparison_;
 
     std::cout << "heightDifference inside frameCorrection: " << heightDifferenceFromComparison_ << std::endl;
     std::cout << "TRANSFORM LISTENED AFTER OFFSET CORRECTION: z: " << odomMapTransform.getOrigin()[2] << std::endl;
 
-    mapCorrectedOdomTransformBroadcaster_.sendTransform(tf::StampedTransform(odomMapTransform, ros::Time::now(), "odom", "odom_z_corrected"));
+
+    ros::Time stamp = ros::Time().fromNSec(fusedMap_.getTimestamp());
+
+    std::cout << "TIMESTAMP PUBLISHED THE odom_z_corrected TRANSFORM!!: " << stamp << std::endl;
+
+    mapCorrectedOdomTransformBroadcaster_.sendTransform(tf::StampedTransform(odomMapTransform, ros::Time().fromNSec(fusedMap_.getTimestamp()), "odom", "odom_z_corrected"));
+
+    std::cout << "TIMESTAMP CHECKPOINT DEBUG" << std::endl;
 
     return true;
 }
@@ -1548,7 +1558,7 @@ float ElevationMap::differenceCalculationUsingPID(float diff, float old_diff, fl
 
     // Nan prevention.
     if(isnan(old_diff)) return 0.0;
-    else return kp * diff + ki * totalDiff + kd * (diff - old_diff);
+    else return kp * diff + ki * totalDiff + kd * (diff - old_diff); // USING ALL FOOT TIP POSITIONS IN LAST FRAME (MORE EXACT WOULD BE AVERAGE OF LAST TWO)
 }
 
 float ElevationMap::gaussianWeightedDifference(double lowerBound, double elevation, double upperBound, double diff)

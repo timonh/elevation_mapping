@@ -281,6 +281,12 @@ void ElevationMapping::pointCloudCallback(
     robotPoseCovariance = Eigen::Map<const Eigen::MatrixXd>(poseMessage->pose.covariance.data(), 6, 6);
   }
 
+  //! FRAME TESTS:
+  std::cout << "Pointcloud frame id here!: " << pointCloud->header.frame_id << std::endl;
+
+
+  //! END TESTS
+
   // Process point cloud.
   PointCloud<PointXYZRGB>::Ptr pointCloudProcessed(new PointCloud<PointXYZRGB>);
   Eigen::VectorXf measurementVariances;
@@ -293,10 +299,22 @@ void ElevationMapping::pointCloudCallback(
     return;
   }
 
+
+  std::cout << "Pointcloud PROCESSED frame id here!: " << pointCloudProcessed->header.frame_id << std::endl;  // IT IS ODOM BY NOW
+
+  // Hacked !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+  // Hacked
+  // Hacked
+  // HACK: JUST AJUST THE FRAME ID
+
+
   // TODO: Compare them here
   //unsigned int m = 4000;
   //const float& measurement400 = measurementVariances(m);
   //std::cout << "meas: " << measurement400 << std::endl;
+
+  // TODO! Pointcloud z transformation here..
+
 
   // TEST OUTPUTS
   std::cout << "z component of transform sensor to map: " << sensorProcessor_->transformationSensorToMap_.affine()(2,3) << std::endl;
