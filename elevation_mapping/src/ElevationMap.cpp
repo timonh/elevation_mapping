@@ -366,41 +366,19 @@ bool ElevationMap::fuse(const grid_map::Index& topLeftIndex, const grid_map::Ind
 {
   ROS_DEBUG("Fusing elevation map...");
 
-  // DEBUG
-  std::cout << "Called the fusion function!! *********************************************************************" << std::endl;
-  std::cout << "Called the fusion function!! *********************************************************************" << std::endl;
-  std::cout << "Called the fusion function!! *********************************************************************" << std::endl;
-  std::cout << "Called the fusion function!! *********************************************************************" << std::endl;
-  std::cout << "Called the fusion function!! *********************************************************************" << std::endl;
-  std::cout << "Called the fusion function!! *********************************************************************" << std::endl;
-  // END DEBUG
-
   // Nothing to do.
   if ((size == 0).any()) return false;
-
-  // DEBUG:
-  std::cout << "Checkpoint 4 " << std::endl;
 
   // Initializations.
   const ros::WallTime methodStartTime(ros::WallTime::now());
   boost::recursive_mutex::scoped_lock scopedLock(fusedMapMutex_);
 
-  // DEBUG:
-  std::cout << "Checkpoint 3a " << std::endl;
-
-
   //! ATTENTION!!! REMOVED THIS SCOPED LOCK!! CHECK WHAT THE CONSEQUENCE IS..
   // Copy raw elevation map data for safe multi-threading.
   //boost::recursive_mutex::scoped_lock scopedLockForRawData(rawMapMutex_);
 
-  // DEBUG:
-  std::cout << "Checkpoint 3b " << std::endl;
-
   auto& rawMapCopy = rawMap_; // HACKING AROUND!!!
   //scopedLockForRawData.unlock();
-
-  // DEBUG:
-  std::cout << "Checkpoint 3 " << std::endl;
 
   // More initializations.
   const double halfResolution = fusedMap_.getResolution() / 2.0;
@@ -414,9 +392,6 @@ bool ElevationMap::fuse(const grid_map::Index& topLeftIndex, const grid_map::Ind
   // Align fused map with raw map.
   if (rawMapCopy.getPosition() != fusedMap_.getPosition()) fusedMap_.move(rawMapCopy.getPosition());
 
-  // DEBUG:
-  std::cout << "Checkpoint 1 " << std::endl;
-
   // For each cell in requested area.
   for (SubmapIterator areaIterator(rawMapCopy, topLeftIndex, size); !areaIterator.isPastEnd(); ++areaIterator) {
 
@@ -428,8 +403,6 @@ bool ElevationMap::fuse(const grid_map::Index& topLeftIndex, const grid_map::Ind
       // TODO.
       continue;
     }
-
-
 
     // Get size of error ellipse.
     const float& sigmaXsquare = rawMapCopy.at("horizontal_variance_x", *areaIterator);
@@ -1214,14 +1187,6 @@ bool ElevationMap::footTipElevationMapComparison(std::string tip)
     //boost::recursive_mutex::scoped_lock scopedLockForFootTipStanceProcessor(footTipStanceComparisonMutex_);
     //boost::recursive_mutex::scoped_lock scopedLockForFootTipStanceProcessor(footTipStanceProcessorMutex_);
 
-    float xLeft, yLeft, zLeft, xRight, yRight, zRight;
-    xLeft = meanStanceLeft_(0);
-    yLeft = meanStanceLeft_(1);
-    zLeft = meanStanceLeft_(2);
-    xRight = meanStanceRight_(0);
-    yRight = meanStanceRight_(1);
-    zRight = meanStanceRight_(2);
-
     // New version
     double xTip, yTip, zTip;
     if(tip == "left"){
@@ -1238,7 +1203,6 @@ bool ElevationMap::footTipElevationMapComparison(std::string tip)
     // TODO: Clean nan supression scheme.
     bool useNewMethod = true;
     if(useNewMethod){
-
 
         // Offset of each step versus Elevation map.
         double verticalDifference = 0;
@@ -1262,15 +1226,12 @@ bool ElevationMap::footTipElevationMapComparison(std::string tip)
                 double verticalDifferenceCorrected = zTip - heightMapRawElevationCorrected;
                 std::cout << "HeightDifference classical: " << verticalDifference << "HeightDifference corrected: " << verticalDifferenceCorrected << std::endl;
 
-                // REMEMBER: left out the isnan check! -> may be necessary!!!
-
                 // Use 3 standard deviations of the uncertainty ellipse of the foot tip positions as fusion area.
                 Eigen::Array2d ellipseAxes;
                 ellipseAxes[0] = ellipseAxes[1] = std::max(6 * sqrt(rawMap_.atPosition("horizontal_variance_x",tipPosition)),
                                           6 * sqrt(rawMap_.atPosition("horizontal_variance_y",tipPosition)));
 
-
-                // TODO: Properly nancheck the fused cell stuff! AND CHECK THAT THE FUSION AREA IS ALL INSIDE OF THE ELEVATION MAP!!
+                // TODO: Properly nancheck the fused cell stuff! AND CHECK THAT THE FUSION AREA IS ALL INSIDE OF THE ELEVATION MAP!! Maybe not nceessary, as the nancheck suffices..
                 // Get lower and upper bound of the fused map.
                 auto boundTuple = getFusedCellBounds(tipPosition, ellipseAxes);
                 double lowerBoundFused = std::get<0>(boundTuple);
@@ -1279,8 +1240,6 @@ bool ElevationMap::footTipElevationMapComparison(std::string tip)
                 std::cout << "lower: " << lowerBoundFused << " elev: " << elevationFused << " upper: " << upperBoundFused << std::endl;
                 weightedVerticalDifferenceIncrement = gaussianWeightedDifferenceIncrement(lowerBoundFused, elevationFused, upperBoundFused, verticalDifference);
 
-
-
                 // Store the vertical difference history in a vector for PID controlling.
                 weightedDifferenceVector_.push_back(heightDifferenceFromComparison_ + weightedVerticalDifferenceIncrement); // TODO: check viability
                 if(weightedDifferenceVector_.size() >= 6) weightedDifferenceVector_.erase(weightedDifferenceVector_.begin());
@@ -1288,26 +1247,24 @@ bool ElevationMap::footTipElevationMapComparison(std::string tip)
 
                 // TODO: Make nicer
                 double heightDiffPID = differenceCalculationUsingPID();
-
                 heightDifferenceFromComparison_ = heightDiffPID;
             }
-
-
-
-
             else std::cout << "heightDifferenceFromComparison_ wasnt changed because NAN was found" << std::endl;
-
-
-
-
-
-
-
-
         }
         else std::cout << "heightDifferenceFromComparison_ wasnt changed because tip is not inside map area" << std::endl;
-
     }
+
+    // Publish frame, offset by the height difference parameter.
+    frameCorrection();
+
+    // Add layer that is shifted back by the height difference parameter.
+    rawMap_["elevation_corrected"].setConstant(heightDifferenceFromComparison_);
+    rawMap_["elevation_corrected"] = rawMap_["elevation"] + rawMap_["elevation_corrected"];
+
+    // Publish the elevation map with the new layer, at the frequency of the stances.
+    grid_map_msgs::GridMap mapMessage;
+    GridMapRosConverter::toMessage(rawMap_, mapMessage);
+    elevationMapFastPublisher_.publish(mapMessage);
 
 //    // Offset of each step versus Elevation map.
 //    double diff = 0;
@@ -1430,7 +1387,7 @@ bool ElevationMap::footTipElevationMapComparison(std::string tip)
 //        }
 //    }
 
-      if(rawMap_.getSize()(0) > 1){
+    //  if(rawMap_.getSize()(0) > 1){
 //          // Actual Difference quantification:
 //          float heightDiff, heightDiffPID;
 //          if(heightDifferenceComponentCounter_ > 0.0){
@@ -1465,34 +1422,34 @@ bool ElevationMap::footTipElevationMapComparison(std::string tip)
           //rawMap_.add("elevation_fast_addition"); // TODO: think if this only adds a layer or actually adds height to "elevation"
           //grid_map::GridMap map;
 
-          frameCorrection();
+          //frameCorrection();
 
           // IF NOT ADDING MAPS, but translating frames.
-          if(false) rawMap_["elevation_corrected"] = rawMap_["elevation"]; // HACKED!!!
-          else{
-              rawMap_["elevation_corrected"].setConstant(heightDifferenceFromComparison_); // HACKED FOR TESTING!! -> TODO: create nice Kalman Filter!!
-              //for(unsigned int n = 0; n < rawMap_.getLayers().size(); ++n){
-              //    std::cout << "LAYER: " << n << " :" << rawMap_.getLayers()[n] << std::endl;
-              //}
-              rawMap_["elevation_corrected"] = rawMap_["elevation"] + rawMap_["elevation_corrected"];
-          }
+//          if(false) rawMap_["elevation_corrected"] = rawMap_["elevation"]; // HACKED!!!
+//          else{
+//              rawMap_["elevation_corrected"].setConstant(heightDifferenceFromComparison_); // HACKED FOR TESTING!! -> TODO: create nice Kalman Filter!!
+//              //for(unsigned int n = 0; n < rawMap_.getLayers().size(); ++n){
+//              //    std::cout << "LAYER: " << n << " :" << rawMap_.getLayers()[n] << std::endl;
+//              //}
+//              rawMap_["elevation_corrected"] = rawMap_["elevation"] + rawMap_["elevation_corrected"];
+//          }
 
-          grid_map_msgs::GridMap mapMessage;
-          GridMapRosConverter::toMessage(rawMap_, mapMessage);
+//          grid_map_msgs::GridMap mapMessage;
+//          GridMapRosConverter::toMessage(rawMap_, mapMessage);
 
 
 
           // Listen to tf to transform the grid map message
-          tf::StampedTransform trans;
-          try{
-                baseOdomTransformListener_.lookupTransform("/odom", "odom_z_corrected",
-                                         ros::Time(0), trans);
-              }
-              catch (tf::TransformException ex){
-                ROS_ERROR("%s",ex.what());
-              }
-          std::cout << "TRANSFORM LISTENED: z: " << trans.getOrigin()[2] << std::endl;
-          std::cout << "VS. Height Difference: " << heightDifferenceFromComparison_ << std::endl;
+//          tf::StampedTransform trans;
+//          try{
+//                baseOdomTransformListener_.lookupTransform("/odom", "odom_z_corrected",
+//                                         ros::Time(0), trans);
+//              }
+//              catch (tf::TransformException ex){
+//                ROS_ERROR("%s",ex.what());
+//              }
+//          std::cout << "TRANSFORM LISTENED: z: " << trans.getOrigin()[2] << std::endl;
+//          std::cout << "VS. Height Difference: " << heightDifferenceFromComparison_ << std::endl;
 
 
 
@@ -1501,7 +1458,7 @@ bool ElevationMap::footTipElevationMapComparison(std::string tip)
           //if(transformInCorrectedFrame_) mapMessage.info.header.frame_id = "odom_z_corrected";
 
 
-          elevationMapFastPublisher_.publish(mapMessage);
+      //    elevationMapFastPublisher_.publish(mapMessage);
           //std::cout << "CORRECTED!!" << std::endl;
           //heightDifferenceComponentCounter_ = 0;
           //totalHeightDifference_ = 0.0;
@@ -1524,9 +1481,7 @@ bool ElevationMap::footTipElevationMapComparison(std::string tip)
 
           ///
           /// END TESTS
-
-
-    }
+   // }
 
     return true;
 }
