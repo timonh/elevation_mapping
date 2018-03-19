@@ -75,9 +75,10 @@ ElevationMap::ElevationMap(ros::NodeHandle nodeHandle)
   comparisonMode_ = "slow"; // "slow" highly recommended (developement feature)
 
   // Class Variable to model the compared difference evolution.
-  oldDiff_ = 0;
-  estimatedDrift_ = 0;
-  estimatedDriftVariance_ = 0;
+  oldDiff_ = 0.0;
+  oldDiffPID_ = 0.0;
+  estimatedDrift_ = 0.0;
+  estimatedDriftVariance_ = 0.0;
   // Some Parameters.
   transformInCorrectedFrame_ = true; // Use map layer addition if false..
 
@@ -1009,6 +1010,7 @@ bool ElevationMap::processStance(std::string tip)
     deleteLastEntriesOfStances(tip);
     getAverageFootTipPositions(tip);
     publishAveragedFootTipPositionMarkers();
+    footTipElevationMapComparison(tip);
 
 //    // Delete the last 10 entries of the Foot Stance Position Vector, as these are used for transition detection
 //    if(LFTipStance_.size() > 10 && tip == "Left"){
@@ -1201,252 +1203,327 @@ bool ElevationMap::publishAveragedFootTipPositionMarkers()
     // Prevent Nans to be published.
     footContactPublisher_.publish(footContactMarkerList_);
 
-    if(comparisonMode_ == "slow") footTipElevationMapComparison(comparisonMode_);
+
     //std::cout << "LFTipsStance Size: " << LFTipStance_.size() << std::endl;
     return true;
 }
 
 
-bool ElevationMap::footTipElevationMapComparison(std::string mode)
+bool ElevationMap::footTipElevationMapComparison(std::string tip)
 {
-
     //boost::recursive_mutex::scoped_lock scopedLockForFootTipStanceProcessor(footTipStanceComparisonMutex_);
     //boost::recursive_mutex::scoped_lock scopedLockForFootTipStanceProcessor(footTipStanceProcessorMutex_);
 
-    // TODO: finish difference comparison flexibility adjustment!!
     float xLeft, yLeft, zLeft, xRight, yRight, zRight;
-    if(mode == "slow"){
-        xLeft = meanStanceLeft_(0);
-        yLeft = meanStanceLeft_(1);
-        zLeft = meanStanceLeft_(2);
-        xRight = meanStanceRight_(0);
-        yRight = meanStanceRight_(1);
-        zRight = meanStanceRight_(2);
+    xLeft = meanStanceLeft_(0);
+    yLeft = meanStanceLeft_(1);
+    zLeft = meanStanceLeft_(2);
+    xRight = meanStanceRight_(0);
+    yRight = meanStanceRight_(1);
+    zRight = meanStanceRight_(2);
 
+    // New version
+    double xTip, yTip, zTip;
+    if(tip == "left"){
+        xTip = meanStanceLeft_(0);
+        yTip = meanStanceLeft_(1);
+        zTip = meanStanceLeft_(2);
     }
-    if(mode == "fast"){
-        xLeft = LFTipPostiion_(0);
-        yLeft = LFTipPostiion_(1);
-        zLeft = LFTipPostiion_(2);
-        xRight = RFTipPostiion_(0);
-        yRight = RFTipPostiion_(1);
-        zRight = RFTipPostiion_(2);
+    else if(tip == "right"){
+        xTip = meanStanceRight_(0);
+        yTip = meanStanceRight_(1);
+        zTip = meanStanceRight_(2);
     }
 
-
-    bool print_horizontal_variances = false;
-
-    // Offset of each step versus Elevation map.
-    float diff = 0;
-    float weightedDifference = 0;
-
-    // Test:
-    bool fastComparison = true;
-    if(fastComparison){
-        if(LFTipState_ == 1){
-            Position posLeft(xLeft, yLeft);
-
-            // Only if rawMap_ has entries.
-            if(rawMap_.getSize()(0) > 1){
-
-                float heightLeft, varLeft, heightLeftOffsetCorrected;
-                std::cout << "Just before LEFT Map comparison" << std::endl;
-                if(rawMap_.isInside(posLeft)){
-                    heightLeft = rawMap_.atPosition("elevation", posLeft);
-                    varLeft = rawMap_.atPosition("variance", posLeft);
-                    heightLeftOffsetCorrected = rawMap_.atPosition("elevation_corrected", posLeft);
-
-                    diff = zLeft - heightLeft;
-                    double diffCorrected = zLeft - heightLeftOffsetCorrected;
-                    std::cout << "HeightDifference classical: " << diff << "HeightDifference corrected: " << diffCorrected << std::endl;
+    // TODO: Clean nan supression scheme.
+    bool useNewMethod = true;
+    if(useNewMethod){
 
 
-                    // Fusion for robust error calculation.
-                    Eigen::Array2d length;
-                    if(rawMap_.isInside(posLeft) && !std::isnan(rawMap_.atPosition("horizontal_variance_x",posLeft))){
-                        std::cout << "Size of fused area: " << rawMap_.atPosition("horizontal_variance_x",posLeft) << " and: " << rawMap_.atPosition("horizontal_variance_y",posLeft) << std::endl;
+        // Offset of each step versus Elevation map.
+        double verticalDifference = 0;
+        // Weighted offset depending on the upper and lower bounds of the fused map.
+        double weightedVerticalDifferenceIncrement = 0;
 
-                        // Use 3 standard deviations in each direction for robustness of fusion
-                        length[0] = std::max(6 * sqrt(rawMap_.atPosition("horizontal_variance_x",posLeft)), 6 * sqrt(rawMap_.atPosition("horizontal_variance_y",posLeft)));
-                        length[1] = length[0];
-                        // HACKED!!!
-                        auto boundTuple = getFusedCellBounds(posLeft, length);
-                        std::cout << "lower: " << std::get<0>(boundTuple) << " elev: " << std::get<1>(boundTuple) << " upper: " << std::get<2>(boundTuple) << std::endl;
-                        double lower = std::get<0>(boundTuple);
-                        double elev = std::get<1>(boundTuple);
-                        double upper = std::get<2>(boundTuple);
-                        weightedDifference = gaussianWeightedDifference(lower, elev, upper, diff);
-                        std::cout << "Weighted Height Difference: " << weightedDifference << "\n";
-                    }
+        // Horizontal position of the foot tip.
+        Position tipPosition(xTip, yTip);
 
-                    // Preparing integral part for PID
-                    if(fabs(weightedDifference) < 10.0){
-                        totalHeightDifference_ += weightedDifference;
-                        heightDifferenceComponentCounter_ += 1;
-                    }
+        // Make sure that the state is 1 and the foot tip is inside area covered by the elevation map.
+        if(rawMap_.isInside(tipPosition)){
+            float heightMapRaw = rawMap_.atPosition("elevation", tipPosition);
+            float varianceMapRaw = rawMap_.atPosition("variance", tipPosition);
+            float heightMapRawElevationCorrected = rawMap_.atPosition("elevation_corrected", tipPosition);
 
-                    // Filter for drift estimation.
-                    estimatedDrift_, estimatedDriftVariance_ = filteredDriftEstimation(weightedDifference, estimatedDrift_, estimatedDriftVariance_);
-                }
-                else std::cout << "posLEft is outside of range!" << std::endl;
+            // NANCHECK HERE TODO TODO
+            if(!isnan(heightMapRaw)){
+
+                // Calculate difference.
+                verticalDifference = zTip - heightMapRaw;
+                double verticalDifferenceCorrected = zTip - heightMapRawElevationCorrected;
+                std::cout << "HeightDifference classical: " << verticalDifference << "HeightDifference corrected: " << verticalDifferenceCorrected << std::endl;
+
+                // REMEMBER: left out the isnan check! -> may be necessary!!!
+
+                // Use 3 standard deviations of the uncertainty ellipse of the foot tip positions as fusion area.
+                Eigen::Array2d ellipseAxes;
+                ellipseAxes[0] = ellipseAxes[1] = std::max(6 * sqrt(rawMap_.atPosition("horizontal_variance_x",tipPosition)),
+                                          6 * sqrt(rawMap_.atPosition("horizontal_variance_y",tipPosition)));
+
+
+                // TODO: Properly nancheck the fused cell stuff! AND CHECK THAT THE FUSION AREA IS ALL INSIDE OF THE ELEVATION MAP!!
+                // Get lower and upper bound of the fused map.
+                auto boundTuple = getFusedCellBounds(tipPosition, ellipseAxes);
+                double lowerBoundFused = std::get<0>(boundTuple);
+                double elevationFused = std::get<1>(boundTuple);
+                double upperBoundFused = std::get<2>(boundTuple);
+                std::cout << "lower: " << lowerBoundFused << " elev: " << elevationFused << " upper: " << upperBoundFused << std::endl;
+                weightedVerticalDifferenceIncrement = gaussianWeightedDifferenceIncrement(lowerBoundFused, elevationFused, upperBoundFused, verticalDifference);
+
+
+
+                // Store the vertical difference history in a vector for PID controlling.
+                weightedDifferenceVector_.push_back(heightDifferenceFromComparison_ + weightedVerticalDifferenceIncrement); // TODO: check viability
+                if(weightedDifferenceVector_.size() >= 6) weightedDifferenceVector_.erase(weightedDifferenceVector_.begin());
+                std::cout << "Weighted Height Difference: " << weightedDifferenceVector_[0] << "\n";
+
+                // TODO: Make nicer
+                double heightDiffPID = differenceCalculationUsingPID();
+
+                heightDifferenceFromComparison_ = heightDiffPID;
             }
+
+
+
+
+            else std::cout << "heightDifferenceFromComparison_ wasnt changed because NAN was found" << std::endl;
+
+
+
+
+
+
+
+
         }
-        //else std::cout << "LEFT LIFTED!!!" << std::endl;
+        else std::cout << "heightDifferenceFromComparison_ wasnt changed because tip is not inside map area" << std::endl;
 
-        if(RFTipState_ == 1){
-            Position posRight(xRight, yRight);
-
-            // Only if rawMap_ has entries.
-            if(rawMap_.getSize()(0) > 1){
-
-                std::cout << "Just before RIGHT Map comparison" << std::endl;
-
-                float heightRight, varRight, horVarRight, heightRightOffsetCorrected;
-                if(rawMap_.isInside(posRight)){
-                    heightRight = rawMap_.atPosition("elevation", posRight);
-                    varRight = rawMap_.atPosition("variance", posRight);
-                    horVarRight = rawMap_.atPosition("horizontal_variance_x", posRight);
-                    heightRightOffsetCorrected = rawMap_.atPosition("elevation_corrected", posRight);
-
-                    std::cout << "Just after RIGHT Map comparison" << std::endl;
-
-                    if(print_horizontal_variances){
-                        std::cout << "Right: horizontal_variance_x: " << rawMap_.atPosition("horizontal_variance_x",posRight) << std::endl;
-                        std::cout << "Right: horizontal_variance_y: " << rawMap_.atPosition("horizontal_variance_y",posRight) << std::endl;
-                        std::cout << "Right: horizontal_variance_xy: " << rawMap_.atPosition("horizontal_variance_xy",posRight) << std::endl;
-                    }
-
-                    diff = zRight - heightRight;
-                    double diffCorrected = zRight - heightRightOffsetCorrected;
-                    std::cout << "HeightDifference classical: " << diff << "HeightDifference corrected: " << diffCorrected << std::endl;
-
-
-                    // Fusion for robust error calculation.
-                    Eigen::Array2d length;
-                    if(rawMap_.isInside(posRight) && !std::isnan(rawMap_.atPosition("horizontal_variance_x",posRight))){
-                        std::cout << "Size of fused area: " << rawMap_.atPosition("horizontal_variance_x",posRight) << " and: " << rawMap_.atPosition("horizontal_variance_y",posRight) << std::endl;
-                        length[0] = std::max(6 * sqrt(rawMap_.atPosition("horizontal_variance_x",posRight)), 6 * sqrt(rawMap_.atPosition("horizontal_variance_y",posRight)));
-                        length[1] = length[0];
-
-                        auto boundTuple = getFusedCellBounds(posRight, length);
-                        std::cout << "lower: " << std::get<0>(boundTuple) << " elev: " << std::get<1>(boundTuple) << " upper: " << std::get<2>(boundTuple) << std::endl;
-                        /// DEBUG!
-                        std::cout << "RIGHTSIDE \n";
-                        double lower = std::get<0>(boundTuple);
-                        double elev = std::get<1>(boundTuple);
-                        double upper = std::get<2>(boundTuple);
-                        weightedDifference = gaussianWeightedDifference(lower, elev, upper, diff);
-                        std::cout << "Weighted Height Difference: " << weightedDifference << "\n";
-                    }
-
-                    // Preparing integral part for PID
-                    if(fabs(weightedDifference) < 10.0){
-                        totalHeightDifference_ += weightedDifference;
-                        heightDifferenceComponentCounter_ += 1;
-                    }
-
-
-                    // Filter for drift estimation.
-                    if(std::isnan(estimatedDrift_) || std::isnan(estimatedDriftVariance_)){
-                        estimatedDrift_ = 0;
-                        estimatedDriftVariance_ = 0;
-                    }
-                    estimatedDrift_, estimatedDriftVariance_ = filteredDriftEstimation(weightedDifference, estimatedDrift_, estimatedDriftVariance_);
-                }
-                else std::cout << "posLEft is outside of range!" << std::endl;
-            }
-        }
     }
 
-    if(rawMap_.getSize()(0) > 1){
-          // Actual Difference quantification:
-          float heightDiff, heightDiffPID;
-          if(heightDifferenceComponentCounter_ > 0.0){
-              heightDiff = totalHeightDifference_ / double(heightDifferenceComponentCounter_);
-              heightDiffPID = differenceCalculationUsingPID(weightedDifference, oldDiff_, heightDiff);
-          }
-          else heightDiff = heightDiffPID = 0.0;
-          if(heightDifferenceComponentCounter_ > 30 && mode == "fast"){
-              totalHeightDifference_ = 0.0;
-              heightDifferenceComponentCounter_ = 0;
-      }
+//    // Offset of each step versus Elevation map.
+//    double diff = 0;
+//    double weightedDifference = 0;
 
-      // Old diff assignment for differential parts of the controllers.
-      oldDiff_ = weightedDifference;
+//    // Test:
+//    bool fastComparison = true;
+//    if(fastComparison){
+//        if(LFTipState_ == 1){
+//            Position posLeft(xLeft, yLeft);
 
-      // Assign class Variable.
+//            // Only if rawMap_ has entries.
+//            if(rawMap_.getSize()(0) > 1){
 
-      //heightDifferenceFromComparison_ = heightDiff;
-      //! TEST:
-      heightDifferenceFromComparison_ = heightDiffPID;
-      //! END TEST
+//                float heightLeft, varLeft, heightLeftOffsetCorrected;
+//                std::cout << "Just before LEFT Map comparison" << std::endl;
+//                if(rawMap_.isInside(posLeft)){
+//                    heightLeft = rawMap_.atPosition("elevation", posLeft);
+//                    varLeft = rawMap_.atPosition("variance", posLeft);
+//                    heightLeftOffsetCorrected = rawMap_.atPosition("elevation_corrected", posLeft);
 
-
-      std::cout << "Height Diff after calculation: " << heightDiff << "and Height diff PID: " << heightDiffPID << std::endl;
-
-      // TESTING
-      //rawMap_.add("elevation_fast_addition"); // TODO: think if this only adds a layer or actually adds height to "elevation"
-      //grid_map::GridMap map;
-
-      frameCorrection();
-
-      // IF NOT ADDING MAPS, but translating frames.
-      if(false) rawMap_["elevation_corrected"] = rawMap_["elevation"]; // HACKED!!!
-      else{
-          rawMap_["elevation_corrected"].setConstant(heightDifferenceFromComparison_); // HACKED FOR TESTING!! -> TODO: create nice Kalman Filter!!
-          //for(unsigned int n = 0; n < rawMap_.getLayers().size(); ++n){
-          //    std::cout << "LAYER: " << n << " :" << rawMap_.getLayers()[n] << std::endl;
-          //}
-          rawMap_["elevation_corrected"] = rawMap_["elevation"] + rawMap_["elevation_corrected"];
-      }
-
-      grid_map_msgs::GridMap mapMessage;
-      GridMapRosConverter::toMessage(rawMap_, mapMessage);
+//                    diff = zLeft - heightLeft;
+//                    double diffCorrected = zLeft - heightLeftOffsetCorrected;
+//                    std::cout << "HeightDifference classical: " << diff << "HeightDifference corrected: " << diffCorrected << std::endl;
 
 
+//                    // Fusion for robust error calculation.
+//                    Eigen::Array2d length;
+//                    if(rawMap_.isInside(posLeft) && !std::isnan(rawMap_.atPosition("horizontal_variance_x",posLeft))){
+//                        std::cout << "Size of fused area: " << rawMap_.atPosition("horizontal_variance_x",posLeft) << " and: " << rawMap_.atPosition("horizontal_variance_y",posLeft) << std::endl;
 
-      // Listen to tf to transform the grid map message
-      tf::StampedTransform trans;
-      try{
-            baseOdomTransformListener_.lookupTransform("/odom", "odom_z_corrected",
-                                     ros::Time(0), trans);
-          }
-          catch (tf::TransformException ex){
-            ROS_ERROR("%s",ex.what());
-          }
-      std::cout << "TRANSFORM LISTENED: z: " << trans.getOrigin()[2] << std::endl;
-      std::cout << "VS. Height Difference: " << heightDifferenceFromComparison_ << std::endl;
+//                        // Use 3 standard deviations in each direction for robustness of fusion
+//                        length[0] = std::max(6 * sqrt(rawMap_.atPosition("horizontal_variance_x",posLeft)), 6 * sqrt(rawMap_.atPosition("horizontal_variance_y",posLeft)));
+//                        length[1] = length[0];
+//                        // HACKED!!!
+//                        auto boundTuple = getFusedCellBounds(posLeft, length);
+//                        std::cout << "lower: " << std::get<0>(boundTuple) << " elev: " << std::get<1>(boundTuple) << " upper: " << std::get<2>(boundTuple) << std::endl;
+//                        double lower = std::get<0>(boundTuple);
+//                        double elev = std::get<1>(boundTuple);
+//                        double upper = std::get<2>(boundTuple);
+//                        weightedDifference = gaussianWeightedDifferenceIncrement(lower, elev, upper, diff);
+//                        // weighted difference history stored in a vector for PID calculation
+//                        weightedDifferenceVector_.push_back(heightDifferenceFromComparison_ + weightedDifference); // TODO: check viability
+//                        if(weightedDifferenceVector_.size() >= 6) weightedDifferenceVector_.erase(weightedDifferenceVector_.begin());
+//                        std::cout << "Weighted Height Difference: " << weightedDifference << "\n";
+//                    }
+
+//                    // Preparing integral part for PID
+//                    if(fabs(weightedDifference) < 10.0){
+//                        totalHeightDifference_ += weightedDifference;
+//                        heightDifferenceComponentCounter_ += 1;
+//                    }
+
+//                    // Filter for drift estimation.
+//                    estimatedDrift_, estimatedDriftVariance_ = filteredDriftEstimation(weightedDifference, estimatedDrift_, estimatedDriftVariance_);
+//                }
+//                else std::cout << "posLEft is outside of range!" << std::endl;
+//            }
+//        }
+//        //else std::cout << "LEFT LIFTED!!!" << std::endl;
+
+//        if(RFTipState_ == 1){
+//            Position posRight(xRight, yRight);
+
+//            // Only if rawMap_ has entries.
+//            if(rawMap_.getSize()(0) > 1){
+
+//                std::cout << "Just before RIGHT Map comparison" << std::endl;
+
+//                float heightRight, varRight, horVarRight, heightRightOffsetCorrected;
+//                if(rawMap_.isInside(posRight)){
+//                    heightRight = rawMap_.atPosition("elevation", posRight);
+//                    varRight = rawMap_.atPosition("variance", posRight);
+//                    horVarRight = rawMap_.atPosition("horizontal_variance_x", posRight);
+//                    heightRightOffsetCorrected = rawMap_.atPosition("elevation_corrected", posRight);
+
+//                    std::cout << "Just after RIGHT Map comparison" << std::endl;
+
+//                    diff = zRight - heightRight;
+//                    double diffCorrected = zRight - heightRightOffsetCorrected;
+//                    std::cout << "HeightDifference classical: " << diff << "HeightDifference corrected: " << diffCorrected << std::endl;
 
 
+//                    // Fusion for robust error calculation.
+//                    Eigen::Array2d length;
+//                    if(rawMap_.isInside(posRight) && !std::isnan(rawMap_.atPosition("horizontal_variance_x",posRight))){
+//                        std::cout << "Size of fused area: " << rawMap_.atPosition("horizontal_variance_x",posRight) << " and: " << rawMap_.atPosition("horizontal_variance_y",posRight) << std::endl;
+//                        length[0] = std::max(6 * sqrt(rawMap_.atPosition("horizontal_variance_x",posRight)), 6 * sqrt(rawMap_.atPosition("horizontal_variance_y",posRight)));
+//                        length[1] = length[0];
+
+//                        auto boundTuple = getFusedCellBounds(posRight, length);
+//                        std::cout << "lower: " << std::get<0>(boundTuple) << " elev: " << std::get<1>(boundTuple) << " upper: " << std::get<2>(boundTuple) << std::endl;
+//                        /// DEBUG!
+//                        std::cout << "RIGHTSIDE \n";
+//                        double lower = std::get<0>(boundTuple);
+//                        double elev = std::get<1>(boundTuple);
+//                        double upper = std::get<2>(boundTuple);
+//                        weightedDifference = gaussianWeightedDifferenceIncrement(lower, elev, upper, diff);
+//                        std::cout << "Weighted Height Difference: " << weightedDifference << "\n";
+//                        weightedDifferenceVector_.push_back(heightDifferenceFromComparison_ + weightedDifference); // TODO: Check Viability
+//                        if(weightedDifferenceVector_.size() >= 6) weightedDifferenceVector_.erase(weightedDifferenceVector_.begin());
+//                    }
+
+//                    // Preparing integral part for PID
+//                    if(fabs(weightedDifference) < 10.0){
+//                        totalHeightDifference_ += weightedDifference;
+//                        heightDifferenceComponentCounter_ += 1;
+//                    }
 
 
-      // Concept: publish elevation map in map_corrected
-      //if(transformInCorrectedFrame_) mapMessage.info.header.frame_id = "odom_z_corrected";
+//                    // Filter for drift estimation.
+//                    if(std::isnan(estimatedDrift_) || std::isnan(estimatedDriftVariance_)){
+//                        estimatedDrift_ = 0;
+//                        estimatedDriftVariance_ = 0;
+//                    }
+//                    estimatedDrift_, estimatedDriftVariance_ = filteredDriftEstimation(weightedDifference, estimatedDrift_, estimatedDriftVariance_);
+//                }
+//                else std::cout << "posLEft is outside of range!" << std::endl;
+//            }
+//        }
+//    }
 
-
-      if(comparisonMode_ == "slow") elevationMapFastPublisher_.publish(mapMessage);
-      //std::cout << "CORRECTED!!" << std::endl;
-      //heightDifferenceComponentCounter_ = 0;
-      //totalHeightDifference_ = 0.0;
-
-      /// SOME TESTS:
-      ///
-//      tf::StampedTransform trans;
-//      try{
-//            baseOdomTransformListener_.lookupTransform("/odom", "odom_z_corrected",
-//                                     ros::Time(0), trans);
+      if(rawMap_.getSize()(0) > 1){
+//          // Actual Difference quantification:
+//          float heightDiff, heightDiffPID;
+//          if(heightDifferenceComponentCounter_ > 0.0){
+//              heightDiff = totalHeightDifference_ / double(heightDifferenceComponentCounter_);
+//              heightDiffPID = differenceCalculationUsingPID();
 //          }
-//          catch (tf::TransformException ex){
-//            ROS_ERROR("%s",ex.what());
-//          }
-//      std::cout << "TRANSFORM LISTENED: z: " << trans.getOrigin()[2] << std::endl;
-//      std::cout << "VS. Height Difference: " << heightDifferenceFromComparison_ << std::endl;
+//          else heightDiffPID = oldDiffPID_;
+//          std::cout << "This is PIDed height difference: " << heightDiffPID << std::endl;
 
-     // std::cout << "TRANSFORM LISTENED: frameid: " << trans.frame_id_ << std::endl;
-     // std::cout << "TRANSFORM LISTENED: x: " << odomMapTransform.getOrigin()[0] << std::endl;
 
-      ///
-      /// END TESTS
+//          // Old diff assignment for differential parts of the controllers.
+//         // oldDiff_ = weightedDifference;
+//          oldDiffPID_ = heightDiffPID;
+//          // Assign class Variable.
+
+//          //heightDifferenceFromComparison_ = heightDiff;
+
+
+//          // TODO: Check if zero or nan, e.g. foot tip outside of defined elevation map region and leave at old value
+//          //! TEST:
+//          //if(weightedDifference >= 0.00001)
+
+//          // Only update the Difference error id both foot tips are inside the elevation map area.
+//          if(isnan()) std::cout << "FOOT TIP OUTSIDE KNOWN ELEVATION MAP ISNAN \n";
+//          else heightDifferenceFromComparison_ = heightDiffPID; // Cumulative adding of height..
+//          //! END TEST
+
+
+//          std::cout << "Height Diff after calculation: " << heightDiff << "and Height diff PID: " << heightDiffPID << std::endl;
+
+          // TESTING
+          //rawMap_.add("elevation_fast_addition"); // TODO: think if this only adds a layer or actually adds height to "elevation"
+          //grid_map::GridMap map;
+
+          frameCorrection();
+
+          // IF NOT ADDING MAPS, but translating frames.
+          if(false) rawMap_["elevation_corrected"] = rawMap_["elevation"]; // HACKED!!!
+          else{
+              rawMap_["elevation_corrected"].setConstant(heightDifferenceFromComparison_); // HACKED FOR TESTING!! -> TODO: create nice Kalman Filter!!
+              //for(unsigned int n = 0; n < rawMap_.getLayers().size(); ++n){
+              //    std::cout << "LAYER: " << n << " :" << rawMap_.getLayers()[n] << std::endl;
+              //}
+              rawMap_["elevation_corrected"] = rawMap_["elevation"] + rawMap_["elevation_corrected"];
+          }
+
+          grid_map_msgs::GridMap mapMessage;
+          GridMapRosConverter::toMessage(rawMap_, mapMessage);
+
+
+
+          // Listen to tf to transform the grid map message
+          tf::StampedTransform trans;
+          try{
+                baseOdomTransformListener_.lookupTransform("/odom", "odom_z_corrected",
+                                         ros::Time(0), trans);
+              }
+              catch (tf::TransformException ex){
+                ROS_ERROR("%s",ex.what());
+              }
+          std::cout << "TRANSFORM LISTENED: z: " << trans.getOrigin()[2] << std::endl;
+          std::cout << "VS. Height Difference: " << heightDifferenceFromComparison_ << std::endl;
+
+
+
+
+          // Concept: publish elevation map in map_corrected
+          //if(transformInCorrectedFrame_) mapMessage.info.header.frame_id = "odom_z_corrected";
+
+
+          elevationMapFastPublisher_.publish(mapMessage);
+          //std::cout << "CORRECTED!!" << std::endl;
+          //heightDifferenceComponentCounter_ = 0;
+          //totalHeightDifference_ = 0.0;
+
+          /// SOME TESTS:
+          ///
+    //      tf::StampedTransform trans;
+    //      try{
+    //            baseOdomTransformListener_.lookupTransform("/odom", "odom_z_corrected",
+    //                                     ros::Time(0), trans);
+    //          }
+    //          catch (tf::TransformException ex){
+    //            ROS_ERROR("%s",ex.what());
+    //          }
+    //      std::cout << "TRANSFORM LISTENED: z: " << trans.getOrigin()[2] << std::endl;
+    //      std::cout << "VS. Height Difference: " << heightDifferenceFromComparison_ << std::endl;
+
+         // std::cout << "TRANSFORM LISTENED: frameid: " << trans.frame_id_ << std::endl;
+         // std::cout << "TRANSFORM LISTENED: x: " << odomMapTransform.getOrigin()[0] << std::endl;
+
+          ///
+          /// END TESTS
 
 
     }
@@ -1542,14 +1619,15 @@ bool ElevationMap::frameCorrection()
 
     std::cout << "TIMESTAMP PUBLISHED THE odom_z_corrected TRANSFORM!!: " << stamp << std::endl;
 
-    mapCorrectedOdomTransformBroadcaster_.sendTransform(tf::StampedTransform(odomMapTransform, ros::Time().fromNSec(fusedMap_.getTimestamp()), "odom", "odom_z_corrected"));
+    mapCorrectedOdomTransformBroadcaster_.sendTransform(tf::StampedTransform(odomMapTransform,
+                                          ros::Time().fromNSec(rawMap_.getTimestamp()), "odom", "odom_z_corrected"));
 
     std::cout << "TIMESTAMP CHECKPOINT DEBUG" << std::endl;
 
     return true;
 }
 
-float ElevationMap::differenceCalculationUsingPID(float diff, float old_diff, float totalDiff)
+float ElevationMap::differenceCalculationUsingPID()
 {
     // TODO: Tune these, they are only guessed so far.
     float kp = 0.3;
@@ -1557,12 +1635,20 @@ float ElevationMap::differenceCalculationUsingPID(float diff, float old_diff, fl
     float kd = 0.1;
 
     // Nan prevention.
-    if(isnan(old_diff)) return 0.0;
-    else return kp * diff + ki * totalDiff + kd * (diff - old_diff); // USING ALL FOOT TIP POSITIONS IN LAST FRAME (MORE EXACT WOULD BE AVERAGE OF LAST TWO)
+    if(weightedDifferenceVector_.size() > 1 && isnan(weightedDifferenceVector_[1])) return 0.0;
+    else if(weightedDifferenceVector_.size() > 1){
+    // Calculate new total diff here
+    double totalDiff = 0.0;
+    for (auto& n : weightedDifferenceVector_)
+        totalDiff += n;
+    double meanDiff = totalDiff / float(weightedDifferenceVector_.size());
+    return kp * weightedDifferenceVector_[0] + ki * meanDiff + kd * (weightedDifferenceVector_[0] - weightedDifferenceVector_[1]);
+    }
 }
 
-float ElevationMap::gaussianWeightedDifference(double lowerBound, double elevation, double upperBound, double diff)
+float ElevationMap::gaussianWeightedDifferenceIncrement(double lowerBound, double elevation, double upperBound, double diff)
 {
+    diff -= heightDifferenceFromComparison_;
     // Error difference weighted as (1 - gaussian), s.t. intervall from elevation map to bound contains two standard deviations
     double weight = 0.0;
     float standardDeviationFactor = 0.5;  //! THIS MAY BE A LEARNING FUNCTION IN FUTURE!!

@@ -309,13 +309,13 @@ class ElevationMap
   bool frameCorrection();
 
   //! TODO: Description:
-  float differenceCalculationUsingPID(float diff, float old_diff, float totalDiff);
+  float differenceCalculationUsingPID();
 
   //! TODO: Description:
   bool differenceCalculationUsingKalmanFilter();
 
   //! TODO: Description:
-  float gaussianWeightedDifference(double lowerBound, double elevation, double upperbound, double diff);
+  float gaussianWeightedDifferenceIncrement(double lowerBound, double elevation, double upperbound, double diff);
 
   //! TODO: Description:
   float normalDistribution(float arg, float mean, float stdDev);
@@ -403,6 +403,8 @@ class ElevationMap
   double heightDifferenceFromComparison_;
   float estimatedDrift_, estimatedDriftVariance_;
   float oldDiff_;
+  float oldDiffPID_;
+  std::vector<double> weightedDifferenceVector_;
 
   //! Mean foot tip positions
   Eigen::Vector3f meanStanceLeft_, meanStanceRight_;
