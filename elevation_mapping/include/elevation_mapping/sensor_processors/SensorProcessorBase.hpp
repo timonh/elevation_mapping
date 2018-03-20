@@ -136,11 +136,6 @@ public:
   void removePointsOutsideLimits(pcl::PointCloud<pcl::PointXYZRGB>::ConstPtr reference,
                                  std::vector<pcl::PointCloud<pcl::PointXYZRGB>::Ptr>& pointClouds);
 
-  // NEW
-  bool transformPointCloudOdomZ(pcl::PointCloud<pcl::PointXYZRGB>::ConstPtr pointCloud,
-                                pcl::PointCloud<pcl::PointXYZRGB>::Ptr pointCloudTransformed,
-                                const std::string& targetFrame);
-  // END NEW
 
   //! ROS nodehandle.
   ros::NodeHandle& nodeHandle_;

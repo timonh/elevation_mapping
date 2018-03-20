@@ -299,30 +299,6 @@ void ElevationMapping::pointCloudCallback(
     return;
   }
 
-
-  std::cout << "Pointcloud PROCESSED frame id here!: " << pointCloudProcessed->header.frame_id << std::endl;  // IT IS ODOM BY NOW
-
-  // Hacked !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-  // Hacked
-  // Hacked
-  // HACK: JUST AJUST THE FRAME ID
-
-
-  // TODO: Compare them here
-  //unsigned int m = 4000;
-  //const float& measurement400 = measurementVariances(m);
-  //std::cout << "meas: " << measurement400 << std::endl;
-
-  // TODO! Pointcloud z transformation here..
-
-
-  // TEST OUTPUTS
-  std::cout << "z component of transform sensor to map: " << sensorProcessor_->transformationSensorToMap_.affine()(2,3) << std::endl;
-  /// To adjust the height here is too slow, as it happens with the frequency of the foot tip updates
-  /// So rather listen to the odom -> map transform and publish a tf for the map_corrected frame
-  // END TESTS
-
-
   // Add point cloud to elevation map.
   if (!map_.add(pointCloudProcessed, measurementVariances, spatialVariances, lastPointCloudUpdateTime_, Eigen::Affine3d(sensorProcessor_->transformationSensorToMap_))) {
     ROS_ERROR("Adding point cloud to elevation map failed.");

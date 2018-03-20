@@ -350,7 +350,7 @@ class ElevationMap
   ros::Publisher visbilityCleanupMapPublisher_;
 
   // New
-  ros::Publisher elevationMapFastPublisher_;
+  ros::Publisher elevationMapCorrectedPublisher_;
   // End New
 
   //! Mutex lock for fused map.

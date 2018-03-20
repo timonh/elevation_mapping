@@ -72,29 +72,16 @@ bool SensorProcessorBase::process(
 	transformPointCloud(pointCloudInput, pointCloudSensorFrame, sensorFrameId_);
 	cleanPointCloud(pointCloudSensorFrame);
 
-    // New
-  //  bool transformPointcloudBool = true;
-  //  if(transformPointcloudBool){
-  //      if (!transformPointCloud(pointCloudSensorFrame, pointCloudMapFrame, "odom_z_corrected")) return false;
-  //  }
-    // End New
-    mapFrameId_ = "odom_z_corrected";
+    // New !!!
+    bool drift_adjustment = true;
+    if(drift_adjustment) mapFrameId_ = "odom_z_corrected";
+    else mapFrameId_ = "odom";
+    // End New !!!
 
 	if (!transformPointCloud(pointCloudSensorFrame, pointCloudMapFrame, mapFrameId_)) return false;
   std::vector<pcl::PointCloud<pcl::PointXYZRGB>::Ptr> pointClouds({pointCloudMapFrame, pointCloudSensorFrame});
   removePointsOutsideLimits(pointCloudMapFrame, pointClouds);
 
-  // NEW!! (TODO: Complete this!!!)
-  //! Here transform to odom z corrected!!!
-
-
-    //pcl::PointCloud<pcl::PointXYZRGB>::Ptr pointCloudCorrectedMapFrame;
-    //if(!transformPointCloudOdomZ(pointCloudMapFrame, pointCloudCorrectedMapFrame, "odom_z_corrected")) return false;
-    //*pointCloudMapFrame = *pointCloudCorrectedMapFrame;
-    //pointCloudMapFrame->header.frame_id = "odom";
-
-
-    // END NEW!!
 
 	if (!computeVariances(pointCloudSensorFrame, robotPoseCovariance, variances)) return false;
 
@@ -193,39 +180,6 @@ void SensorProcessorBase::removePointsOutsideLimits(
 
   ROS_DEBUG("removePointsOutsideLimits() reduced point cloud to %i points.", (int) pointClouds[0]->size());
 }
-
-// NEW
-
-bool SensorProcessorBase::transformPointCloudOdomZ(
-        pcl::PointCloud<pcl::PointXYZRGB>::ConstPtr pointCloud,
-        pcl::PointCloud<pcl::PointXYZRGB>::Ptr pointCloudTransformed,
-        const std::string& targetFrame)
-{
-  ros::Time timeStamp;
-  timeStamp.fromNSec(1000 * pointCloud->header.stamp);
-  const std::string inputFrameId(pointCloud->header.frame_id);
-
-  tf::StampedTransform transformTf;
-  try {
-    transformListener_.waitForTransform(targetFrame, inputFrameId, ros::Time(0), ros::Duration(1.0));
-    transformListener_.lookupTransform(targetFrame, inputFrameId, ros::Time(0), transformTf);
-  } catch (tf::TransformException &ex) {
-    ROS_ERROR("%s", ex.what());
-    return false;
-  }
-
-  Eigen::Affine3d transform;
-  poseTFToEigen(transformTf, transform);
-
-  pcl::transformPointCloud(*pointCloud, *pointCloudTransformed, transform.cast<float>());
-  pointCloudTransformed->header.frame_id = targetFrame;
-
-    ROS_DEBUG("Point cloud transformed to frame %s for time stamp %f.", targetFrame.c_str(),
-            ros::Time(pointCloudTransformed->header.stamp).toSec());
-    return true;
-}
-
-// END NEW
 
 } /* namespace elevation_mapping */
 

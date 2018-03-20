@@ -53,7 +53,7 @@ ElevationMap::ElevationMap(ros::NodeHandle nodeHandle)
 
 
   // TEST:
-  elevationMapFastPublisher_ = nodeHandle_.advertise<grid_map_msgs::GridMap>("elevation_map_fast", 1);
+  elevationMapCorrectedPublisher_ = nodeHandle_.advertise<grid_map_msgs::GridMap>("elevation_map_drift_adjusted", 1);
   // END TEST
   elevationMapRawPublisher_ = nodeHandle_.advertise<grid_map_msgs::GridMap>("elevation_map_raw", 1);
   elevationMapFusedPublisher_ = nodeHandle_.advertise<grid_map_msgs::GridMap>("elevation_map", 1);
@@ -62,10 +62,13 @@ ElevationMap::ElevationMap(ros::NodeHandle nodeHandle)
   // TODO if (enableVisibilityCleanup_) when parameter cleanup is ready.
   visbilityCleanupMapPublisher_ = nodeHandle_.advertise<grid_map_msgs::GridMap>("visibility_cleanup_map", 1);
 
+  bool drift_adjustment = true;
+  if(drift_adjustment){
   // (New:) Foot tip position Subscriber for Foot tip - Elevation comparison
-  bool use_bag = true;
-  if(!use_bag) footTipStanceSubscriber_ = nodeHandle_.subscribe("/state_estimator/quadruped_state", 1, &ElevationMap::footTipStanceCallback, this);
-  else footTipStanceSubscriber_ = nodeHandle_.subscribe("/state_estimator/quadruped_state_remapped", 1, &ElevationMap::footTipStanceCallback, this);
+      bool use_bag = true;
+      if(!use_bag) footTipStanceSubscriber_ = nodeHandle_.subscribe("/state_estimator/quadruped_state", 1, &ElevationMap::footTipStanceCallback, this);
+      else footTipStanceSubscriber_ = nodeHandle_.subscribe("/state_estimator/quadruped_state_remapped", 1, &ElevationMap::footTipStanceCallback, this);
+  }
 
   // NEW: publish foot tip markers
   footContactPublisher_ = nodeHandle_.advertise<visualization_msgs::Marker>("mean_foot_contact_markers_rviz", 1000);
@@ -80,8 +83,6 @@ ElevationMap::ElevationMap(ros::NodeHandle nodeHandle)
   estimatedDrift_ = 0.0;
   estimatedDriftVariance_ = 0.0;
   // Some Parameters.
-  transformInCorrectedFrame_ = true; // Use map layer addition if false..
-
   // END NEW
 
 
@@ -103,28 +104,6 @@ void ElevationMap::setGeometry(const grid_map::Length& length, const double& res
 
 bool ElevationMap::add(const pcl::PointCloud<pcl::PointXYZRGB>::Ptr pointCloud, Eigen::VectorXf& pointCloudVariances, Eigen::VectorXf& spatialVariances, const ros::Time& timestamp, const Eigen::Affine3d& transformationSensorToMap)
 {
-
-  // NEW TESTING
-  //! Issue here: Frequency is not higher than map update
-  //double one = transformationSensorToMap.translation();
-  //Eigen::Affine3d aff = Eigen::Affine3d::Identity();
-
-  //double somevalue = transformationSensorToMap.affine()(1,1);
-  //double someothervalue = transformationSensorToMap.translation()(1,1);
-  //double athirdone = transformationSensorToMap.translation()(0,0);
-
-  //auto& trans = transformationSensorToMap.translation();
-  //std::cout << "TYPE                                                            TYPE" << typeid(trans).name() << std::endl;
-
-  //std::cout << "TRANSFORMATION                                                          Z: " << someothervalue << std::endl;
-  // END NEW TESTING
-
-  // NEW DEBUGGING
-  std::cout << "ELEVATION MAP ADD FUNCTION Checkpoint!! " << std::endl;
-  std::cout << " ...  " << std::endl;
-
-  // DEBUGGING
-
 
   if (pointCloud->size() != pointCloudVariances.size()) {
     ROS_ERROR("ElevationMap::add: Size of point cloud (%i) and variances (%i) do not agree.",
@@ -162,15 +141,6 @@ bool ElevationMap::add(const pcl::PointCloud<pcl::PointXYZRGB>::Ptr pointCloud, 
 
     const float& pointVariance = pointCloudVariances(i);
     const float scanTimeSinceInitialization = (timestamp - initialTime_).toSec();
-
-    //Debug
-    //std::cout << "pointVariance: " << pointVariance << std::endl;
-    // End Debug
-    //const float& spatialpointvariance = spatialVariances(i);
-      //   // Debug
-      //
-    //std::cout << "spatialVariances: " << spatialpointvariance << std::endl;
-    // End Debug
 
     if (!rawMap_.isValid(index)) {
       // No prior information in elevation map, use measurement.
@@ -252,82 +222,6 @@ bool ElevationMap::update(const grid_map::Matrix& varianceUpdate, const grid_map
   rawMap_.get("horizontal_variance_xy") += horizontalVarianceUpdateXY;
   clean();
   rawMap_.setTimestamp(time.toNSec());
-
-
-  //std::cout << "Map Layers: " << rawMap_.getLayers()[0] << std::endl;
-  //std::cout << "Map Layers: " << rawMap_.getLayers()[1] << std::endl;
-  //std::cout << "Map Layers: " << rawMap_.getLayers()[2] << std::endl;
-  //std::cout << "Map Layers: " << rawMap_.getLayers()[3] << std::endl;
-  //std::cout << "Map Layers: " << rawMap_.getLayers()[4] << std::endl;
-  //std::cout << "Map Layers: " << rawMap_.getLayers()[5] << std::endl;
-  //std::cout << "Map Layers: " << rawMap_.getLayers()[6] << std::endl;
-  //std::cout << "Map Layers: " << rawMap_.getLayers()[7] << std::endl;
-  //std::cout << "Map Layers: " << rawMap_.getLayers()[8] << std::endl;
-  //std::cout << "Map Layers: " << rawMap_.getLayers()[9] << std::endl;
-  //std::cout << "Map Layers: " << rawMap_.getLayers()[10] << std::endl;
-  //std::cout << "Map Layers: " << rawMap_.getLayers().size() << std::endl;
-
-  // New *********************************************************************************************************************************************
-  // Do Feet comparison stuff in here..?
-  // TODO: Define position..
-  std::cout << "Center: " << rawMap_.getPosition()(0) << " " << rawMap_.getPosition()(1) << std::endl;
-  bool slowComparison = false;
-  if(slowComparison){
-      double totalDiff = 0;
-      if(LFTipState_){
-          std::cout << "Left Touching the ground" << std::endl;
-          Position posLeft(LFTipPostiion_(0), LFTipPostiion_(1));
-          float heightLeft = rawMap_.atPosition("elevation", posLeft);
-          float varLeft = rawMap_.atPosition("variance", posLeft);
-
-          std::cout << "Hight Left lower bound: " << heightLeft << std::endl;
-          std::cout << "Hight Foot tip: " << LFTipPostiion_(2) << std::endl;
-          std::cout << "Var Left: " << varLeft << std::endl;
-          std::cout << "Diff: " << heightLeft - LFTipPostiion_(2) << std::endl;
-          double diff = heightLeft - LFTipPostiion_(2);
-          if(fabs(diff) < 1.0) totalDiff += diff/2.5;
-          else std::cout << "WARNING, big error" << std::endl;
-      }
-      else std::cout << "LEFT LIFTED!!!" << std::endl;
-
-      if(RFTipState_){
-          std::cout << "Right Touching the ground" << std::endl;
-          Position posRight(RFTipPostiion_(0), RFTipPostiion_(1));
-          float heightRight = rawMap_.atPosition("elevation", posRight);
-          float varRight = rawMap_.atPosition("variance", posRight);
-
-          std::cout << "Hight Right lower bound: " << heightRight << std::endl;
-          std::cout << "Hight Foot tip: " << RFTipPostiion_(2) << std::endl;
-          std::cout << "Var Right: " << varRight << std::endl;
-          std::cout << "Diff: " << heightRight - RFTipPostiion_(2) << std::endl;
-          double diff = heightRight - RFTipPostiion_(2);
-          if(fabs(diff) < 1.0) totalDiff += diff/2.5;
-          else std::cout << "WARNING, big error" << std::endl;
-      }
-      else std::cout << "RIGHT LIFTED!!!" << std::endl;
-      // End New **********************************************************************************************************************************************
-
-      //rawMap_.add("elevation", -totalDiff); // HACKED!!
-      //totalHeightDifference_ = 0.0;
-      //std::cout << "HIGH GRASS: Shifted the Elevation Map" << std::endl;
-
-
-
-  }
-
-  // New: (From fast diff calculation)
-
-//  float heightDiff;
-//  if(heightDifferenceComponentCounter_ > 0.0) heightDiff = totalHeightDifference_ / double(heightDifferenceComponentCounter_);
-//  else heightDiff = 0.0;
-//  std::cout << "heightDiff: " << heightDiff << std::endl;
-  std::cout << "Updated ##########################" << std::endl;
-  std::cout << std::endl;
-  std::cout << std::endl;
-  std::cout << "################################################" << std::endl;
-  heightDifferenceComponentCounter_ = 0;
-  totalHeightDifference_ = 0.0;
-  // End New
 
   return true;
 }
@@ -656,6 +550,9 @@ bool ElevationMap::publishRawElevationMap()
 
 bool ElevationMap::publishFusedElevationMap()
 {
+  //! DEBUG:
+  std::cout << "FOR SOME REASON PUBLISHING THE FUSED MAP" << std::endl;
+  //! END DEBUG
   if (!hasFusedMapSubscribers()) return false;
   boost::recursive_mutex::scoped_lock scopedLock(fusedMapMutex_);
   GridMap fusedMapCopy = fusedMap_;
@@ -1216,9 +1113,9 @@ bool ElevationMap::footTipElevationMapComparison(std::string tip)
         if(rawMap_.isInside(tipPosition)){
             float heightMapRaw = rawMap_.atPosition("elevation", tipPosition);
             float varianceMapRaw = rawMap_.atPosition("variance", tipPosition);
-            float heightMapRawElevationCorrected = rawMap_.atPosition("elevation_corrected", tipPosition);
+            float heightMapRawElevationCorrected = rawMap_.atPosition("elevation", tipPosition) + heightDifferenceFromComparison_; // Changed, since frame transformed grid map used.
 
-            // NANCHECK HERE TODO TODO
+            // Supress nans.
             if(!isnan(heightMapRaw)){
 
                 // Calculate difference.
@@ -1231,7 +1128,6 @@ bool ElevationMap::footTipElevationMapComparison(std::string tip)
                 ellipseAxes[0] = ellipseAxes[1] = std::max(6 * sqrt(rawMap_.atPosition("horizontal_variance_x",tipPosition)),
                                           6 * sqrt(rawMap_.atPosition("horizontal_variance_y",tipPosition)));
 
-                // TODO: Properly nancheck the fused cell stuff! AND CHECK THAT THE FUSION AREA IS ALL INSIDE OF THE ELEVATION MAP!! Maybe not nceessary, as the nancheck suffices..
                 // Get lower and upper bound of the fused map.
                 auto boundTuple = getFusedCellBounds(tipPosition, ellipseAxes);
                 double lowerBoundFused = std::get<0>(boundTuple);
@@ -1245,7 +1141,7 @@ bool ElevationMap::footTipElevationMapComparison(std::string tip)
                 if(weightedDifferenceVector_.size() >= 6) weightedDifferenceVector_.erase(weightedDifferenceVector_.begin());
                 std::cout << "Weighted Height Difference: " << weightedDifferenceVector_[0] << "\n";
 
-                // TODO: Make nicer
+                // PID height offset calculation.
                 double heightDiffPID = differenceCalculationUsingPID();
                 heightDifferenceFromComparison_ = heightDiffPID;
             }
@@ -1257,14 +1153,15 @@ bool ElevationMap::footTipElevationMapComparison(std::string tip)
     // Publish frame, offset by the height difference parameter.
     frameCorrection();
 
-    // Add layer that is shifted back by the height difference parameter.
-    rawMap_["elevation_corrected"].setConstant(heightDifferenceFromComparison_);
-    rawMap_["elevation_corrected"] = rawMap_["elevation"] + rawMap_["elevation_corrected"];
-
     // Publish the elevation map with the new layer, at the frequency of the stances.
     grid_map_msgs::GridMap mapMessage;
     GridMapRosConverter::toMessage(rawMap_, mapMessage);
-    elevationMapFastPublisher_.publish(mapMessage);
+    mapMessage.info.header.frame_id = "odom_z_corrected"; //! HACKED!!
+
+    //! Now this has to be done here if Data is to be used: Disscuss with Lorenz if this is more efficient than the additional Layer?
+    //GridMapRosConverter::fromMessage(mapMessage, rawMapCorrected)
+
+    elevationMapCorrectedPublisher_.publish(mapMessage);
 
 //    // Offset of each step versus Elevation map.
 //    double diff = 0;
@@ -1624,6 +1521,7 @@ float ElevationMap::gaussianWeightedDifferenceIncrement(double lowerBound, doubl
 
 bool ElevationMap::differenceCalculationUsingKalmanFilter()
 {
+
 
 }
 
