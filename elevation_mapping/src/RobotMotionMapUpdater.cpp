@@ -41,10 +41,6 @@ bool RobotMotionMapUpdater::update(
     const PoseCovariance& robotPoseCovariance, const ros::Time& time)
 {
 
-  // TEST
-  std::cout << "Frequency of update" << std::endl;
-  // END TEST
-
   const PoseCovariance robotPoseCovarianceScaled = covarianceScale_ * robotPoseCovariance;
 
   // Check if update necessary.
@@ -119,10 +115,6 @@ bool RobotMotionMapUpdater::update(
   previousReducedCovariance_ = reducedCovariance;
   previousRobotPose_ = robotPose;
 
-  // TEST:
-  std::cout << "THIS IS THE REAL FREQ" << std::endl;
-  // END TEST!
-
   return true;
 }
 
@@ -149,8 +141,6 @@ bool RobotMotionMapUpdater::computeRelativeCovariance(const Pose& robotPose,
                                                       const ReducedCovariance& reducedCovariance,
                                                       ReducedCovariance& relativeCovariance)
 {
-
-  std::cout << "RelativeCovariance Computation" << std::endl;
 
   // Rotation matrix of z-align frame R_I_tilde_B.
   const RotationVectorPD rotationVector_I_B(robotPose.getRotation());

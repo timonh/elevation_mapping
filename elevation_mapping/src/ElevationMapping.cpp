@@ -281,12 +281,6 @@ void ElevationMapping::pointCloudCallback(
     robotPoseCovariance = Eigen::Map<const Eigen::MatrixXd>(poseMessage->pose.covariance.data(), 6, 6);
   }
 
-  //! FRAME TESTS:
-  std::cout << "Pointcloud frame id here!: " << pointCloud->header.frame_id << std::endl;
-
-
-  //! END TESTS
-
   // Process point cloud.
   PointCloud<PointXYZRGB>::Ptr pointCloudProcessed(new PointCloud<PointXYZRGB>);
   Eigen::VectorXf measurementVariances;
@@ -341,11 +335,6 @@ void ElevationMapping::mapUpdateTimerCallback(const ros::TimerEvent&)
 
   stopMapUpdateTimer();
   ros::Time time = ros::Time::now();
-
-  // Test for Timing
-  std::cout << "Timing of Mapupdater from motion" << std::endl;
-  // End Test
-
 
   // Update map from motion prediction.
   if (!updatePrediction(time)) {

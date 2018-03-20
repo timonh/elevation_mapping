@@ -406,10 +406,6 @@ bool ElevationMap::fuse(const grid_map::Index& topLeftIndex, const grid_map::Ind
 
   fusedMap_.setTimestamp(rawMapCopy.getTimestamp());
 
-  // DEBUG:
-  std::cout << "Checkpoint 2 " << std::endl;
-
-
   const ros::WallDuration duration(ros::WallTime::now() - methodStartTime);
   ROS_INFO("Elevation map has been fused in %f s.", duration.toSec());
 
@@ -729,9 +725,6 @@ void ElevationMap::footTipStanceCallback(const quadruped_msgs::QuadrupedState& q
   // Detect start and end of stances for each of the two front foot tips.
   detectStancePhase();
   //detectStancePhase("right");
-
-  //! If called here: Called at 400 Hz using the foot tip positions from quadruped state directly. -> If called in process function -> At lower rate after each stance phase!
-  if(comparisonMode_ == "fast") footTipElevationMapComparison(comparisonMode_);
 }
 
 bool ElevationMap::detectStancePhase()
@@ -750,22 +743,18 @@ bool ElevationMap::detectStancePhase()
 
     // Constrain the size of the state arrays.
     if(processStanceTriggerLeft_.size() > 1000){
-        std::cout << "DELETED SOME ENTRIES AS LONG TIME IN SAME STATE!!   LEFT" << std::endl;
         processStanceTriggerLeft_.erase(processStanceTriggerLeft_.begin());
     }
     if(processStanceTriggerRight_.size() > 1000){
-        std::cout << "DELETED SOME ENTRIES AS LONG TIME IN SAME STATE!!   RIGHT" << std::endl;
         processStanceTriggerRight_.erase(processStanceTriggerRight_.begin());
     }
 
     // Collect the foot tip position data (if foot tip in contact). (Prevent nans)
     if(LFTipState_ && isInStanceLeft_){
         LFTipStance_.push_back(LFTipPostiion_);
-        //std::cout << "LFTipStance.x: " << LFTipStance_.back()(0) << "y: " << LFTipStance_.back()(1) << "z: " << LFTipStance_.back()(2) << std::endl;
     }
     if(RFTipState_ && isInStanceRight_){
         RFTipStance_.push_back(RFTipPostiion_);
-        //std::cout << "RTipPosition x: " << RFTipPostiion_(0) << std::endl;
     }
 
     // TODO: Create Template Matching function, wich saves coding lines
@@ -1007,7 +996,6 @@ bool ElevationMap::deleteLastEntriesOfStances(std::string tip)
     else{
         for(unsigned int i = 0; i < 10; ++i){
             if(tip == "left"){
-                std::cout << "POPPING LEFT!!" << std::endl;
                 LFTipStance_.pop_back();
             }
             else if(tip == "right"){
@@ -1055,13 +1043,10 @@ bool ElevationMap::getAverageFootTipPositions(std::string tip)
             p.y = meanStanceRight_(1);
             p.z = meanStanceRight_(2);
         }
-        std::cout << "x Mean Left: " << meanStanceLeft_(0) << "Stance size: " << stance.size() << std::endl;
-        std::cout << "y Mean Left: " << meanStanceLeft_(1) << "Stance size: " << stance.size() << std::endl;
-        std::cout << "z Mean Left: " << meanStanceLeft_(2) << "Stance size: " << stance.size() << std::endl;
 
         // Check for nans
         if(p.x != p.x || p.y != p.y || p.z != p.z){
-            std::cout << "NAN FOUND!!" << std::endl;
+            std::cout << "NAN FOUND IN MEAN FOOT TIP POSITION!!" << std::endl;
         }
         else footContactMarkerList_.points.push_back(p);
     }
@@ -1070,11 +1055,8 @@ bool ElevationMap::getAverageFootTipPositions(std::string tip)
 
 bool ElevationMap::publishAveragedFootTipPositionMarkers()
 {
-    // Prevent Nans to be published.
+    // Publish averaged foot tip positions
     footContactPublisher_.publish(footContactMarkerList_);
-
-
-    //std::cout << "LFTipsStance Size: " << LFTipStance_.size() << std::endl;
     return true;
 }
 
@@ -1121,7 +1103,7 @@ bool ElevationMap::footTipElevationMapComparison(std::string tip)
                 // Calculate difference.
                 verticalDifference = zTip - heightMapRaw;
                 double verticalDifferenceCorrected = zTip - heightMapRawElevationCorrected;
-                std::cout << "HeightDifference classical: " << verticalDifference << "HeightDifference corrected: " << verticalDifferenceCorrected << std::endl;
+                std::cout << "HeightDifference CLASSICAL:    " << verticalDifference << "        HeightDifference CORRECTED:    " << verticalDifferenceCorrected << std::endl;
 
                 // Use 3 standard deviations of the uncertainty ellipse of the foot tip positions as fusion area.
                 Eigen::Array2d ellipseAxes;
@@ -1156,7 +1138,7 @@ bool ElevationMap::footTipElevationMapComparison(std::string tip)
     // Publish the elevation map with the new layer, at the frequency of the stances.
     grid_map_msgs::GridMap mapMessage;
     GridMapRosConverter::toMessage(rawMap_, mapMessage);
-    mapMessage.info.header.frame_id = "odom_z_corrected"; //! HACKED!!
+    mapMessage.info.header.frame_id = "odom_drift_adjusted"; //! HACKED!!
 
     //! Now this has to be done here if Data is to be used: Disscuss with Lorenz if this is more efficient than the additional Layer?
     //GridMapRosConverter::fromMessage(mapMessage, rawMapCorrected)
@@ -1437,20 +1419,13 @@ double ElevationMap::filteredDriftEstimation(double diff, float estDrift, float 
 std::tuple<double, double, double> ElevationMap::getFusedCellBounds(const Eigen::Vector2d& position, const Eigen::Array2d& length)
 {
     //boost::recursive_mutex::scoped_lock scopedLockForFootTipComparison(footTipStanceComparisonMutex_);
-    std::cout << "CALLED THE FUSED BOUNDS FUNCTION" << std::endl;
     float upperFused, lowerFused, elevationFused;
     bool doFuseEachStep = true;
     if(rawMap_.isInside(position) && heightDifferenceFromComparison_ == heightDifferenceFromComparison_ && doFuseEachStep){
-        std::cout << "CALLED THE FUSED BOUNDS FUNCTION INSIDE!!!" << std::endl;
-
         fuseArea(position, length);
-        std::cout << "HERE IT IS DONE" << std::endl;
-
         elevationFused = fusedMap_.atPosition("elevation", position);
         lowerFused = fusedMap_.atPosition("lower_bound", position);
         upperFused = fusedMap_.atPosition("upper_bound", position);
-
-        std::cout << "LOWER: " << lowerFused << "UPPER: " << upperFused << "ELEV: " << elevationFused << std::endl;
     }
     return std::make_tuple(lowerFused, elevationFused, upperFused);
 }
@@ -1463,18 +1438,12 @@ bool ElevationMap::frameCorrection()
     odomMapTransform.setIdentity();
     odomMapTransform.getOrigin()[2] += heightDifferenceFromComparison_;
 
-    std::cout << "heightDifference inside frameCorrection: " << heightDifferenceFromComparison_ << std::endl;
-    std::cout << "TRANSFORM LISTENED AFTER OFFSET CORRECTION: z: " << odomMapTransform.getOrigin()[2] << std::endl;
-
-
     ros::Time stamp = ros::Time().fromNSec(fusedMap_.getTimestamp());
 
-    std::cout << "TIMESTAMP PUBLISHED THE odom_z_corrected TRANSFORM!!: " << stamp << std::endl;
+    //std::cout << "TIMESTAMP PUBLISHED THE odom_drift_adjusted TRANSFORM!!: " << stamp << std::endl;
 
     mapCorrectedOdomTransformBroadcaster_.sendTransform(tf::StampedTransform(odomMapTransform,
-                                          ros::Time().fromNSec(rawMap_.getTimestamp()), "odom", "odom_z_corrected"));
-
-    std::cout << "TIMESTAMP CHECKPOINT DEBUG" << std::endl;
+                                          ros::Time().fromNSec(rawMap_.getTimestamp()), "odom", "odom_drift_adjusted"));
 
     return true;
 }
@@ -1528,7 +1497,6 @@ bool ElevationMap::differenceCalculationUsingKalmanFilter()
 float ElevationMap::normalDistribution(float arg, float mean, float stdDev)
 {
     double e = exp(-pow((arg-mean),2)/(2.0*pow(stdDev,2)));
-    std::cout << "E FUNCTION!!: " << e << "\n";
     //Leaving away the weighting, as the maximum value should be one, which is sensible for weighting.
     return e; // (stdDev * sqrt(2*M_PI));
 }
