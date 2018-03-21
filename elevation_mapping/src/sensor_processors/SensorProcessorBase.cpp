@@ -43,10 +43,7 @@ bool SensorProcessorBase::readParameters()
   nodeHandle_.param("sensor_frame_id", sensorFrameId_, std::string("/sensor")); // TODO Fail if parameters are not found.
   nodeHandle_.param("robot_base_frame_id", robotBaseFrameId_, std::string("/robot"));
   nodeHandle_.param("map_frame_id", mapFrameId_, std::string("/map"));
-
-  // New tests
-  //nodeHandle_.param("mapga_frame_id", mapFrameId_, std::)
-  // End New
+  nodeHandle_.param("drift_adjustment", driftAdjustment_, true);
 
   double minUpdateRate;
   nodeHandle_.param("min_update_rate", minUpdateRate, 2.0);
@@ -73,8 +70,7 @@ bool SensorProcessorBase::process(
 	cleanPointCloud(pointCloudSensorFrame);
 
     // New !!!
-    bool drift_adjustment = true;
-    if(drift_adjustment) mapFrameId_ = "odom_drift_adjusted";
+    if(driftAdjustment_) mapFrameId_ = "odom_drift_adjusted";
     else mapFrameId_ = "odom";
     // End New !!!
 

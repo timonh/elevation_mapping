@@ -178,6 +178,11 @@ public:
 
   //! Sensor parameters.
   std::unordered_map<std::string, double> sensorParameters_;
+
+  // New
+  //! Bool drift adjustment.
+  bool driftAdjustment_;
+  // End New
 };
 
 } /* namespace elevation_mapping */

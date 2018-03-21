@@ -405,6 +405,7 @@ class ElevationMap
   float oldDiff_;
   float oldDiffPID_;
   std::vector<double> weightedDifferenceVector_;
+  bool driftAdjustment_;
 
   //! Mean foot tip positions
   Eigen::Vector3f meanStanceLeft_, meanStanceRight_;

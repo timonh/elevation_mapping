@@ -62,8 +62,8 @@ ElevationMap::ElevationMap(ros::NodeHandle nodeHandle)
   // TODO if (enableVisibilityCleanup_) when parameter cleanup is ready.
   visbilityCleanupMapPublisher_ = nodeHandle_.advertise<grid_map_msgs::GridMap>("visibility_cleanup_map", 1);
 
-  bool drift_adjustment = true;
-  if(drift_adjustment){
+  nodeHandle_.param("drift_adjustment", driftAdjustment_, true);
+  if(driftAdjustment_){
   // (New:) Foot tip position Subscriber for Foot tip - Elevation comparison
       bool use_bag = true;
       if(!use_bag) footTipStanceSubscriber_ = nodeHandle_.subscribe("/state_estimator/quadruped_state", 1, &ElevationMap::footTipStanceCallback, this);
@@ -74,8 +74,6 @@ ElevationMap::ElevationMap(ros::NodeHandle nodeHandle)
   footContactPublisher_ = nodeHandle_.advertise<visualization_msgs::Marker>("mean_foot_contact_markers_rviz", 1000);
   elevationMapBoundPublisher_ = nodeHandle_.advertise<visualization_msgs::Marker>("elevation_map_bound_markers_rviz", 1000);
   initializeFootTipMarkers();
-  // Chose comparison mode: fast -> 400 Hz, slow -> at each foot step once
-  comparisonMode_ = "slow"; // "slow" highly recommended (developement feature)
 
   // Class Variable to model the compared difference evolution.
   oldDiff_ = 0.0;
@@ -823,13 +821,12 @@ bool ElevationMap::templateMatchingForStanceDetection(std::string tip, std::vect
     //std::cout << "TIP TYPE: " << tip << " state vec size: " << stateVector.size() << "\n";
 
     // Recognition of the end of a stance phase of the front legs.
-    if(stateVector.size() >= 20 && stateVector.end()[-1]+stateVector.end()[-2]+
+    if(stateVector.size() >= 16 && stateVector.end()[-1]+stateVector.end()[-2]+
             stateVector.end()[-3]+stateVector.end()[-4]+stateVector.end()[-5]+
-            stateVector.end()[-6]+stateVector.end()[-7]+stateVector.end()[-8]+
-            stateVector.end()[-9]+stateVector.end()[-10] >= 8 &&
+            stateVector.end()[-6]+stateVector.end()[-7]+stateVector.end()[-8] >= 6 &&
+            stateVector.end()[-9]+stateVector.end()[-10] +
             stateVector.end()[-11]+stateVector.end()[-12]+ stateVector.end()[-13]+
-            stateVector.end()[-14]+stateVector.end()[-15]+stateVector.end()[-16] +
-            stateVector.end()[-17]+stateVector.end()[-18]+stateVector.end()[-19] <= 10){
+            stateVector.end()[-14]+stateVector.end()[-15] <= 6){
         if(tip == "left" && !isInStanceLeft_){
             std::cout << "Start of LEFT stance" << std::endl;
             isInStanceLeft_ = 1;
@@ -841,14 +838,13 @@ bool ElevationMap::templateMatchingForStanceDetection(std::string tip, std::vect
     }
 
     // Recognition of the start of a stance phase of the front legs.
-    if(stateVector.size() >= 20 &&
+    if(stateVector.size() >= 16 &&
             stateVector.end()[-1] + stateVector.end()[-2] + stateVector.end()[-3]+
             stateVector.end()[-4]+stateVector.end()[-5] + stateVector.end()[-6]+
-            stateVector.end()[-7]+stateVector.end()[-8]+
-            stateVector.end()[-9]+stateVector.end()[-10] <= 3 &&
+            stateVector.end()[-7]+stateVector.end()[-8] <= 3 &&
+            stateVector.end()[-9]+stateVector.end()[-10] +
             stateVector.end()[-11]+stateVector.end()[-12]+ stateVector.end()[-13]+
-            stateVector.end()[-14]+stateVector.end()[-15]+stateVector.end()[-16] +
-            stateVector.end()[-17]+stateVector.end()[-18]+stateVector.end()[-19] >=1){
+            stateVector.end()[-14]+stateVector.end()[-15] >=1){
         if(tip == "left" && isInStanceLeft_){
             if(!processStance("left")) return false;
             isInStanceLeft_ = 0;
