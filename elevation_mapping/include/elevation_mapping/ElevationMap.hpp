@@ -406,6 +406,8 @@ class ElevationMap
   float oldDiffPID_;
   std::vector<double> weightedDifferenceVector_;
   bool driftAdjustment_;
+  double usedWeight_;
+  bool footTipOutsideBounds_;
 
   //! Mean foot tip positions
   Eigen::Vector3f meanStanceLeft_, meanStanceRight_;
@@ -427,8 +429,6 @@ class ElevationMap
   visualization_msgs::Marker footContactMarkerList_;
   visualization_msgs::Marker elevationMapBoundMarkerList_;
 
-  //! Parameters
-  bool transformInCorrectedFrame_;
 };
 
 } /* namespace */
