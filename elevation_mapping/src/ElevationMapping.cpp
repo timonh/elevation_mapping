@@ -293,6 +293,10 @@ void ElevationMapping::pointCloudCallback(
     return;
   }
 
+  // Debug
+ // std::cout << "Spat Var::: " << spatialVariances << std::endl;
+  // End Debug
+
   // Add point cloud to elevation map.
   if (!map_.add(pointCloudProcessed, measurementVariances, spatialVariances, lastPointCloudUpdateTime_, Eigen::Affine3d(sensorProcessor_->transformationSensorToMap_))) {
     ROS_ERROR("Adding point cloud to elevation map failed.");

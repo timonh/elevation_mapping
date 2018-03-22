@@ -85,6 +85,8 @@ bool SensorProcessorBase::process(
     if (!computeSpatialVariances(pointCloudMapFrame, spatialVariances)) return false;
     // End New *****************************************************************************************************************
 
+    //std::cout << "spatialVariances size: " << spatialVariances << std::endl;
+
 	return true;
 }
 

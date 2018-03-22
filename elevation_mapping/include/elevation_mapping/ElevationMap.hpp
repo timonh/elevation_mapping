@@ -146,7 +146,7 @@ class ElevationMap
    * Publishes a Pointcloud that is colored according to local spatial variance values
    * @return true if successful.
    */
-  bool publishSpatialVariancePointCloud(Eigen::VectorXf& spatialVariances);
+  bool publishSpatialVariancePointCloud(const pcl::PointCloud<pcl::PointXYZRGB>::Ptr pointCloud, Eigen::VectorXf& spatialVariances);
   // End New ***********************************
 
 
@@ -351,6 +351,7 @@ class ElevationMap
 
   // New
   ros::Publisher elevationMapCorrectedPublisher_;
+  ros::Publisher coloredPointCloudPublisher_;
   // End New
 
   //! Mutex lock for fused map.
@@ -413,7 +414,7 @@ class ElevationMap
   Eigen::Vector3f meanStanceLeft_, meanStanceRight_;
 
   //! Transform Listener and broadcaster for generating the corrected frame
-  tf::TransformListener baseOdomTransformListener_;
+  tf::TransformListener odomDriftAdjustedTransformListener_;
   tf::TransformBroadcaster mapCorrectedOdomTransformBroadcaster_;
 
   //! ROS subscribers.

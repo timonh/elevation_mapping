@@ -31,6 +31,10 @@
 // TEST thread
 #include <thread>
 
+// PCL conversions
+#include <pcl_conversions/pcl_conversions.h>
+#include <pcl_ros/transforms.h>
+
 using namespace std;
 using namespace grid_map;
 
@@ -45,12 +49,8 @@ ElevationMap::ElevationMap(ros::NodeHandle nodeHandle)
 {
   rawMap_.setBasicLayers({"elevation", "variance"});
   fusedMap_.setBasicLayers({"elevation", "upper_bound", "lower_bound"});
-  // TEST
-  rawMap_.add("elevation_corrected");
-  // END TEST
 
   clear();
-
 
   // TEST:
   elevationMapCorrectedPublisher_ = nodeHandle_.advertise<grid_map_msgs::GridMap>("elevation_map_drift_adjusted", 1);
@@ -74,8 +74,10 @@ ElevationMap::ElevationMap(ros::NodeHandle nodeHandle)
 
   // NEW: publish foot tip markers
   footContactPublisher_ = nodeHandle_.advertise<visualization_msgs::Marker>("mean_foot_contact_markers_rviz", 1000);
-  elevationMapBoundPublisher_ = nodeHandle_.advertise<visualization_msgs::Marker>("elevation_map_bound_markers_rviz", 1000);
   initializeFootTipMarkers();
+
+  // NEW: publish clored pointcloud visualizing the local pointcloud variance.
+  coloredPointCloudPublisher_ = nodeHandle_.advertise<sensor_msgs::PointCloud2>("variance_pointcloud", 1);
 
   // Initializing some class variables.
   oldDiff_ = 0.0;
@@ -83,9 +85,8 @@ ElevationMap::ElevationMap(ros::NodeHandle nodeHandle)
   estimatedDrift_ = 0.0;
   estimatedDriftVariance_ = 0.0;
   usedWeight_ = 0.0;
-  footTipOutsideBounds_ = false;
+  footTipOutsideBounds_ = true;
   // END NEW
-
 
   initialTime_ = ros::Time::now();
 }
@@ -111,6 +112,12 @@ bool ElevationMap::add(const pcl::PointCloud<pcl::PointXYZRGB>::Ptr pointCloud, 
               (int) pointCloud->size(), (int) pointCloudVariances.size());
     return false;
   }
+
+  publishSpatialVariancePointCloud(pointCloud, spatialVariances);
+  // TESTING:
+ // std::cout << "spatial variances: " << spatialVariances << std::endl;
+  // END TESTING
+
 
   // Initialization for time calculation.
   const ros::WallTime methodStartTime(ros::WallTime::now());
@@ -582,18 +589,36 @@ bool ElevationMap::publishVisibilityCleanupMap()
   return true;
 }
 
-bool ElevationMap::publishSpatialVariancePointCloud(Eigen::VectorXf& spatialVariances)
+bool ElevationMap::publishSpatialVariancePointCloud(const pcl::PointCloud<pcl::PointXYZRGB>::Ptr pointCloud,Eigen::VectorXf& spatialVariances)
 {
-  int size = spatialVariances.size();
-  ROS_INFO("VariancePointCloudPublisherfct..");
-  std::cout << "in: " << size << std::endl;
-  for(unsigned int i = 1; i <= spatialVariances.SizeAtCompileTime; ++i ){
-      const float& spatialpointvariance = spatialVariances(i);
+  std::cout << "cols: " << spatialVariances.cols() << std::endl;
+  std::cout << "rows: " << spatialVariances.rows() << std::endl;
 
-      //std::cout << typeid(spatialpointvariance).name() << std::endl;
-      //std::cout << (double)spatialpointvariance << std::endl;
-      //ROS_INFO("This one: %f", spatialpointvariance);
+  if(spatialVariances.rows() == pointCloud->size()) std::cout << "GREAT SUCCESS< THUMBS UP!!" << std::endl;
+  else std::cout << (spatialVariances.rows() - pointCloud->size()) << std::endl;
+
+  pcl::PointCloud<pcl::PointXYZRGB> pointCloudColored;
+  sensor_msgs::PointCloud2 variancePointCloud;
+  for(unsigned int i; i < pointCloud->size(); ++i){
+      pcl::PointXYZRGB pointnew = pointCloud->points[i];
+      double factor = 3.0 * pow(10,6);
+      pointnew.r = (int)min(spatialVariances(i,0) * factor, 255.0);
+      pointnew.g = 0;
+      pointnew.b = 0;
+      pointnew.a = 1;
+      pointCloudColored.push_back(pointnew);
   }
+
+  pcl::PointCloud<pcl::PointXYZRGB> pointCloudColoredTransformed;
+  pointCloudColored.header.frame_id = "odom";
+  pcl_ros::transformPointCloud("odom_drift_adjusted", pointCloudColored,
+                               pointCloudColoredTransformed, odomDriftAdjustedTransformListener_);
+
+  pcl::toROSMsg(pointCloudColored, variancePointCloud);
+
+  //variancePointCloud.header.frame_id = "odom";
+  variancePointCloud.header.frame_id = "odom_drift_adjusted"; // Check if needing transform!!
+  coloredPointCloudPublisher_.publish(variancePointCloud);
 
   return true;
 }
@@ -876,6 +901,7 @@ bool ElevationMap::getAverageFootTipPositions(std::string tip)
             p.z = meanStanceRight_(2);
         }
 
+        bool footTipColoring = true;
         std_msgs::ColorRGBA c;
         c.g = 0;
         c.b = 1-usedWeight_;
@@ -890,14 +916,13 @@ bool ElevationMap::getAverageFootTipPositions(std::string tip)
         }
         else if(footTipOutsideBounds_) c.g = 0.9; //! Not proper timing, but useful for testing
 
-
         // Check for nans
         if(p.x != p.x || p.y != p.y || p.z != p.z){
             std::cout << "NAN FOUND IN MEAN FOOT TIP POSITION!!" << std::endl;
         }
         else{
             footContactMarkerList_.points.push_back(p);
-            footContactMarkerList_.colors.push_back(c); //! TODO: sensible assignment!
+            if(footTipColoring)footContactMarkerList_.colors.push_back(c); //! TODO: sensible assignment!
         }
     }
     return true;
@@ -905,6 +930,10 @@ bool ElevationMap::getAverageFootTipPositions(std::string tip)
 
 bool ElevationMap::publishAveragedFootTipPositionMarkers()
 {
+
+    // TEST:
+   // publishSpatialVariancePointCloud();
+    // END TEST
     // Publish averaged foot tip positions
     footContactPublisher_.publish(footContactMarkerList_);
     return true;
