@@ -594,8 +594,8 @@ bool ElevationMap::publishSpatialVariancePointCloud(const pcl::PointCloud<pcl::P
   std::cout << "cols: " << spatialVariances.cols() << std::endl;
   std::cout << "rows: " << spatialVariances.rows() << std::endl;
 
-  if(spatialVariances.rows() == pointCloud->size()) std::cout << "GREAT SUCCESS< THUMBS UP!!" << std::endl;
-  else std::cout << (spatialVariances.rows() - pointCloud->size()) << std::endl;
+  //if(spatialVariances.rows() == pointCloud->size()) std::cout << "GREAT SUCCESS< THUMBS UP!!" << std::endl;
+  //else std::cout << (spatialVariances.rows() - pointCloud->size()) << std::endl;
 
   pcl::PointCloud<pcl::PointXYZRGB> pointCloudColored;
   sensor_msgs::PointCloud2 variancePointCloud;
@@ -609,16 +609,17 @@ bool ElevationMap::publishSpatialVariancePointCloud(const pcl::PointCloud<pcl::P
       pointCloudColored.push_back(pointnew);
   }
 
-  pcl::PointCloud<pcl::PointXYZRGB> pointCloudColoredTransformed;
-  pointCloudColored.header.frame_id = "odom";
-  pcl_ros::transformPointCloud("odom_drift_adjusted", pointCloudColored,
-                               pointCloudColoredTransformed, odomDriftAdjustedTransformListener_);
+  //pcl::PointCloud<pcl::PointXYZRGB> pointCloudColoredTransformed;
+  //pointCloudColored.header.frame_id = "odom";
+  //pcl_ros::transformPointCloud("odom_drift_adjusted", pointCloudColored,
+  //                             pointCloudColoredTransformed, odomDriftAdjustedTransformListener_);
 
   pcl::toROSMsg(pointCloudColored, variancePointCloud);
 
   //variancePointCloud.header.frame_id = "odom";
   variancePointCloud.header.frame_id = "odom_drift_adjusted"; // Check if needing transform!!
-  coloredPointCloudPublisher_.publish(variancePointCloud);
+  bool publishVariancePointCloud = true;
+  if(publishVariancePointCloud) coloredPointCloudPublisher_.publish(variancePointCloud);
 
   return true;
 }
@@ -836,8 +837,8 @@ bool ElevationMap::processStance(std::string tip)
     // Delete the last 10 entries of the Foot Stance Position Vector, as these are used for transition detection
     deleteLastEntriesOfStances(tip);
     getAverageFootTipPositions(tip);
-    publishAveragedFootTipPositionMarkers();
     footTipElevationMapComparison(tip);
+    publishAveragedFootTipPositionMarkers();
 
     return true;
 }
