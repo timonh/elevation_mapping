@@ -297,7 +297,7 @@ class ElevationMap
   bool footTipElevationMapComparison(std::string mode);
 
   //! TODO: Description:
-  double filteredDriftEstimation(double diffMeasurement, float estDrift, float PEstDrift);
+  std::tuple<double, double> filteredDriftEstimation(double diffComparisonUpdate, float estDrift, float PEstDrift);
 
   //! TODO: Description:
   bool initializeFootTipMarkers();
@@ -309,10 +309,13 @@ class ElevationMap
   bool frameCorrection();
 
   //! TODO: Description:
+  bool frameCorrection(double estimatedDrift);
+
+  //! TODO: Description:
   float differenceCalculationUsingPID();
 
   //! TODO: Description:
-  bool differenceCalculationUsingKalmanFilter();
+  std::tuple<double, double> differenceCalculationUsingKalmanFilter();
 
   //! TODO: Description:
   float gaussianWeightedDifferenceIncrement(double lowerBound, double elevation, double upperbound, double diff);
@@ -402,13 +405,16 @@ class ElevationMap
   bool isInStanceRight_;
   std::string comparisonMode_;
   double heightDifferenceFromComparison_;
-  float estimatedDrift_, estimatedDriftVariance_;
-  float oldDiff_;
-  float oldDiffPID_;
+  double estimatedDriftChange_, estimatedDriftChangeVariance_;
+  double oldDiffComparisonUpdate_;
+  double estimatedDrift_;
   std::vector<double> weightedDifferenceVector_;
   bool driftAdjustment_;
   double usedWeight_;
   bool footTipOutsideBounds_;
+
+  //! Kalman Filtered Drift Estimation
+  double estimatedKalmanDiff_, estimatedKalmanDiffIncrement_, PEstimatedKalmanDiffIncrement_;
 
   //! Mean foot tip positions
   Eigen::Vector3f meanStanceLeft_, meanStanceRight_;

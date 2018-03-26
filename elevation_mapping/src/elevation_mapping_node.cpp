@@ -18,7 +18,7 @@ int main(int argc, char** argv)
   //elevation_mapping::HighGrassElevationMapping highGrassElevationMap(nodeHandle);
 
   // Spin
-  ros::AsyncSpinner spinner(3); // Use n threads // MANIPULATED!!!!!
+  ros::AsyncSpinner spinner(2); // Use n threads // MANIPULATED!!!!!
   spinner.start();
   ros::waitForShutdown();
   return 0;

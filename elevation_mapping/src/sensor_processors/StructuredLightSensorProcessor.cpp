@@ -163,6 +163,10 @@ bool StructuredLightSensorProcessor::computeSpatialVariances(
         for (unsigned int j = std::max(0, int(i-proximityParameter)); j < std::min(int(pointCloudMapFrame->size()), int(i+proximityParameter)); ++j){
             // For every point in logical proximity of point[j] (Pointcloud indexing).
 
+
+            // TODO: Plane fitting here! (Slopes will not have high variance anymore!)
+
+
             auto& pointIter = pointCloudMapFrame->points[j];
 
             // If the point is within the thresholdRadius of point[j].
@@ -171,6 +175,9 @@ bool StructuredLightSensorProcessor::computeSpatialVariances(
                 varianceAccumulatorSquared += pow(pointIter.z,2);
                 varianceCalculationPointCounter++;
             }
+
+
+
         }
 
         // Assign spatialVariance (Prevent division by zero).
