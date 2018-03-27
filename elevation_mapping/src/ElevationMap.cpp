@@ -90,6 +90,8 @@ ElevationMap::ElevationMap(ros::NodeHandle nodeHandle)
   estimatedKalmanDiff_ = 0.0;
   estimatedKalmanDiffIncrement_ = 0.0;
   PEstimatedKalmanDiffIncrement_ = 0.0;
+  performanceAssessment_ = 0.0;
+  driftEstimationPID_ = 0.0;
   // END NEW
 
   initialTime_ = ros::Time::now();
@@ -279,7 +281,7 @@ bool ElevationMap::fuseArea(const Eigen::Vector2d& position, const Eigen::Array2
 
   // DEBUG
   //std::cout << "TIMING STUDY 1" << std::endl;
-  //scopedLock.unlock();
+  //scopedLock.unlock(); // HAcked!!!
   //std::cout << "TIMING STUDY 2" << std::endl;
   // END DEBUG
 
@@ -293,14 +295,20 @@ bool ElevationMap::fuse(const grid_map::Index& topLeftIndex, const grid_map::Ind
   // Nothing to do.
   if ((size == 0).any()) return false;
 
+  std::cout << "CHECKPOINT!!" << std::endl;
+
   // Initializations.
   const ros::WallTime methodStartTime(ros::WallTime::now());
 
   boost::recursive_mutex::scoped_lock scopedLock(fusedMapMutex_); // HACKEDs
 
+  std::cout << "CHECKPOINT!! 1.5" << std::endl;
+
   //! ATTENTION!!! REMOVED THIS SCOPED LOCK!! CHECK WHAT THE CONSEQUENCE IS..
   // Copy raw elevation map data for safe multi-threading.
   //boost::recursive_mutex::scoped_lock scopedLockForRawData(rawMapMutex_);
+
+  std::cout << "CHECKPOINT!! 2" << std::endl;
 
   //! TEST about the two threads
   std::thread::id this_id = std::this_thread::get_id();
@@ -857,11 +865,14 @@ bool ElevationMap::processStance(std::string tip)
 {
     std::cout << "Processing: " << tip <<std::endl;
 
+
     // Delete the last 10 entries of the Foot Stance Position Vector, as these are used for transition detection
     deleteLastEntriesOfStances(tip);
     getAverageFootTipPositions(tip);
-    footTipElevationMapComparison(tip);
+    footTipElevationMapComparison(tip);  // HACKED!!
     publishAveragedFootTipPositionMarkers();
+
+
 
     return true;
 }
@@ -975,7 +986,7 @@ bool ElevationMap::footTipElevationMapComparison(std::string tip)
     //boost::recursive_mutex::scoped_lock scopedLock(rawMapMutex_);
 
     // New version
-    double xTip, yTip, zTip;
+    double xTip, yTip, zTip = 0;
     if(tip == "left"){
         xTip = meanStanceLeft_(0);
         yTip = meanStanceLeft_(1);
@@ -1006,12 +1017,17 @@ bool ElevationMap::footTipElevationMapComparison(std::string tip)
             float heightMapRawElevationCorrected = rawMap_.atPosition("elevation", tipPosition) + heightDifferenceFromComparison_; // Changed, since frame transformed grid map used.
 
             // Supress nans.
-            if(!isnan(heightMapRaw)){
+            if(!isnan(heightMapRaw) && !isnan(heightDifferenceFromComparison_)){
 
                 // Calculate difference.
                 verticalDifference = zTip - heightMapRaw;
                 double verticalDifferenceCorrected = zTip - heightMapRawElevationCorrected;
                 std::cout << "HeightDifference CLASSICAL:    " << verticalDifference << "        HeightDifference CORRECTED:    " << verticalDifferenceCorrected << std::endl;
+
+                // Allow some stances to get sorted.
+                if(weightedDifferenceVector_.size() >= 4) performanceAssessment_ += fabs(verticalDifferenceCorrected);
+                std::cout << "Performance Value: " << performanceAssessment_ << std::endl;
+
 
                 // Use 3 standard deviations of the uncertainty ellipse of the foot tip positions as fusion area.
                 Eigen::Array2d ellipseAxes;
@@ -1045,20 +1061,31 @@ bool ElevationMap::footTipElevationMapComparison(std::string tip)
                 if(weightedDifferenceVector_.size() >= 6) weightedDifferenceVector_.erase(weightedDifferenceVector_.begin());
                 std::cout << "Weighted Height Difference: " << weightedDifferenceVector_[0] << "\n";
 
+                // Longer weightedDifferenceVector for PID drift calculation
+                PIDWeightedDifferenceVector_.push_back(heightDifferenceFromComparison_ + weightedVerticalDifferenceIncrement);
+                if(PIDWeightedDifferenceVector_.size() >= 30) PIDWeightedDifferenceVector_.erase(PIDWeightedDifferenceVector_.begin());
+
+                // TODO: for Kalman drift estimation: set old Diff comparison update to weighted Difference vector.. !!!!!
+
                 // PID height offset calculation.
                 double heightDiffPID = differenceCalculationUsingPID();
                 heightDifferenceFromComparison_ = heightDiffPID;
 
-                // TODO: Difference estimation using Kalman Filtering
-
+                // Kalman Filter based offset calculation.
                 auto diffTuple = differenceCalculationUsingKalmanFilter();
                 estimatedKalmanDiffIncrement_ =  std::get<0>(diffTuple);
                 estimatedKalmanDiff_ += estimatedKalmanDiffIncrement_;
                 PEstimatedKalmanDiffIncrement_ = std::get<1>(diffTuple);
+                std::cout << "Kalman Filtered Difference Estimate!" << estimatedKalmanDiff_ << "VS. PID Difference: " << heightDifferenceFromComparison_ << std::endl;
+                // TESTING:
+                //heightDifferenceFromComparison_ = estimatedKalmanDiff_;
+
+                driftEstimationPID_ = driftCalculationUsingPID();
+
             }
             else{
-                if(!isnan(estimatedDrift_)) heightDifferenceFromComparison_ += estimatedDriftChange_;
-                std::cout << "heightDifferenceFromComparison_ was Incremented by estimated Drift because NAN was found: " << (double)estimatedDriftChange_ << std::endl;
+                if(!isnan(driftEstimationPID_)) heightDifferenceFromComparison_ += driftEstimationPID_;
+                std::cout << "heightDifferenceFromComparison_ was Incremented by estimated Drift because NAN was found: " << (double)driftEstimationPID_ << std::endl;
             }
         }
         else std::cout << "heightDifferenceFromComparison_ wasnt changed because tip is not inside map area" << std::endl;
@@ -1111,8 +1138,9 @@ std::tuple<double, double> ElevationMap::filteredDriftEstimation(double diffComp
         double diffMeasurement = diffComparisonUpdate - oldDiffComparisonUpdate_;
         std::cout << "diffComparisonUpdate: " << diffComparisonUpdate << std::endl;
         std::cout << "est Drift: " << estDrift << std::endl;
-        float R = 0.5;
-        float Q = 0.5;
+        std::cout << "diffMeasurement: " << diffMeasurement << std::endl;
+        float R = 0.002;
+        float Q = 0.2;
     //    // Prediction Step.
         predDrift = estDrift;
         PPredDrift = PEstDrift + Q;
@@ -1123,7 +1151,7 @@ std::tuple<double, double> ElevationMap::filteredDriftEstimation(double diffComp
         measDrift = predDrift + K * diffMeasurement;
         PMeasDrift = PPredDrift - K * PPredDrift;
 
-        std::cout << "mean measDrift: " << measDrift << " per stance" << std::endl;
+        std::cout << "mean measDrift Increment: " << measDrift << " per stance" << std::endl;
         // Attention: if nans are there, then drift is set to zero!
     }
     else{
@@ -1136,10 +1164,11 @@ std::tuple<double, double> ElevationMap::filteredDriftEstimation(double diffComp
 std::tuple<double, double, double> ElevationMap::getFusedCellBounds(const Eigen::Vector2d& position, const Eigen::Array2d& length)
 {
     //boost::recursive_mutex::scoped_lock scopedLockForFootTipComparison(footTipStanceComparisonMutex_);
-    //boost::recursive_mutex::scoped_lock scopedLock(fusedMapMutex_);
+   // boost::recursive_mutex::scoped_lock scopedLock(fusedMapMutex_);
+   // boost::recursive_mutex::scoped_lock scopedLockForRawData(rawMapMutex_);
     float upperFused, lowerFused, elevationFused;
     bool doFuseEachStep = true;
-    if(rawMap_.isInside(position) && heightDifferenceFromComparison_ == heightDifferenceFromComparison_ && doFuseEachStep){
+    if(!isnan(heightDifferenceFromComparison_) && doFuseEachStep){
         fuseArea(position, length);
         elevationFused = fusedMap_.atPosition("elevation", position);
         lowerFused = fusedMap_.atPosition("lower_bound", position);
@@ -1184,8 +1213,21 @@ float ElevationMap::differenceCalculationUsingPID()
     for (auto& n : weightedDifferenceVector_)
         totalDiff += n;
     double meanDiff = totalDiff / float(weightedDifferenceVector_.size());
-    return kp * weightedDifferenceVector_[0] + ki * meanDiff + kd * (weightedDifferenceVector_[0] - weightedDifferenceVector_[1]);
+    return kp * weightedDifferenceVector_[weightedDifferenceVector_.size()] + ki * meanDiff +
+            kd * (weightedDifferenceVector_[weightedDifferenceVector_.size()] - weightedDifferenceVector_[weightedDifferenceVector_.size()-1]);
     }
+}
+
+double ElevationMap::driftCalculationUsingPID(){
+    //
+    double totalDifference = 0.0;
+    for(unsigned int i = PIDWeightedDifferenceVector_.size(); i > 0; --i){
+        double difference = PIDWeightedDifferenceVector_[i] - PIDWeightedDifferenceVector_[i-1];
+        totalDifference += difference;
+    }
+    double meanDifference = totalDifference / double(PIDWeightedDifferenceVector_.size() - 1.0);
+    std::cout << "mean DRIFT PER STANCE USING PID !!! " << meanDifference << std::endl;
+    return meanDifference;
 }
 
 float ElevationMap::gaussianWeightedDifferenceIncrement(double lowerBound, double elevation, double upperBound, double diff)
@@ -1229,8 +1271,8 @@ std::tuple<double, double> ElevationMap::differenceCalculationUsingKalmanFilter(
       //  measurement = newheightdiff - oldheightdiff
         double diffMeasurement = weightedDifferenceVector_[0] - estimatedKalmanDiff_;
         std::cout << "WeightedDifferenceVector inside Kalman Filter: " << weightedDifferenceVector_[0] << std::endl;
-        float R = 0.1;
-        float Q = 0.1;
+        float R = 0.95;
+        float Q = 0.05;
     //    // Prediction Step.
         predDiff = estimatedKalmanDiffIncrement_;
         PPredDiff = PEstimatedKalmanDiffIncrement_ + Q;

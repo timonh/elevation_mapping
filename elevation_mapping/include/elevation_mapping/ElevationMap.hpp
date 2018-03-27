@@ -323,6 +323,9 @@ class ElevationMap
   //! TODO: Description:
   float normalDistribution(float arg, float mean, float stdDev);
 
+  //! TODO: Description:
+  double driftCalculationUsingPID();
+
 
 
 
@@ -412,6 +415,13 @@ class ElevationMap
   bool driftAdjustment_;
   double usedWeight_;
   bool footTipOutsideBounds_;
+
+  //! For Tuning! To sum up the diffs between the moved elevation map and the foot tips.
+  double performanceAssessment_;
+
+  //! Longer weightedDifferenceVector for PID drift estimation
+  std::vector<double> PIDWeightedDifferenceVector_;
+  double driftEstimationPID_;
 
   //! Kalman Filtered Drift Estimation
   double estimatedKalmanDiff_, estimatedKalmanDiffIncrement_, PEstimatedKalmanDiffIncrement_;
