@@ -42,14 +42,13 @@ namespace elevation_mapping {
 
 ElevationMap::ElevationMap(ros::NodeHandle nodeHandle)
     : nodeHandle_(nodeHandle),
-      rawMap_({"elevation", "variance", "horizontal_variance_x", "horizontal_variance_y", "horizontal_variance_xy",
-              "color", "time", "lowest_scan_point", "sensor_x_at_lowest_scan", "sensor_y_at_lowest_scan", "sensor_z_at_lowest_scan", "foot_tip_elevation"}),
+      rawMap_({"elevation", "variance", "horizontal_variance_x", "horizontal_variance_y", "horizontal_variance_xy", "color", "time", "lowest_scan_point", "sensor_x_at_lowest_scan", "sensor_y_at_lowest_scan", "sensor_z_at_lowest_scan", "foot_tip_elevation"}),
       fusedMap_({"elevation", "upper_bound", "lower_bound", "color"}),
       hasUnderlyingMap_(false),
       visibilityCleanupDuration_(0.0)
 {
     // Timon added foot_tip_elevation layer
-  rawMap_.setBasicLayers({"elevation", "variance", "foot_tip_elevation"});
+  rawMap_.setBasicLayers({"elevation", "variance"});
   fusedMap_.setBasicLayers({"elevation", "upper_bound", "lower_bound"});
 
 
@@ -1352,9 +1351,42 @@ bool ElevationMap::updateFootTipBasedElevationMapLayer()
 {
     std::cout << "points inside updateFootTipBased...: " << footContactMarkerList_.points.back().x << " " << footContactMarkerList_.points.back().y <<
                  " " << footContactMarkerList_.points.back().z << std::endl;
-    std::cout << "Layers!!: " << rawMap_.getBasicLayers()[2] << std::endl;
-    // TODO: Iterate through all of the cells and set height as weighted combination of the foot tips, where the weight is determined by the distance from the foot tips.
-    // -> Tuneable factor: distance from foot tips.
+    std::cout << "Layers!!: " << rawMap_.getLayers()[11] << std::endl;
+
+    for (GridMapIterator iterator(rawMap_); !iterator.isPastEnd(); ++iterator) {
+
+        //Position3 posMap;
+        //rawMap_.getPosition3("foot_tip_elevation", *iterator, posMap);
+        Position posMap;
+        rawMap_.getPosition(*iterator, posMap);
+
+
+
+        std::vector<geometry_msgs::Point>::iterator markerListIterator = footContactMarkerList_.points.end();
+        int numberOfConsideredFootTips = 10;
+        if(footContactMarkerList_.points.size() <= 10) numberOfConsideredFootTips = footContactMarkerList_.points.size();
+        double totalDistance = 0;
+        std::vector<double> distanceVector;
+        for (unsigned int j = 0; j < numberOfConsideredFootTips; ++j){
+
+            --markerListIterator;
+            //std::cout << markerListIterator->z << std::endl;
+            double distance = sqrt(pow(fabs(markerListIterator->x - posMap[0]),2) + pow(fabs(markerListIterator->y - posMap[1]),2));
+            //std::cout << distance << std::endl;
+            totalDistance += distance;
+            distanceVector.push_back(distance);
+        }
+        double cellHeight = 0;
+        markerListIterator = footContactMarkerList_.points.end();
+        markerListIterator--;
+        for (unsigned int i = 0; i < distanceVector.size(); ++i){
+             cellHeight += markerListIterator->z * (distanceVector[i] / totalDistance); // TODO: stronger functional dependency, e.g. exp..
+             markerListIterator--;
+        }
+
+        rawMap_.atPosition("foot_tip_elevation", posMap) = cellHeight;
+
+    }
 }
 
 } /* namespace */
