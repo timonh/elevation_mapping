@@ -210,8 +210,10 @@ bool ElevationMapping::initialize()
 {
   ROS_INFO("Elevation mapping node initializing ... ");
   fusionServiceThread_ = boost::thread(boost::bind(&ElevationMapping::runFusionServiceThread, this));
-  Duration(1.0).sleep(); // Need this to get the TF caches fill up.
+  Duration(1.0).sleep(); // Need this to get the TF caches fill up.  // HACKEDHACKED
+  std::cout << "Checkpoint!! Constructor 4" << std::endl;
   resetMapUpdateTimer();
+  std::cout << "Checkpoint!! Constructor 4" << std::endl;
   fusedMapPublishTimer_.start();
   visibilityCleanupThread_ = boost::thread(boost::bind(&ElevationMapping::visibilityCleanupThread, this));
   visibilityCleanupTimer_.start();
@@ -275,7 +277,7 @@ void ElevationMapping::pointCloudCallback(
   if (!ignoreRobotMotionUpdates_) {
     boost::shared_ptr<geometry_msgs::PoseWithCovarianceStamped const> poseMessage = robotPoseCache_.getElemBeforeTime(lastPointCloudUpdateTime_);
     if (!poseMessage) {
-      ROS_ERROR("Could not get pose information from robot for time %f. Buffer empty?", lastPointCloudUpdateTime_.toSec());
+      ROS_ERROR("Could not get pose information from robot for time %f. Buffer empty? 1st", lastPointCloudUpdateTime_.toSec());
       return;
     }
     robotPoseCovariance = Eigen::Map<const Eigen::MatrixXd>(poseMessage->pose.covariance.data(), 6, 6);

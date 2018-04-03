@@ -92,7 +92,13 @@ add_executable(${PROJECT_NAME}
   src/elevation_mapping_node.cpp
 )
 
+add_executable(fake_imu_publisher src/FakeImuPublisher.cpp)
+
 target_link_libraries(${PROJECT_NAME}
+  ${PROJECT_NAME}_library
+)
+
+target_link_libraries(fake_imu_publisher
   ${PROJECT_NAME}_library
 )
 

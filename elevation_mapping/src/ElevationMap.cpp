@@ -42,19 +42,30 @@ namespace elevation_mapping {
 
 ElevationMap::ElevationMap(ros::NodeHandle nodeHandle)
     : nodeHandle_(nodeHandle),
-      rawMap_({"elevation", "variance", "horizontal_variance_x", "horizontal_variance_y", "horizontal_variance_xy", "color", "time", "lowest_scan_point", "sensor_x_at_lowest_scan", "sensor_y_at_lowest_scan", "sensor_z_at_lowest_scan"}),
+      rawMap_({"elevation", "variance", "horizontal_variance_x", "horizontal_variance_y", "horizontal_variance_xy",
+              "color", "time", "lowest_scan_point", "sensor_x_at_lowest_scan", "sensor_y_at_lowest_scan", "sensor_z_at_lowest_scan", "foot_tip_elevation"}),
       fusedMap_({"elevation", "upper_bound", "lower_bound", "color"}),
       hasUnderlyingMap_(false),
       visibilityCleanupDuration_(0.0)
 {
-  rawMap_.setBasicLayers({"elevation", "variance"});
+    // Timon added foot_tip_elevation layer
+  rawMap_.setBasicLayers({"elevation", "variance", "foot_tip_elevation"});
   fusedMap_.setBasicLayers({"elevation", "upper_bound", "lower_bound"});
+
+
 
   clear();
 
   // TEST:
   elevationMapCorrectedPublisher_ = nodeHandle_.advertise<grid_map_msgs::GridMap>("elevation_map_drift_adjusted", 1);
   // END TEST
+
+  // testing
+  //rawMap_.setBasicLayers({"foot_tip_elevation"});
+
+
+  // testing
+
   elevationMapRawPublisher_ = nodeHandle_.advertise<grid_map_msgs::GridMap>("elevation_map_raw", 1);
   elevationMapFusedPublisher_ = nodeHandle_.advertise<grid_map_msgs::GridMap>("elevation_map", 1);
   if (!underlyingMapTopic_.empty()) underlyingMapSubscriber_ =
@@ -74,6 +85,7 @@ ElevationMap::ElevationMap(ros::NodeHandle nodeHandle)
 
   // NEW: publish foot tip markers
   footContactPublisher_ = nodeHandle_.advertise<visualization_msgs::Marker>("mean_foot_contact_markers_rviz", 1000);
+  elevationMapBoundPublisher_ = nodeHandle_.advertise<visualization_msgs::Marker>("map_bound_markers_rviz", 1000);
   initializeFootTipMarkers();
 
   // NEW: publish clored pointcloud visualizing the local pointcloud variance.
@@ -963,7 +975,11 @@ bool ElevationMap::getAverageFootTipPositions(std::string tip)
             footContactMarkerList_.points.push_back(p);
             if(footTipColoring)footContactMarkerList_.colors.push_back(c); //! TODO: sensible assignment!
         }
+        updateFootTipBasedElevationMapLayer();
     }
+
+    std::cout << "LFTipposition: " << footContactMarkerList_.points.back().x << " " << footContactMarkerList_.points.back().y <<
+                 " " << footContactMarkerList_.points.back().z << std::endl;
     return true;
 }
 
@@ -1042,6 +1058,34 @@ bool ElevationMap::footTipElevationMapComparison(std::string tip)
                 std::cout << "lower: " << lowerBoundFused << " elev: " << elevationFused << " upper: " << upperBoundFused << std::endl;
                 weightedVerticalDifferenceIncrement = gaussianWeightedDifferenceIncrement(lowerBoundFused, elevationFused, upperBoundFused, verticalDifference);
 
+
+                // TODO Cleanify
+                // TODO: Add upper and lower bound at each stance position..
+                geometry_msgs::Point p_elev, p_upper, p_lower;
+                p_elev.x = p_upper.x = p_lower.x = xTip;
+                p_elev.y = p_upper.y = p_lower.y = yTip;
+                p_elev.z = elevationFused + heightDifferenceFromComparison_;
+                p_upper.z = upperBoundFused + heightDifferenceFromComparison_;
+                p_lower.z = lowerBoundFused + heightDifferenceFromComparison_;
+
+
+                std_msgs::ColorRGBA c;
+                c.r = 1;
+                c.g = 0.5;
+                c.b = 0;
+                c.a = 1;
+                //footContactMarkerList_.points.push_back(p_elev);
+                //footContactMarkerList_.colors.push_back(c);
+
+                elevationMapBoundMarkerList_.points.push_back(p_upper);
+                elevationMapBoundMarkerList_.colors.push_back(c);
+
+                elevationMapBoundMarkerList_.points.push_back(p_lower);
+                elevationMapBoundMarkerList_.colors.push_back(c);
+
+                elevationMapBoundPublisher_.publish(elevationMapBoundMarkerList_);
+
+
                 // TESTING
                 auto driftTuple = filteredDriftEstimation(weightedVerticalDifferenceIncrement, estimatedDriftChange_, estimatedDriftChangeVariance_);
                 estimatedDriftChange_ = std::get<0>(driftTuple);
@@ -1109,23 +1153,26 @@ bool ElevationMap::footTipElevationMapComparison(std::string tip)
 bool ElevationMap::initializeFootTipMarkers()
 {
     // Color and shape definition of markers for foot tip ground contact visualization.
-    footContactMarkerList_.header.frame_id = "odom";
-    footContactMarkerList_.header.stamp = ros::Time();
-    footContactMarkerList_.ns = "elevation_mapping";
-    footContactMarkerList_.id = 0;
-    footContactMarkerList_.type = visualization_msgs::Marker::SPHERE_LIST;
-    footContactMarkerList_.action = visualization_msgs::Marker::ADD;
-    footContactMarkerList_.pose.orientation.x = 0.0;
-    footContactMarkerList_.pose.orientation.y = 0.0;
-    footContactMarkerList_.pose.orientation.z = 0.0;
-    footContactMarkerList_.pose.orientation.w = 1.0;
-    footContactMarkerList_.scale.x = 0.1;
-    footContactMarkerList_.scale.y = 0.1;
-    footContactMarkerList_.scale.z = 0.1;
-    footContactMarkerList_.color.a = 1.0; // Don't forget to set the alpha!
-    footContactMarkerList_.color.r = 0.0;
-    footContactMarkerList_.color.g = 1.0;
-    footContactMarkerList_.color.b = 0.7;
+    footContactMarkerList_.header.frame_id = elevationMapBoundMarkerList_.header.frame_id = "odom";
+    footContactMarkerList_.header.stamp = elevationMapBoundMarkerList_.header.stamp = ros::Time();
+    footContactMarkerList_.ns = elevationMapBoundMarkerList_.ns = "elevation_mapping";
+    footContactMarkerList_.id = elevationMapBoundMarkerList_.id = 0;
+    footContactMarkerList_.type = elevationMapBoundMarkerList_.type = visualization_msgs::Marker::SPHERE_LIST;
+    footContactMarkerList_.action = elevationMapBoundMarkerList_.action = visualization_msgs::Marker::ADD;
+    footContactMarkerList_.pose.orientation.x = elevationMapBoundMarkerList_.pose.orientation.x = 0.0;
+    footContactMarkerList_.pose.orientation.y = elevationMapBoundMarkerList_.pose.orientation.y = 0.0;
+    footContactMarkerList_.pose.orientation.z = elevationMapBoundMarkerList_.pose.orientation.z = 0.0;
+    footContactMarkerList_.pose.orientation.w = elevationMapBoundMarkerList_.pose.orientation.w = 1.0;
+    footContactMarkerList_.scale.x = 0.07;
+    footContactMarkerList_.scale.y = 0.07;
+    footContactMarkerList_.scale.z = 0.07;
+    elevationMapBoundMarkerList_.scale.x = 0.03;
+    elevationMapBoundMarkerList_.scale.y = 0.03;
+    elevationMapBoundMarkerList_.scale.z = 0.03;
+    footContactMarkerList_.color.a = elevationMapBoundMarkerList_.color.a = 1.0; // Don't forget to set the alpha!
+    footContactMarkerList_.color.r = elevationMapBoundMarkerList_.color.r = 0.0;
+    footContactMarkerList_.color.g = elevationMapBoundMarkerList_.color.g = 1.0;
+    footContactMarkerList_.color.b = elevationMapBoundMarkerList_.color.b = 0.7;
     return true;
 }
 
@@ -1187,6 +1234,8 @@ bool ElevationMap::frameCorrection()
 
     odomMapTransform.setIdentity();
     odomMapTransform.getOrigin()[2] += heightDifferenceFromComparison_;
+
+    std::cout << "Entered the corrected frame publisher.. " << std::endl;
 
     ros::Time stamp = ros::Time().fromNSec(fusedMap_.getTimestamp());
 
@@ -1297,6 +1346,15 @@ float ElevationMap::normalDistribution(float arg, float mean, float stdDev)
     double e = exp(-pow((arg-mean),2)/(2.0*pow(stdDev,2)));
     //Leaving away the weighting, as the maximum value should be one, which is sensible for weighting.
     return e; // (stdDev * sqrt(2*M_PI));
+}
+
+bool ElevationMap::updateFootTipBasedElevationMapLayer()
+{
+    std::cout << "points inside updateFootTipBased...: " << footContactMarkerList_.points.back().x << " " << footContactMarkerList_.points.back().y <<
+                 " " << footContactMarkerList_.points.back().z << std::endl;
+    std::cout << "Layers!!: " << rawMap_.getBasicLayers()[2] << std::endl;
+    // TODO: Iterate through all of the cells and set height as weighted combination of the foot tips, where the weight is determined by the distance from the foot tips.
+    // -> Tuneable factor: distance from foot tips.
 }
 
 } /* namespace */

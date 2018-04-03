@@ -326,6 +326,9 @@ class ElevationMap
   //! TODO: Description:
   double driftCalculationUsingPID();
 
+  //! TODO: Description:
+  bool updateFootTipBasedElevationMapLayer();
+
 
 
 
