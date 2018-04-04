@@ -1057,6 +1057,16 @@ bool ElevationMap::footTipElevationMapComparison(std::string tip)
                 std::cout << "lower: " << lowerBoundFused << " elev: " << elevationFused << " upper: " << upperBoundFused << std::endl;
                 weightedVerticalDifferenceIncrement = gaussianWeightedDifferenceIncrement(lowerBoundFused, elevationFused, upperBoundFused, verticalDifference);
 
+                // DEBUG:
+                if (isnan(weightedVerticalDifferenceIncrement)){
+                    std::cout << "NAN IN WEIGHTED DIFFERENCE INCREMENT!!!!!!!" << std::endl;
+                    std::cout << "" << std::endl;
+                    std::cout << "" << std::endl;
+                    std::cout << "" << std::endl;
+                    weightedVerticalDifferenceIncrement = 0;
+                }
+                // END DEBUG
+
 
                 // TODO Cleanify
                 // TODO: Add upper and lower bound at each stance position..
@@ -1112,7 +1122,11 @@ bool ElevationMap::footTipElevationMapComparison(std::string tip)
 
                 // PID height offset calculation.
                 double heightDiffPID = differenceCalculationUsingPID();
+
+                // Avoid Old Nans to be included. TEST!! // TODO: check where nans might come from to avoid them earlier
+                //if(!isnan(heightDiffPID))
                 heightDifferenceFromComparison_ = heightDiffPID;
+
 
                 // Kalman Filter based offset calculation.
                 auto diffTuple = differenceCalculationUsingKalmanFilter();
@@ -1127,7 +1141,7 @@ bool ElevationMap::footTipElevationMapComparison(std::string tip)
 
             }
             else{
-                if(!isnan(driftEstimationPID_)) heightDifferenceFromComparison_ += driftEstimationPID_;
+                //if(!isnan(driftEstimationPID_)) heightDifferenceFromComparison_ += driftEstimationPID_; // HACKED AWAY FOR TESTING!
                 std::cout << "heightDifferenceFromComparison_ was Incremented by estimated Drift because NAN was found: " << (double)driftEstimationPID_ << std::endl;
             }
         }
@@ -1353,6 +1367,7 @@ bool ElevationMap::updateFootTipBasedElevationMapLayer()
                  " " << footContactMarkerList_.points.back().z << std::endl;
     std::cout << "Layers!!: " << rawMap_.getLayers()[11] << std::endl;
 
+    double summedErrorValue = 0;
     for (GridMapIterator iterator(rawMap_); !iterator.isPastEnd(); ++iterator) {
 
         //Position3 posMap;
@@ -1364,29 +1379,46 @@ bool ElevationMap::updateFootTipBasedElevationMapLayer()
 
         std::vector<geometry_msgs::Point>::iterator markerListIterator = footContactMarkerList_.points.end();
         int numberOfConsideredFootTips = 10;
-        if(footContactMarkerList_.points.size() <= 10) numberOfConsideredFootTips = footContactMarkerList_.points.size();
-        double totalDistance = 0;
-        std::vector<double> distanceVector;
+        if (footContactMarkerList_.points.size() <= 10) numberOfConsideredFootTips = footContactMarkerList_.points.size();
+        double totalWeight = 0;
+        double factor = 100.0;
+        std::vector<double> weightVector, distanceVector;
         for (unsigned int j = 0; j < numberOfConsideredFootTips; ++j){
 
             --markerListIterator;
             //std::cout << markerListIterator->z << std::endl;
             double distance = sqrt(pow(fabs(markerListIterator->x - posMap[0]),2) + pow(fabs(markerListIterator->y - posMap[1]),2));
             //std::cout << distance << std::endl;
-            totalDistance += distance;
+
             distanceVector.push_back(distance);
+            totalWeight += 1.0/exp(factor*distance); // Changed to exp
+            weightVector.push_back(1.0/exp(factor*distance)); // Changed to exp
         }
         double cellHeight = 0;
         markerListIterator = footContactMarkerList_.points.end();
         markerListIterator--;
-        for (unsigned int i = 0; i < distanceVector.size(); ++i){
-             cellHeight += markerListIterator->z * (distanceVector[i] / totalDistance); // TODO: stronger functional dependency, e.g. exp..
+        for (unsigned int i = 0; i < weightVector.size(); ++i){
+             cellHeight += markerListIterator->z * (weightVector[i] / totalWeight); // TODO: stronger functional dependency, e.g. exp..
              markerListIterator--;
         }
 
-        rawMap_.atPosition("foot_tip_elevation", posMap) = cellHeight;
+        if (rawMap_.isInside(posMap)) rawMap_.atPosition("foot_tip_elevation", posMap) = cellHeight;
+
+        // TODO: calculate differences to elevation map corrected and colorize it accordingly..
+
+        // Calculate Difference measure in restricted area around foot tips (the last two)
+        double threshold = 0.2;
+        if (rawMap_.isInside(posMap) && !isnan(rawMap_.atPosition("elevation", posMap)) && distanceVector.size() > 1){
+            if (distanceVector[0] < threshold || distanceVector[1] < threshold)
+                summedErrorValue += fabs(cellHeight - (rawMap_.atPosition("elevation", posMap)+heightDifferenceFromComparison_)); // Hacked a little error to check sensitivity
+            // Consider adding the offset, as the non moved one may be considered..
+            //std::cout << "Difference in height, what about offset?: " << fabs(cellHeight - rawMap_.atPosition("elevation", posMap)) << std::endl;
+        }
+
 
     }
+    std::cout << "Total ERROR VALUE OF FOOT TIP ELVATION MAP VS CAMERA ELEVATION MAP: " << summedErrorValue << std::endl;
+    return true;
 }
 
 } /* namespace */
