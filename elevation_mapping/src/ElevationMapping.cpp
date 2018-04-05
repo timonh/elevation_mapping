@@ -211,9 +211,7 @@ bool ElevationMapping::initialize()
   ROS_INFO("Elevation mapping node initializing ... ");
   fusionServiceThread_ = boost::thread(boost::bind(&ElevationMapping::runFusionServiceThread, this));
   Duration(1.0).sleep(); // Need this to get the TF caches fill up.  // HACKEDHACKED
-  std::cout << "Checkpoint!! Constructor 4" << std::endl;
   resetMapUpdateTimer();
-  std::cout << "Checkpoint!! Constructor 4" << std::endl;
   fusedMapPublishTimer_.start();
   visibilityCleanupThread_ = boost::thread(boost::bind(&ElevationMapping::visibilityCleanupThread, this));
   visibilityCleanupTimer_.start();

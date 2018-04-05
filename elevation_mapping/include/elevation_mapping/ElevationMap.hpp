@@ -288,6 +288,10 @@ class ElevationMap
   //! TODO: Description!
   bool publishAveragedFootTipPositionMarkers();
 
+  //! TODO: Description!
+  bool publishFusedMapBoundMarkers(double& xTip, double& yTip,
+                                   double& elevationFused, double& upperBoundFused, double& lowerBoundFused);
+
   //! TODO: Description:
   bool detectStancePhase();
 
@@ -327,7 +331,7 @@ class ElevationMap
   double driftCalculationUsingPID();
 
   //! TODO: Description:
-  bool updateFootTipBasedElevationMapLayer();
+  bool updateFootTipBasedElevationMapLayer(int numberOfConsideredFootTips);
 
   /*!
    * Performance assessment for tuning, only valid if walking on flat ground and therefore wishing elevation map to be flat too.
@@ -435,7 +439,7 @@ class ElevationMap
   double estimatedKalmanDiff_, estimatedKalmanDiffIncrement_, PEstimatedKalmanDiffIncrement_;
 
   //! Mean foot tip positions
-  Eigen::Vector3f meanStanceLeft_, meanStanceRight_, meanStance_;
+  Eigen::Vector3f meanStance_;
 
   //! Transform Listener and broadcaster for generating the corrected frame
   tf::TransformListener odomDriftAdjustedTransformListener_;

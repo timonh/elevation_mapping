@@ -138,7 +138,7 @@ bool ElevationMap::add(const pcl::PointCloud<pcl::PointXYZRGB>::Ptr pointCloud, 
 
   publishSpatialVariancePointCloud(pointCloud, spatialVariances);
   // TESTING:
-  std::cout << "TIMING OF ADDING!! " << std::endl;
+  //std::cout << "TIMING OF ADDING!! " << std::endl;
   // END TESTING
 
 
@@ -286,8 +286,8 @@ bool ElevationMap::fuseArea(const Eigen::Vector2d& position, const Eigen::Array2
   boost::recursive_mutex::scoped_lock scopedLock(fusedMapMutex_); // Hacked from fused to raw
 
   //! TEST about the two threads
-  std::thread::id this_id = std::this_thread::get_id();
-  std::cout << "This is the thread FUSE_AREA!!! : " << this_id << std::endl;
+  //std::thread::id this_id = std::this_thread::get_id();
+  //std::cout << "This is the thread FUSE_AREA!!! : " << this_id << std::endl;
   //! END TEST
 
 
@@ -312,24 +312,18 @@ bool ElevationMap::fuse(const grid_map::Index& topLeftIndex, const grid_map::Ind
   // Nothing to do.
   if ((size == 0).any()) return false;
 
-  std::cout << "CHECKPOINT!!" << std::endl;
-
   // Initializations.
   const ros::WallTime methodStartTime(ros::WallTime::now());
 
   boost::recursive_mutex::scoped_lock scopedLock(fusedMapMutex_); // HACKEDs
 
-  std::cout << "CHECKPOINT!! 1.5" << std::endl;
-
   //! ATTENTION!!! REMOVED THIS SCOPED LOCK!! CHECK WHAT THE CONSEQUENCE IS..
   // Copy raw elevation map data for safe multi-threading.
   //boost::recursive_mutex::scoped_lock scopedLockForRawData(rawMapMutex_);
 
-  std::cout << "CHECKPOINT!! 2" << std::endl;
-
   //! TEST about the two threads
-  std::thread::id this_id = std::this_thread::get_id();
-  std::cout << "This is the thread FUSE: " << this_id << std::endl;
+//  std::thread::id this_id = std::this_thread::get_id();
+//  std::cout << "This is the thread FUSE: " << this_id << std::endl;
   //! END TEST
 
   auto& rawMapCopy = rawMap_;
@@ -886,7 +880,7 @@ bool ElevationMap::processStance(std::string tip)
     // Delete the last 10 entries of the Foot Stance Position Vector, as these are used for transition detection
     deleteLastEntriesOfStances(tip);
     getAverageFootTipPositions(tip);
-    footTipElevationMapComparison(tip);  // HACKED!!
+    footTipElevationMapComparison(tip);
     publishAveragedFootTipPositionMarkers();
     // Performance Assessment, sensible if wanting to tune the system while walking on flat surface.
     performanceAssessmentMeanElevationMap();
@@ -925,19 +919,16 @@ bool ElevationMap::getAverageFootTipPositions(std::string tip)
     std::vector<Eigen::Vector3f> stance;
     if(tip == "left") stance = LFTipStance_;
     if(tip == "right") stance = RFTipStance_;
+    LFTipStance_.clear();
+    RFTipStance_.clear();
 
     // Derive mean foot tip positions
     if(stance.size() > 1){
-
         for (auto& n : stance){
             // Consider only those with state = 1  TODO!!!
             totalStance += n;
         }
-
-
         meanStance_ = totalStance / float(stance.size());
-        LFTipStance_.clear();
-        RFTipStance_.clear();
         processStanceTriggerLeft_.clear();
     }
     return true;
@@ -945,22 +936,13 @@ bool ElevationMap::getAverageFootTipPositions(std::string tip)
 
 bool ElevationMap::publishAveragedFootTipPositionMarkers()
 {
-    // Positions for publisher
+    // Positions for publisher.
     geometry_msgs::Point p;
     p.x = meanStance_(0);
     p.y = meanStance_(1);
     p.z = meanStance_(2);
 
-//        if(tip == "right"){
-//            meanStanceRight_ = totalStance / float(stance.size());
-//            RFTipStance_.clear();
-//            processStanceTriggerRight_.clear();
-//            // Positions for publisher
-//            p.x = meanStanceRight_(0);
-//            p.y = meanStanceRight_(1);
-//            p.z = meanStanceRight_(2);
-//        }
-
+    // Coloring as function of applied weight.
     bool footTipColoring = true;
     std_msgs::ColorRGBA c;
     c.g = 0;
@@ -970,13 +952,15 @@ bool ElevationMap::publishAveragedFootTipPositionMarkers()
 
     //boost::recursive_mutex::scoped_lock scopedLock(rawMapMutex_);
 
+    // If outside the area, where comparison can be made (i.e. no elevation map value is found) set black color.
+    // Set yellow if foot tip is outside the bounds of the fused map.
     Position coloringPosition(p.x, p.y);
-    if(isnan(rawMap_.atPosition("elevation", coloringPosition))){
+    if (isnan(rawMap_.atPosition("elevation", coloringPosition))){
         c.g = 0;
         c.b = 0;
         c.r = 0;
     }
-    else if(footTipOutsideBounds_) c.g = 0.9; //! Not proper timing, but useful for testing
+    else if(footTipOutsideBounds_) c.g = 0.9;
 
     //scopedLock.unlock();
 
@@ -986,18 +970,46 @@ bool ElevationMap::publishAveragedFootTipPositionMarkers()
     }
     else{
         footContactMarkerList_.points.push_back(p);
-        if(footTipColoring)footContactMarkerList_.colors.push_back(c); //! TODO: sensible assignment!
+        if(footTipColoring)footContactMarkerList_.colors.push_back(c);
     }
-    updateFootTipBasedElevationMapLayer();
 
+    // Uses the footContactMarkerList_, therefore called here.
+    // Updates the map layer, that purely relies on the last n foot tips.
+    int numberOfConsideredFootTips = 10;
+    updateFootTipBasedElevationMapLayer(numberOfConsideredFootTips);
 
-    std::cout << "LFTipposition: " << footContactMarkerList_.points.back().x << " " << footContactMarkerList_.points.back().y <<
-             " " << footContactMarkerList_.points.back().z << std::endl;
-    // TEST:
-   // publishSpatialVariancePointCloud();
-    // END TEST
     // Publish averaged foot tip positions
     footContactPublisher_.publish(footContactMarkerList_);
+    return true;
+}
+
+bool ElevationMap::publishFusedMapBoundMarkers(double& xTip, double& yTip,
+                                               double& elevationFused, double& upperBoundFused, double& lowerBoundFused)
+{
+    geometry_msgs::Point p_elev, p_upper, p_lower;
+    p_elev.x = p_upper.x = p_lower.x = xTip;
+    p_elev.y = p_upper.y = p_lower.y = yTip;
+    p_elev.z = elevationFused + heightDifferenceFromComparison_;
+    p_upper.z = upperBoundFused + heightDifferenceFromComparison_;
+    p_lower.z = lowerBoundFused + heightDifferenceFromComparison_;
+
+
+    std_msgs::ColorRGBA c;
+    c.r = 1;
+    c.g = 0.5;
+    c.b = 0;
+    c.a = 1;
+    //footContactMarkerList_.points.push_back(p_elev);
+    //footContactMarkerList_.colors.push_back(c);
+
+    elevationMapBoundMarkerList_.points.push_back(p_upper);
+    elevationMapBoundMarkerList_.colors.push_back(c);
+
+    elevationMapBoundMarkerList_.points.push_back(p_lower);
+    elevationMapBoundMarkerList_.colors.push_back(c);
+
+    elevationMapBoundPublisher_.publish(elevationMapBoundMarkerList_);
+
     return true;
 }
 
@@ -1005,21 +1017,13 @@ bool ElevationMap::footTipElevationMapComparison(std::string tip)
 {
     //boost::recursive_mutex::scoped_lock scopedLockForFootTipStanceProcessor(footTipStanceComparisonMutex_);
     //boost::recursive_mutex::scoped_lock scopedLockForFootTipStanceProcessor(footTipStanceProcessorMutex_);
-
     //boost::recursive_mutex::scoped_lock scopedLock(rawMapMutex_);
 
     // New version
     double xTip, yTip, zTip = 0;
-  //  if(tip == "left"){
     xTip = meanStance_(0);
     yTip = meanStance_(1);
     zTip = meanStance_(2);
-   // }
-//    else if(tip == "right"){
-//        xTip = meanStanceRight_(0);
-//        yTip = meanStanceRight_(1);
-//        zTip = meanStanceRight_(2);
-//    }
 
     // TODO: Clean nan supression scheme.
     bool useNewMethod = true;
@@ -1048,11 +1052,11 @@ bool ElevationMap::footTipElevationMapComparison(std::string tip)
                 std::cout << "HeightDifference CLASSICAL:    " << verticalDifference << "        HeightDifference CORRECTED:    " << verticalDifferenceCorrected << std::endl;
 
                 // Data Publisher for parameter tuning.
-                //tuningPublisher1_.publish(verticalDifferenceCorrected); // HACKED FOR DEBUGGING!!
+                tuningPublisher1_.publish(verticalDifferenceCorrected); // HACKED FOR DEBUGGING!!
 
-                // Allow some stances to get sorted.
-                if(weightedDifferenceVector_.size() >= 4) performanceAssessment_ += fabs(verticalDifferenceCorrected);
-                std::cout << "Performance Value: " << performanceAssessment_ << std::endl;
+                // Wait some stances to get sorted at the beginning.
+                if(weightedDifferenceVector_.size() >= 8) performanceAssessment_ += fabs(verticalDifferenceCorrected);
+                std::cout << "Cumulative Performance Value (summed up weighted differences): " << performanceAssessment_ << std::endl;
 
 
                 // Use 3 standard deviations of the uncertainty ellipse of the foot tip positions as fusion area.
@@ -1069,54 +1073,29 @@ bool ElevationMap::footTipElevationMapComparison(std::string tip)
                 weightedVerticalDifferenceIncrement = gaussianWeightedDifferenceIncrement(lowerBoundFused, elevationFused, upperBoundFused, verticalDifference);
 
                 // DEBUG:
-                if (isnan(weightedVerticalDifferenceIncrement)){
-                    std::cout << "NAN IN WEIGHTED DIFFERENCE INCREMENT!!!!!!!" << std::endl;
-                    std::cout << "" << std::endl;
-                    std::cout << "" << std::endl;
-                    std::cout << "" << std::endl;
-                    weightedVerticalDifferenceIncrement = 0;
-                }
+//                if (isnan(weightedVerticalDifferenceIncrement)){
+//                    std::cout << "NAN IN WEIGHTED DIFFERENCE INCREMENT!!!!!!!" << std::endl;
+//                    std::cout << "" << std::endl;
+//                    std::cout << "" << std::endl;
+//                    std::cout << "" << std::endl;
+//                    weightedVerticalDifferenceIncrement = 0;
+//                }
                 // END DEBUG
 
+                // TODO: Switch ON and OFF
+                publishFusedMapBoundMarkers(xTip, yTip, elevationFused, upperBoundFused, lowerBoundFused);
 
-                // TODO Cleanify
-                // TODO: Add upper and lower bound at each stance position..
-                geometry_msgs::Point p_elev, p_upper, p_lower;
-                p_elev.x = p_upper.x = p_lower.x = xTip;
-                p_elev.y = p_upper.y = p_lower.y = yTip;
-                p_elev.z = elevationFused + heightDifferenceFromComparison_;
-                p_upper.z = upperBoundFused + heightDifferenceFromComparison_;
-                p_lower.z = lowerBoundFused + heightDifferenceFromComparison_;
+                // TESTING DRIFT STUFF
+//                auto driftTuple = filteredDriftEstimation(weightedVerticalDifferenceIncrement, estimatedDriftChange_, estimatedDriftChangeVariance_);
+//                estimatedDriftChange_ = std::get<0>(driftTuple);
+//                estimatedDriftChangeVariance_ = std::get<1>(driftTuple);
+//                estimatedDrift_ += estimatedDriftChange_;
+//                std::cout << "ESTIMATED DRIFT: " << estimatedDrift_ << std::endl;
+//                std::cout << "ESTIMATED DRIFT Change: " << estimatedDriftChange_ << std::endl;
+//                std::cout << "ESTIMATED DRIFT Change Variance: " << estimatedDriftChangeVariance_ << std::endl;
 
-
-                std_msgs::ColorRGBA c;
-                c.r = 1;
-                c.g = 0.5;
-                c.b = 0;
-                c.a = 1;
-                //footContactMarkerList_.points.push_back(p_elev);
-                //footContactMarkerList_.colors.push_back(c);
-
-                elevationMapBoundMarkerList_.points.push_back(p_upper);
-                elevationMapBoundMarkerList_.colors.push_back(c);
-
-                elevationMapBoundMarkerList_.points.push_back(p_lower);
-                elevationMapBoundMarkerList_.colors.push_back(c);
-
-                elevationMapBoundPublisher_.publish(elevationMapBoundMarkerList_);
-
-
-                // TESTING
-                auto driftTuple = filteredDriftEstimation(weightedVerticalDifferenceIncrement, estimatedDriftChange_, estimatedDriftChangeVariance_);
-                estimatedDriftChange_ = std::get<0>(driftTuple);
-                estimatedDriftChangeVariance_ = std::get<1>(driftTuple);
-                estimatedDrift_ += estimatedDriftChange_;
-                std::cout << "ESTIMATED DRIFT: " << estimatedDrift_ << std::endl;
-                std::cout << "ESTIMATED DRIFT Change: " << estimatedDriftChange_ << std::endl;
-                std::cout << "ESTIMATED DRIFT Change Variance: " << estimatedDriftChangeVariance_ << std::endl;
-
-                oldDiffComparisonUpdate_ = weightedVerticalDifferenceIncrement;
-                std::cout << "ESTIMATED oldDRIFT: " << oldDiffComparisonUpdate_ << std::endl;
+//                oldDiffComparisonUpdate_ = weightedVerticalDifferenceIncrement;
+//                std::cout << "ESTIMATED oldDRIFT: " << oldDiffComparisonUpdate_ << std::endl;
                 // END TESTING
 
 
@@ -1126,8 +1105,8 @@ bool ElevationMap::footTipElevationMapComparison(std::string tip)
                 std::cout << "Weighted Height Difference: " << weightedDifferenceVector_[0] << "\n";
 
                 // Longer weightedDifferenceVector for PID drift calculation
-                PIDWeightedDifferenceVector_.push_back(heightDifferenceFromComparison_ + weightedVerticalDifferenceIncrement);
-                if(PIDWeightedDifferenceVector_.size() >= 30) PIDWeightedDifferenceVector_.erase(PIDWeightedDifferenceVector_.begin());
+                //PIDWeightedDifferenceVector_.push_back(heightDifferenceFromComparison_ + weightedVerticalDifferenceIncrement);
+                //if(PIDWeightedDifferenceVector_.size() >= 30) PIDWeightedDifferenceVector_.erase(PIDWeightedDifferenceVector_.begin());
 
                 // TODO: for Kalman drift estimation: set old Diff comparison update to weighted Difference vector.. !!!!!
 
@@ -1140,15 +1119,15 @@ bool ElevationMap::footTipElevationMapComparison(std::string tip)
 
 
                 // Kalman Filter based offset calculation.
-                auto diffTuple = differenceCalculationUsingKalmanFilter();
-                estimatedKalmanDiffIncrement_ =  std::get<0>(diffTuple);
-                estimatedKalmanDiff_ += estimatedKalmanDiffIncrement_;
-                PEstimatedKalmanDiffIncrement_ = std::get<1>(diffTuple);
-                std::cout << "Kalman Filtered Difference Estimate!" << estimatedKalmanDiff_ << "VS. PID Difference: " << heightDifferenceFromComparison_ << std::endl;
+                //auto diffTuple = differenceCalculationUsingKalmanFilter();
+                //estimatedKalmanDiffIncrement_ =  std::get<0>(diffTuple);
+                //estimatedKalmanDiff_ += estimatedKalmanDiffIncrement_;
+                //PEstimatedKalmanDiffIncrement_ = std::get<1>(diffTuple);
+                //std::cout << "Kalman Filtered Difference Estimate!" << estimatedKalmanDiff_ << "VS. PID Difference: " << heightDifferenceFromComparison_ << std::endl;
                 // TESTING:
                 //heightDifferenceFromComparison_ = estimatedKalmanDiff_;
 
-                driftEstimationPID_ = driftCalculationUsingPID();
+                //driftEstimationPID_ = driftCalculationUsingPID();
 
             }
             else{
@@ -1189,12 +1168,12 @@ bool ElevationMap::initializeFootTipMarkers()
     footContactMarkerList_.pose.orientation.y = elevationMapBoundMarkerList_.pose.orientation.y = 0.0;
     footContactMarkerList_.pose.orientation.z = elevationMapBoundMarkerList_.pose.orientation.z = 0.0;
     footContactMarkerList_.pose.orientation.w = elevationMapBoundMarkerList_.pose.orientation.w = 1.0;
-    footContactMarkerList_.scale.x = 0.07;
-    footContactMarkerList_.scale.y = 0.07;
-    footContactMarkerList_.scale.z = 0.07;
-    elevationMapBoundMarkerList_.scale.x = 0.03;
-    elevationMapBoundMarkerList_.scale.y = 0.03;
-    elevationMapBoundMarkerList_.scale.z = 0.03;
+    footContactMarkerList_.scale.x = 0.06;
+    footContactMarkerList_.scale.y = 0.06;
+    footContactMarkerList_.scale.z = 0.06;
+    elevationMapBoundMarkerList_.scale.x = 0.02;
+    elevationMapBoundMarkerList_.scale.y = 0.02;
+    elevationMapBoundMarkerList_.scale.z = 0.02;
     footContactMarkerList_.color.a = elevationMapBoundMarkerList_.color.a = 1.0; // Don't forget to set the alpha!
     footContactMarkerList_.color.r = elevationMapBoundMarkerList_.color.r = 0.0;
     footContactMarkerList_.color.g = elevationMapBoundMarkerList_.color.g = 1.0;
@@ -1261,8 +1240,6 @@ bool ElevationMap::frameCorrection()
     odomMapTransform.setIdentity();
     odomMapTransform.getOrigin()[2] += heightDifferenceFromComparison_;
 
-    std::cout << "Entered the corrected frame publisher.. " << std::endl;
-
     ros::Time stamp = ros::Time().fromNSec(fusedMap_.getTimestamp());
 
     //std::cout << "TIMESTAMP PUBLISHED THE odom_drift_adjusted TRANSFORM!!: " << stamp << std::endl;
@@ -1276,8 +1253,8 @@ bool ElevationMap::frameCorrection()
 float ElevationMap::differenceCalculationUsingPID()
 {
     // TODO: Tune these, they are only guessed so far.
-    float kp = 0.3;
-    float ki = 0.7;
+    float kp = 0.24;
+    float ki = 0.76;
     float kd = 0.1;
 
     // Nan prevention.
@@ -1310,7 +1287,7 @@ float ElevationMap::gaussianWeightedDifferenceIncrement(double lowerBound, doubl
     diff -= heightDifferenceFromComparison_;
     // Error difference weighted as (1 - gaussian), s.t. intervall from elevation map to bound contains two standard deviations
     double weight = 0.0;
-    float standardDeviationFactor = 0.5;  //! THIS MAY BE A LEARNING FUNCTION IN FUTURE!!
+    float standardDeviationFactor = 2.0;  //! THIS MAY BE A LEARNING FUNCTION IN FUTURE!! // CHANGED
     if(diff < 0.0){
         weight = normalDistribution(diff, 0.0, fabs(elevation-lowerBound)*standardDeviationFactor);
 
@@ -1372,11 +1349,11 @@ float ElevationMap::normalDistribution(float arg, float mean, float stdDev)
     return e; // (stdDev * sqrt(2*M_PI));
 }
 
-bool ElevationMap::updateFootTipBasedElevationMapLayer()
+bool ElevationMap::updateFootTipBasedElevationMapLayer(int numberOfConsideredFootTips)
 {
-    std::cout << "points inside updateFootTipBased...: " << footContactMarkerList_.points.back().x << " " << footContactMarkerList_.points.back().y <<
-                 " " << footContactMarkerList_.points.back().z << std::endl;
-    std::cout << "Layers!!: " << rawMap_.getLayers()[11] << std::endl;
+    //std::cout << "points inside updateFootTipBased...: " << footContactMarkerList_.points.back().x << " " << footContactMarkerList_.points.back().y <<
+    //             " " << footContactMarkerList_.points.back().z << std::endl;
+    //std::cout << "Layers!!: " << rawMap_.getLayers()[11] << std::endl;
 
     double summedErrorValue = 0;
     for (GridMapIterator iterator(rawMap_); !iterator.isPastEnd(); ++iterator) {
@@ -1385,11 +1362,7 @@ bool ElevationMap::updateFootTipBasedElevationMapLayer()
         //rawMap_.getPosition3("foot_tip_elevation", *iterator, posMap);
         Position posMap;
         rawMap_.getPosition(*iterator, posMap);
-
-
-
         std::vector<geometry_msgs::Point>::iterator markerListIterator = footContactMarkerList_.points.end();
-        int numberOfConsideredFootTips = 10;
         if (footContactMarkerList_.points.size() <= 10) numberOfConsideredFootTips = footContactMarkerList_.points.size();
         double totalWeight = 0;
         double factor = 100.0;
