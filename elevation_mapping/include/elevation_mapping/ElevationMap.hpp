@@ -329,7 +329,9 @@ class ElevationMap
   //! TODO: Description:
   bool updateFootTipBasedElevationMapLayer();
 
-  //! TODO: Description:
+  /*!
+   * Performance assessment for tuning, only valid if walking on flat ground and therefore wishing elevation map to be flat too.
+   */
   bool performanceAssessmentMeanElevationMap();
 
 
@@ -433,7 +435,7 @@ class ElevationMap
   double estimatedKalmanDiff_, estimatedKalmanDiffIncrement_, PEstimatedKalmanDiffIncrement_;
 
   //! Mean foot tip positions
-  Eigen::Vector3f meanStanceLeft_, meanStanceRight_;
+  Eigen::Vector3f meanStanceLeft_, meanStanceRight_, meanStance_;
 
   //! Transform Listener and broadcaster for generating the corrected frame
   tf::TransformListener odomDriftAdjustedTransformListener_;

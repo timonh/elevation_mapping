@@ -888,6 +888,7 @@ bool ElevationMap::processStance(std::string tip)
     getAverageFootTipPositions(tip);
     footTipElevationMapComparison(tip);  // HACKED!!
     publishAveragedFootTipPositionMarkers();
+    // Performance Assessment, sensible if wanting to tune the system while walking on flat surface.
     performanceAssessmentMeanElevationMap();
 
 
@@ -897,101 +898,101 @@ bool ElevationMap::processStance(std::string tip)
 
 bool ElevationMap::deleteLastEntriesOfStances(std::string tip)
 {
-
-    if(LFTipStance_.size() < 8){
+    // Delete the last entries of the stance, as these might be in the false state
+    // (half the number of elements used in template matching are deleted)
+    if (LFTipStance_.size() < 8){
         std::cout << "WARNING: LEFT STANCE PHASE HAS TOO LITTLE ENTRIES TO BE PROCESSED" << std::endl;
     }
-    else if(RFTipStance_.size() < 8){
+    else if (RFTipStance_.size() < 8){
         std::cout << "WARNING: RIGHT STANCE PHASE HAS TOO LITTLE ENTRIES TO BE PROCESSED" << std::endl;
     }
     else{
-        for(unsigned int i = 0; i < 8; ++i){
-            if(tip == "left"){
+        for (unsigned int i = 0; i < 8; ++i){
+            if (tip == "left"){
                 LFTipStance_.pop_back();
             }
-            else if(tip == "right"){
+            else if (tip == "right"){
                 RFTipStance_.pop_back();
             }
         }
     }
-
     return true;
 }
 
 bool ElevationMap::getAverageFootTipPositions(std::string tip)
 {
     Eigen::Vector3f totalStance(0, 0, 0);
-
-    // TODO: check if this is valid!
     std::vector<Eigen::Vector3f> stance;
     if(tip == "left") stance = LFTipStance_;
     if(tip == "right") stance = RFTipStance_;
 
-    // For publisher of mean foot tip positions
+    // Derive mean foot tip positions
     if(stance.size() > 1){
-        geometry_msgs::Point p;
+
         for (auto& n : stance){
             // Consider only those with state = 1  TODO!!!
             totalStance += n;
         }
 
-        if(tip == "left"){
-            meanStanceLeft_ = totalStance / float(stance.size());
-            LFTipStance_.clear();
-            processStanceTriggerLeft_.clear();
-            // Positions for publisher
-            p.x = meanStanceLeft_(0);
-            p.y = meanStanceLeft_(1);
-            p.z = meanStanceLeft_(2);
-        }
-        if(tip == "right"){
-            meanStanceRight_ = totalStance / float(stance.size());
-            RFTipStance_.clear();
-            processStanceTriggerRight_.clear();
-            // Positions for publisher
-            p.x = meanStanceRight_(0);
-            p.y = meanStanceRight_(1);
-            p.z = meanStanceRight_(2);
-        }
 
-        bool footTipColoring = true;
-        std_msgs::ColorRGBA c;
-        c.g = 0;
-        c.b = 1-usedWeight_;
-        c.r = usedWeight_;
-        c.a = 0.5;
-
-        //boost::recursive_mutex::scoped_lock scopedLock(rawMapMutex_);
-
-        Position coloringPosition(p.x, p.y);
-        if(isnan(rawMap_.atPosition("elevation", coloringPosition))){
-            c.g = 0;
-            c.b = 0;
-            c.r = 0;
-        }
-        else if(footTipOutsideBounds_) c.g = 0.9; //! Not proper timing, but useful for testing
-
-        //scopedLock.unlock();
-
-        // Check for nans
-        if(p.x != p.x || p.y != p.y || p.z != p.z){
-            std::cout << "NAN FOUND IN MEAN FOOT TIP POSITION!!" << std::endl;
-        }
-        else{
-            footContactMarkerList_.points.push_back(p);
-            if(footTipColoring)footContactMarkerList_.colors.push_back(c); //! TODO: sensible assignment!
-        }
-        updateFootTipBasedElevationMapLayer();
+        meanStance_ = totalStance / float(stance.size());
+        LFTipStance_.clear();
+        RFTipStance_.clear();
+        processStanceTriggerLeft_.clear();
     }
-
-    std::cout << "LFTipposition: " << footContactMarkerList_.points.back().x << " " << footContactMarkerList_.points.back().y <<
-                 " " << footContactMarkerList_.points.back().z << std::endl;
     return true;
 }
 
 bool ElevationMap::publishAveragedFootTipPositionMarkers()
 {
+    // Positions for publisher
+    geometry_msgs::Point p;
+    p.x = meanStance_(0);
+    p.y = meanStance_(1);
+    p.z = meanStance_(2);
 
+//        if(tip == "right"){
+//            meanStanceRight_ = totalStance / float(stance.size());
+//            RFTipStance_.clear();
+//            processStanceTriggerRight_.clear();
+//            // Positions for publisher
+//            p.x = meanStanceRight_(0);
+//            p.y = meanStanceRight_(1);
+//            p.z = meanStanceRight_(2);
+//        }
+
+    bool footTipColoring = true;
+    std_msgs::ColorRGBA c;
+    c.g = 0;
+    c.b = 1-usedWeight_;
+    c.r = usedWeight_;
+    c.a = 0.5;
+
+    //boost::recursive_mutex::scoped_lock scopedLock(rawMapMutex_);
+
+    Position coloringPosition(p.x, p.y);
+    if(isnan(rawMap_.atPosition("elevation", coloringPosition))){
+        c.g = 0;
+        c.b = 0;
+        c.r = 0;
+    }
+    else if(footTipOutsideBounds_) c.g = 0.9; //! Not proper timing, but useful for testing
+
+    //scopedLock.unlock();
+
+    // Check for nans
+    if(p.x != p.x || p.y != p.y || p.z != p.z){
+        std::cout << "NAN FOUND IN MEAN FOOT TIP POSITION!!" << std::endl;
+    }
+    else{
+        footContactMarkerList_.points.push_back(p);
+        if(footTipColoring)footContactMarkerList_.colors.push_back(c); //! TODO: sensible assignment!
+    }
+    updateFootTipBasedElevationMapLayer();
+
+
+    std::cout << "LFTipposition: " << footContactMarkerList_.points.back().x << " " << footContactMarkerList_.points.back().y <<
+             " " << footContactMarkerList_.points.back().z << std::endl;
     // TEST:
    // publishSpatialVariancePointCloud();
     // END TEST
@@ -1009,16 +1010,16 @@ bool ElevationMap::footTipElevationMapComparison(std::string tip)
 
     // New version
     double xTip, yTip, zTip = 0;
-    if(tip == "left"){
-        xTip = meanStanceLeft_(0);
-        yTip = meanStanceLeft_(1);
-        zTip = meanStanceLeft_(2);
-    }
-    else if(tip == "right"){
-        xTip = meanStanceRight_(0);
-        yTip = meanStanceRight_(1);
-        zTip = meanStanceRight_(2);
-    }
+  //  if(tip == "left"){
+    xTip = meanStance_(0);
+    yTip = meanStance_(1);
+    zTip = meanStance_(2);
+   // }
+//    else if(tip == "right"){
+//        xTip = meanStanceRight_(0);
+//        yTip = meanStanceRight_(1);
+//        zTip = meanStanceRight_(2);
+//    }
 
     // TODO: Clean nan supression scheme.
     bool useNewMethod = true;
@@ -1324,8 +1325,6 @@ float ElevationMap::gaussianWeightedDifferenceIncrement(double lowerBound, doubl
         if(elevation + diff > upperBound) footTipOutsideBounds_ = true;
         else footTipOutsideBounds_ = false;
     }
-
-
 
     // Constrain to be maximally 1.
     if(weight > 1.0) weight = 1.0; // For security, basically not necessary (as the weighting term is left away in the normalDistribution function)
