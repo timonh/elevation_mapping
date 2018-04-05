@@ -1047,7 +1047,7 @@ bool ElevationMap::footTipElevationMapComparison(std::string tip)
                 std::cout << "HeightDifference CLASSICAL:    " << verticalDifference << "        HeightDifference CORRECTED:    " << verticalDifferenceCorrected << std::endl;
 
                 // Data Publisher for parameter tuning.
-                tuningPublisher1_.publish(verticalDifferenceCorrected);
+                //tuningPublisher1_.publish(verticalDifferenceCorrected); // HACKED FOR DEBUGGING!!
 
                 // Allow some stances to get sorted.
                 if(weightedDifferenceVector_.size() >= 4) performanceAssessment_ += fabs(verticalDifferenceCorrected);
@@ -1433,23 +1433,28 @@ bool ElevationMap::updateFootTipBasedElevationMapLayer()
 
 bool ElevationMap::performanceAssessmentMeanElevationMap()
 {
+    // Calculate the summed square deviation fom the mean elevation map height (note: elevation map in frame odom is considered, not in odom_drift_adjusted)
     double totalElevationMapHeight = 0;
     double performanceAssessment = 0;
     int counter = 0;
     for (GridMapIterator iterator(rawMap_); !iterator.isPastEnd(); ++iterator) {
         Position3 posMap3;
         rawMap_.getPosition3("elevation", *iterator, posMap3);
-        totalElevationMapHeight += posMap3[2];
-        counter++;  // TODO: get no of indeces directly..
+        if (posMap3[2] > 0.000000001){
+            totalElevationMapHeight += posMap3[2];
+            counter++;  // TODO: get no of indeces directly..
+
+            if (posMap3[2] < 0.00001) std::cout << "SMALL SMALL ELEVATION MAP PROBABLY ZERO! " << posMap3[2] << std::endl;
+        }
     }
     std::cout << "MEAN:                                " << totalElevationMapHeight / double(counter) << std::endl;
     double mean = totalElevationMapHeight / double(counter);
     for (GridMapIterator iterator(rawMap_); !iterator.isPastEnd(); ++iterator) {
         Position3 posMap3;
         rawMap_.getPosition3("elevation", *iterator, posMap3);
-        performanceAssessment += pow(posMap3[2]-mean, 2);
+        if (posMap3[2] > 0.000000001) performanceAssessment += pow(posMap3[2]-mean, 2);
     }
-    std::cout << "PERFORMANCE ASSESSMENT MEAN:                                " << performanceAssessment << std::endl;
+    std::cout << "PERFORMANCE ASSESSMENT MEAN:                                " << performanceAssessment/counter << std::endl;
 }
 
 } /* namespace */
