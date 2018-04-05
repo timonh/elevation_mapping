@@ -329,6 +329,9 @@ class ElevationMap
   //! TODO: Description:
   bool updateFootTipBasedElevationMapLayer();
 
+  //! TODO: Description:
+  bool performanceAssessmentMeanElevationMap();
+
 
 
 
@@ -444,6 +447,9 @@ class ElevationMap
   //! ROS publishers
   ros::Publisher footContactPublisher_;
   ros::Publisher elevationMapBoundPublisher_;
+  ros::Publisher tuningPublisher1_;
+  ros::Publisher tuningPublisher2_;
+  ros::Publisher tuningPublisher3_;
 
   //! Publication of Markers:
   visualization_msgs::Marker footContactMarkerList_;

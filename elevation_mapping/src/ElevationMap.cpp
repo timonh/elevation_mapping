@@ -35,6 +35,9 @@
 #include <pcl_conversions/pcl_conversions.h>
 #include <pcl_ros/transforms.h>
 
+// ROS msgs
+#include <sensor_msgs/ChannelFloat32.h>
+
 using namespace std;
 using namespace grid_map;
 
@@ -86,6 +89,9 @@ ElevationMap::ElevationMap(ros::NodeHandle nodeHandle)
   footContactPublisher_ = nodeHandle_.advertise<visualization_msgs::Marker>("mean_foot_contact_markers_rviz", 1000);
   elevationMapBoundPublisher_ = nodeHandle_.advertise<visualization_msgs::Marker>("map_bound_markers_rviz", 1000);
   initializeFootTipMarkers();
+
+  // NEW: Publish data, for parameter tuning and visualization
+  tuningPublisher1_ = nodeHandle_.advertise<sensor_msgs::ChannelFloat32>("difference_measurement_corrected", 1000);
 
   // NEW: publish clored pointcloud visualizing the local pointcloud variance.
   coloredPointCloudPublisher_ = nodeHandle_.advertise<sensor_msgs::PointCloud2>("variance_pointcloud", 1);
@@ -882,6 +888,7 @@ bool ElevationMap::processStance(std::string tip)
     getAverageFootTipPositions(tip);
     footTipElevationMapComparison(tip);  // HACKED!!
     publishAveragedFootTipPositionMarkers();
+    performanceAssessmentMeanElevationMap();
 
 
 
@@ -1039,6 +1046,9 @@ bool ElevationMap::footTipElevationMapComparison(std::string tip)
                 double verticalDifferenceCorrected = zTip - heightMapRawElevationCorrected;
                 std::cout << "HeightDifference CLASSICAL:    " << verticalDifference << "        HeightDifference CORRECTED:    " << verticalDifferenceCorrected << std::endl;
 
+                // Data Publisher for parameter tuning.
+                tuningPublisher1_.publish(verticalDifferenceCorrected);
+
                 // Allow some stances to get sorted.
                 if(weightedDifferenceVector_.size() >= 4) performanceAssessment_ += fabs(verticalDifferenceCorrected);
                 std::cout << "Performance Value: " << performanceAssessment_ << std::endl;
@@ -1159,6 +1169,8 @@ bool ElevationMap::footTipElevationMapComparison(std::string tip)
     //GridMapRosConverter::fromMessage(mapMessage, rawMapCorrected)
 
     elevationMapCorrectedPublisher_.publish(mapMessage);
+
+
 
     return true;
 }
@@ -1414,11 +1426,30 @@ bool ElevationMap::updateFootTipBasedElevationMapLayer()
             // Consider adding the offset, as the non moved one may be considered..
             //std::cout << "Difference in height, what about offset?: " << fabs(cellHeight - rawMap_.atPosition("elevation", posMap)) << std::endl;
         }
-
-
     }
     std::cout << "Total ERROR VALUE OF FOOT TIP ELVATION MAP VS CAMERA ELEVATION MAP: " << summedErrorValue << std::endl;
     return true;
+}
+
+bool ElevationMap::performanceAssessmentMeanElevationMap()
+{
+    double totalElevationMapHeight = 0;
+    double performanceAssessment = 0;
+    int counter = 0;
+    for (GridMapIterator iterator(rawMap_); !iterator.isPastEnd(); ++iterator) {
+        Position3 posMap3;
+        rawMap_.getPosition3("elevation", *iterator, posMap3);
+        totalElevationMapHeight += posMap3[2];
+        counter++;  // TODO: get no of indeces directly..
+    }
+    std::cout << "MEAN:                                " << totalElevationMapHeight / double(counter) << std::endl;
+    double mean = totalElevationMapHeight / double(counter);
+    for (GridMapIterator iterator(rawMap_); !iterator.isPastEnd(); ++iterator) {
+        Position3 posMap3;
+        rawMap_.getPosition3("elevation", *iterator, posMap3);
+        performanceAssessment += pow(posMap3[2]-mean, 2);
+    }
+    std::cout << "PERFORMANCE ASSESSMENT MEAN:                                " << performanceAssessment << std::endl;
 }
 
 } /* namespace */
