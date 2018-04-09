@@ -36,6 +36,9 @@
 #include "tf/transform_listener.h"
 #include "tf/transform_broadcaster.h"
 
+// ROS msgs
+#include <elevation_mapping/PerformanceAssessment.h>
+
 namespace elevation_mapping {
 
 /*!
@@ -424,9 +427,15 @@ class ElevationMap
   double oldDiffComparisonUpdate_;
   double estimatedDrift_;
   std::vector<double> weightedDifferenceVector_;
-  bool driftAdjustment_;
+
   double usedWeight_;
   bool footTipOutsideBounds_;
+
+  //! Params set upon launching to specify which parts of the program are running.
+  //! driftAdjustment_: drift adjustment program running at all.
+  //! applyFrameCorrection_: apply the calculated frame Correction -> if false performance measures are still calculated.
+  bool driftAdjustment_;
+  bool applyFrameCorrection_;
 
   //! For Tuning! To sum up the diffs between the moved elevation map and the foot tips.
   double performanceAssessment_;
@@ -440,6 +449,9 @@ class ElevationMap
 
   //! Mean foot tip positions
   Eigen::Vector3f meanStance_;
+
+  //! Message to publish performance assessment values
+  elevation_mapping::PerformanceAssessment performance_assessment_msg_;
 
   //! Transform Listener and broadcaster for generating the corrected frame
   tf::TransformListener odomDriftAdjustedTransformListener_;

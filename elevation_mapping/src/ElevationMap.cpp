@@ -36,7 +36,7 @@
 #include <pcl_ros/transforms.h>
 
 // ROS msgs
-#include <sensor_msgs/ChannelFloat32.h>
+#include <elevation_mapping/PerformanceAssessment.h>
 
 using namespace std;
 using namespace grid_map;
@@ -76,10 +76,12 @@ ElevationMap::ElevationMap(ros::NodeHandle nodeHandle)
   visbilityCleanupMapPublisher_ = nodeHandle_.advertise<grid_map_msgs::GridMap>("visibility_cleanup_map", 1);
 
   // Launching parameters.
-  nodeHandle_.param("drift_adjustment", driftAdjustment_, true);
+  nodeHandle_.param("run_drift_adjustment", driftAdjustment_, true);
+  nodeHandle_.param("apply_frame_correction", applyFrameCorrection_, true);
   bool use_bag = true;
 
   // (New:) Foot tip position Subscriber for Foot tip - Elevation comparison
+  // TESTED BY CHANGING IF SCOPES..
   if(driftAdjustment_){
       if(!use_bag) footTipStanceSubscriber_ = nodeHandle_.subscribe("/state_estimator/quadruped_state", 1, &ElevationMap::footTipStanceCallback, this);
       else footTipStanceSubscriber_ = nodeHandle_.subscribe("/state_estimator/quadruped_state_remapped", 1, &ElevationMap::footTipStanceCallback, this);
@@ -91,7 +93,7 @@ ElevationMap::ElevationMap(ros::NodeHandle nodeHandle)
   initializeFootTipMarkers();
 
   // NEW: Publish data, for parameter tuning and visualization
-  tuningPublisher1_ = nodeHandle_.advertise<sensor_msgs::ChannelFloat32>("difference_measurement_corrected", 1000);
+  tuningPublisher1_ = nodeHandle_.advertise<elevation_mapping::PerformanceAssessment>("performance_assessment", 1000);
 
   // NEW: publish clored pointcloud visualizing the local pointcloud variance.
   coloredPointCloudPublisher_ = nodeHandle_.advertise<sensor_msgs::PointCloud2>("variance_pointcloud", 1);
@@ -636,8 +638,8 @@ bool ElevationMap::publishVisibilityCleanupMap()
 
 bool ElevationMap::publishSpatialVariancePointCloud(const pcl::PointCloud<pcl::PointXYZRGB>::Ptr pointCloud,Eigen::VectorXf& spatialVariances)
 {
-  std::cout << "cols: " << spatialVariances.cols() << std::endl;
-  std::cout << "rows: " << spatialVariances.rows() << std::endl;
+  //std::cout << "cols: " << spatialVariances.cols() << std::endl;
+  //std::cout << "rows: " << spatialVariances.rows() << std::endl;
 
   //if(spatialVariances.rows() == pointCloud->size()) std::cout << "GREAT SUCCESS< THUMBS UP!!" << std::endl;
   //else std::cout << (spatialVariances.rows() - pointCloud->size()) << std::endl;
@@ -794,6 +796,7 @@ void ElevationMap::footTipStanceCallback(const quadruped_msgs::QuadrupedState& q
   // Detect start and end of stances for each of the two front foot tips.
   detectStancePhase();
   //detectStancePhase("right");
+  frameCorrection();
 }
 
 bool ElevationMap::detectStancePhase()
@@ -885,6 +888,9 @@ bool ElevationMap::processStance(std::string tip)
     // Performance Assessment, sensible if wanting to tune the system while walking on flat surface.
     performanceAssessmentMeanElevationMap();
 
+    // Data Publisher for parameter tuning.
+    tuningPublisher1_.publish(performance_assessment_msg_); // HACKED FOR DEBUGGING!!
+
 
 
     return true;
@@ -946,7 +952,7 @@ bool ElevationMap::publishAveragedFootTipPositionMarkers()
     bool footTipColoring = true;
     std_msgs::ColorRGBA c;
     c.g = 0;
-    c.b = 1-usedWeight_;
+    c.b = 1-usedWeight_; // TODO set after tuning to get sensible results..
     c.r = usedWeight_;
     c.a = 0.5;
 
@@ -1019,11 +1025,17 @@ bool ElevationMap::footTipElevationMapComparison(std::string tip)
     //boost::recursive_mutex::scoped_lock scopedLockForFootTipStanceProcessor(footTipStanceProcessorMutex_);
     //boost::recursive_mutex::scoped_lock scopedLock(rawMapMutex_);
 
+
     // New version
     double xTip, yTip, zTip = 0;
     xTip = meanStance_(0);
     yTip = meanStance_(1);
     zTip = meanStance_(2);
+
+    // TESTING:
+    std::cout << "xTip: " << xTip << std::endl;
+    std::cout << "yTip: " << yTip << std::endl;
+    // END TESTING
 
     // TODO: Clean nan supression scheme.
     bool useNewMethod = true;
@@ -1051,13 +1063,15 @@ bool ElevationMap::footTipElevationMapComparison(std::string tip)
                 double verticalDifferenceCorrected = zTip - heightMapRawElevationCorrected;
                 std::cout << "HeightDifference CLASSICAL:    " << verticalDifference << "        HeightDifference CORRECTED:    " << verticalDifferenceCorrected << std::endl;
 
-                // Data Publisher for parameter tuning.
-                tuningPublisher1_.publish(verticalDifferenceCorrected); // HACKED FOR DEBUGGING!!
+                // New Tuning piblisher.
+
+                performance_assessment_msg_.first_measure = verticalDifferenceCorrected;
 
                 // Wait some stances to get sorted at the beginning.
-                if(weightedDifferenceVector_.size() >= 8) performanceAssessment_ += fabs(verticalDifferenceCorrected);
+                if(weightedDifferenceVector_.size() >= 4) performanceAssessment_ += fabs(verticalDifferenceCorrected);
                 std::cout << "Cumulative Performance Value (summed up weighted differences): " << performanceAssessment_ << std::endl;
 
+                performance_assessment_msg_.second_measure = performanceAssessment_;
 
                 // Use 3 standard deviations of the uncertainty ellipse of the foot tip positions as fusion area.
                 Eigen::Array2d ellipseAxes;
@@ -1115,8 +1129,13 @@ bool ElevationMap::footTipElevationMapComparison(std::string tip)
 
                 // Avoid Old Nans to be included. TEST!! // TODO: check where nans might come from to avoid them earlier
                 //if(!isnan(heightDiffPID))
-                heightDifferenceFromComparison_ = heightDiffPID;
 
+                // TESTING, adjusted this, check consequences..
+                if(applyFrameCorrection_) heightDifferenceFromComparison_ = heightDiffPID;
+                else heightDifferenceFromComparison_ = 0.0;
+
+                // For Tuning.
+                performance_assessment_msg_.third_measure = heightDifferenceFromComparison_;
 
                 // Kalman Filter based offset calculation.
                 //auto diffTuple = differenceCalculationUsingKalmanFilter();
@@ -1129,6 +1148,7 @@ bool ElevationMap::footTipElevationMapComparison(std::string tip)
 
                 //driftEstimationPID_ = driftCalculationUsingPID();
 
+
             }
             else{
                 //if(!isnan(driftEstimationPID_)) heightDifferenceFromComparison_ += driftEstimationPID_; // HACKED AWAY FOR TESTING!
@@ -1139,7 +1159,7 @@ bool ElevationMap::footTipElevationMapComparison(std::string tip)
     }
 
     // Publish frame, offset by the height difference parameter.
-    frameCorrection();
+    //frameCorrection();
 
     // Publish the elevation map with the new layer, at the frequency of the stances.
     grid_map_msgs::GridMap mapMessage;
@@ -1168,9 +1188,9 @@ bool ElevationMap::initializeFootTipMarkers()
     footContactMarkerList_.pose.orientation.y = elevationMapBoundMarkerList_.pose.orientation.y = 0.0;
     footContactMarkerList_.pose.orientation.z = elevationMapBoundMarkerList_.pose.orientation.z = 0.0;
     footContactMarkerList_.pose.orientation.w = elevationMapBoundMarkerList_.pose.orientation.w = 1.0;
-    footContactMarkerList_.scale.x = 0.06;
-    footContactMarkerList_.scale.y = 0.06;
-    footContactMarkerList_.scale.z = 0.06;
+    footContactMarkerList_.scale.x = 0.03;
+    footContactMarkerList_.scale.y = 0.03;
+    footContactMarkerList_.scale.z = 0.03;
     elevationMapBoundMarkerList_.scale.x = 0.02;
     elevationMapBoundMarkerList_.scale.y = 0.02;
     elevationMapBoundMarkerList_.scale.z = 0.02;
@@ -1240,7 +1260,7 @@ bool ElevationMap::frameCorrection()
     odomMapTransform.setIdentity();
     odomMapTransform.getOrigin()[2] += heightDifferenceFromComparison_;
 
-    ros::Time stamp = ros::Time().fromNSec(fusedMap_.getTimestamp());
+    //ros::Time stamp = ros::Time().fromNSec(fusedMap_.getTimestamp());
 
     //std::cout << "TIMESTAMP PUBLISHED THE odom_drift_adjusted TRANSFORM!!: " << stamp << std::endl;
 
@@ -1255,7 +1275,7 @@ float ElevationMap::differenceCalculationUsingPID()
     // TODO: Tune these, they are only guessed so far.
     float kp = 0.24;
     float ki = 0.76;
-    float kd = 0.1;
+    float kd = -0.07; // Trying PI controller for now.. (Quite good between 0 and -0.1)
 
     // Nan prevention.
     if(weightedDifferenceVector_.size() > 1 && isnan(weightedDifferenceVector_[1])) return 0.0;
@@ -1287,7 +1307,7 @@ float ElevationMap::gaussianWeightedDifferenceIncrement(double lowerBound, doubl
     diff -= heightDifferenceFromComparison_;
     // Error difference weighted as (1 - gaussian), s.t. intervall from elevation map to bound contains two standard deviations
     double weight = 0.0;
-    float standardDeviationFactor = 2.0;  //! THIS MAY BE A LEARNING FUNCTION IN FUTURE!! // CHANGED
+    float standardDeviationFactor = 1;  //! THIS MAY BE A LEARNING FUNCTION IN FUTURE!! // CHANGED
     if(diff < 0.0){
         weight = normalDistribution(diff, 0.0, fabs(elevation-lowerBound)*standardDeviationFactor);
 
@@ -1405,18 +1425,37 @@ bool ElevationMap::updateFootTipBasedElevationMapLayer(int numberOfConsideredFoo
 
 bool ElevationMap::performanceAssessmentMeanElevationMap()
 {
+    // Choose area to cut out (to be left aside for performance assessment, i.e. nonplanar obstacles)
+    double xMinCutoff, xMaxCutoff, yMinCutoff, yMaxCutoff;
+    xMinCutoff = yMinCutoff = -100000000000;
+    xMaxCutoff = yMaxCutoff = 100000000000;
+
+    // Set them.
+    xMinCutoff = 1.3;
+    xMaxCutoff = 1.83;
+
+
     // Calculate the summed square deviation fom the mean elevation map height (note: elevation map in frame odom is considered, not in odom_drift_adjusted)
     double totalElevationMapHeight = 0;
     double performanceAssessment = 0;
     int counter = 0;
     for (GridMapIterator iterator(rawMap_); !iterator.isPastEnd(); ++iterator) {
-        Position3 posMap3;
-        rawMap_.getPosition3("elevation", *iterator, posMap3);
-        if (posMap3[2] > 0.000000001){
-            totalElevationMapHeight += posMap3[2];
-            counter++;  // TODO: get no of indeces directly..
 
-            if (posMap3[2] < 0.00001) std::cout << "SMALL SMALL ELEVATION MAP PROBABLY ZERO! " << posMap3[2] << std::endl;
+        Position3 posMap3;
+
+        rawMap_.getPosition3("elevation", *iterator, posMap3);
+
+        // TEST:
+        //if(posMap3[0] > 0.000000001) std::cout << posMap3[0] << std::endl;
+        // END TEST
+
+        if (posMap3[2] > 0.000000001 && posMap3[0] > 0.000000001){
+            if (!(posMap3[0] < xMaxCutoff && posMap3[0] > xMinCutoff || posMap3[0] > 2.6)){
+                totalElevationMapHeight += posMap3[2];
+                counter++;  // TODO: get no of indeces directly..
+
+                //if (posMap3[2] < 0.00001) std::cout << "SMALL SMALL ELEVATION MAP PROBABLY ZERO! " << posMap3[2] << std::endl;
+            }
         }
     }
     std::cout << "MEAN:                                " << totalElevationMapHeight / double(counter) << std::endl;
@@ -1424,9 +1463,22 @@ bool ElevationMap::performanceAssessmentMeanElevationMap()
     for (GridMapIterator iterator(rawMap_); !iterator.isPastEnd(); ++iterator) {
         Position3 posMap3;
         rawMap_.getPosition3("elevation", *iterator, posMap3);
-        if (posMap3[2] > 0.000000001) performanceAssessment += pow(posMap3[2]-mean, 2);
+        if (posMap3[2] > 0.000000001 && posMap3[0] > 0.000000001){
+            if (!(posMap3[0] < xMaxCutoff && posMap3[0] > xMinCutoff || posMap3[0] > 2.6)){
+
+                performanceAssessment += pow(posMap3[2]-mean, 2);
+            }
+        }
     }
+    // TODO: Cut out are (of ostacle..)
+
     std::cout << "PERFORMANCE ASSESSMENT MEAN:                                " << performanceAssessment/counter << std::endl;
+
+    // Add a factor for scaling in rqt plot
+    double factor = 1000.0;
+
+    performance_assessment_msg_.fourth_measure = factor * performanceAssessment/counter;
+
 }
 
 } /* namespace */

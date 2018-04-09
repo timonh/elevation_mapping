@@ -13,11 +13,22 @@ find_package(catkin REQUIRED COMPONENTS
   message_filters
   sensor_msgs
   std_msgs
+  message_generation
   tf
   tf_conversions
   eigen_conversions
   kindr
   kindr_ros
+)
+
+add_message_files(FILES 
+    PerformanceAssessment.msg
+)
+
+## Added by Timon for msg generation
+generate_messages(
+  DEPENDENCIES
+  std_msgs
 )
 
 ## System dependencies are found with CMake's conventions
@@ -48,6 +59,7 @@ catkin_package(
     message_filters
     sensor_msgs
     std_msgs
+    message_runtime
     tf
     tf_conversions
     eigen_conversions
@@ -56,6 +68,8 @@ catkin_package(
   DEPENDS
     Boost
 )
+
+
 
 ###########
 ## Build ##

@@ -24,4 +24,9 @@
   <depend>eigen_conversions</depend>
   <depend>boost</depend>
   <depend>eigen</depend>
+
+  <!-- Added by Timon for mg generation -->
+  <build_depend>message_generation</build_depend>
+  <exec_depend>message_runtime</exec_depend>
+
 </package>
