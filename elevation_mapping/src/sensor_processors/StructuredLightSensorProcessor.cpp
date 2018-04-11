@@ -148,7 +148,7 @@ bool StructuredLightSensorProcessor::computeSpatialVariances(
 
     // Parameters.
     int proximityParameter = 1500;
-    double thresholdRadius = 0.01;
+    double thresholdRadius = 0.012;
 
     for (unsigned int i = 0; i < pointCloudMapFrame->size(); ++i) {
         // For every point in point cloud.
@@ -159,6 +159,10 @@ bool StructuredLightSensorProcessor::computeSpatialVariances(
         float varianceAccumulatorSquared = 0;
         int varianceCalculationPointCounter = 0;
 
+        std::vector<int> jVector;
+
+        // For Plane fit.
+        double sumxx, sumxy, sumyy, sumxz, sumyz;
 
         for (unsigned int j = std::max(0, int(i-proximityParameter)); j < std::min(int(pointCloudMapFrame->size()), int(i+proximityParameter)); ++j){
             // For every point in logical proximity of point[j] (Pointcloud indexing).
@@ -169,8 +173,31 @@ bool StructuredLightSensorProcessor::computeSpatialVariances(
 
             auto& pointIter = pointCloudMapFrame->points[j];
 
+
+
             // If the point is within the thresholdRadius of point[j].
             if(sqrt(pow((point.x-pointIter.x),2)+pow((point.y-pointIter.y),2)) < thresholdRadius) {
+
+
+                // TODO: Plane Fitting!!
+                sumxx += pow(pointIter.x,2);
+                sumxy += pointIter.x * pointIter.y;
+                sumyy += pow(pointIter.y,2);
+                sumxz += pointIter.x * pointIter.z;
+                sumyz += pointIter.y * pointIter.z;
+
+                // For quicker reiteration after plane fit to get the slope independent Variance.
+                jVector.push_back(j);
+
+
+            //    Status_T SolveLinearEquations(unsigned int number_of_equations,
+            //                                  const SparseMatrix & a_matrix,
+            //                                  const SparseVector & b_vector,
+            //                                  SparseVector & x_vector);
+
+
+                // END Plane fitting
+
                 varianceAccumulator += std::abs(pointIter.z);
                 varianceAccumulatorSquared += pow(pointIter.z,2);
                 varianceCalculationPointCounter++;
@@ -179,6 +206,30 @@ bool StructuredLightSensorProcessor::computeSpatialVariances(
 
 
         }
+        // Plane fit:
+        Eigen::Matrix2f leftMat;
+        leftMat(0, 0) = sumxx;
+        leftMat(1, 0) = leftMat (0, 1) = sumxy;
+        leftMat(1, 1) = sumyy;
+
+        Eigen::Vector2f rightVec;
+        rightVec(0) = sumxz;
+        rightVec(1) = sumyz;
+
+        Eigen::Vector2f sol = leftMat.jacobiSvd(Eigen::ComputeThinU | Eigen::ComputeThinV).solve(rightVec);
+        // To finish this here..
+
+        //! Still to do:
+        //! - Iterate through the j s
+        //! - correctly get the indep variance..
+        double totalSquaredDiff = 0;
+        for(unsigned int k = 0; k < jVector.size(); ++k){
+            auto& pointIter = pointCloudMapFrame->points[jVector[k]];
+            double squaredDiff = pow(pointIter.z - (point.z - sol(0) * (point.x - pointIter.x) - sol(1) * (point.y - pointIter.y)),2); // Check if plus or minus is better
+            totalSquaredDiff += squaredDiff;
+        }
+
+        //std::cout << "totalSquaredDiff!!!!!!!!!!!!!!!!!:::              " << totalSquaredDiff << jVector.size() << std::endl;
 
         // Assign spatialVariance (Prevent division by zero).
         float spatialVariance;
@@ -187,8 +238,9 @@ bool StructuredLightSensorProcessor::computeSpatialVariances(
             spatialVariance = 0.0;
         }
         else{
-            spatialVariance = std::abs(varianceAccumulatorSquared / float(varianceCalculationPointCounter)
-                                       - pow(varianceAccumulator / float(varianceCalculationPointCounter),2));
+            spatialVariance = fabs(totalSquaredDiff / float(jVector.size()));
+//            spatialVariance = std::abs(varianceAccumulatorSquared / float(varianceCalculationPointCounter)
+//                                       - pow(varianceAccumulator / float(varianceCalculationPointCounter),2));
 
         }
 

@@ -35,6 +35,9 @@
 #include <pcl_conversions/pcl_conversions.h>
 #include <pcl_ros/transforms.h>
 
+// PCL normal estimation
+#include <pcl/features/normal_3d.h>
+
 // ROS msgs
 #include <elevation_mapping/PerformanceAssessment.h>
 
@@ -45,7 +48,7 @@ namespace elevation_mapping {
 
 ElevationMap::ElevationMap(ros::NodeHandle nodeHandle)
     : nodeHandle_(nodeHandle),
-      rawMap_({"elevation", "variance", "horizontal_variance_x", "horizontal_variance_y", "horizontal_variance_xy", "color", "time", "lowest_scan_point", "sensor_x_at_lowest_scan", "sensor_y_at_lowest_scan", "sensor_z_at_lowest_scan", "foot_tip_elevation"}),
+      rawMap_({"elevation", "variance", "horizontal_variance_x", "horizontal_variance_y", "horizontal_variance_xy", "color", "time", "lowest_scan_point", "sensor_x_at_lowest_scan", "sensor_y_at_lowest_scan", "sensor_z_at_lowest_scan"}),
       fusedMap_({"elevation", "upper_bound", "lower_bound", "color"}),
       hasUnderlyingMap_(false),
       visibilityCleanupDuration_(0.0)
@@ -648,7 +651,7 @@ bool ElevationMap::publishSpatialVariancePointCloud(const pcl::PointCloud<pcl::P
   sensor_msgs::PointCloud2 variancePointCloud;
   for(unsigned int i; i < pointCloud->size(); ++i){
       pcl::PointXYZRGB pointnew = pointCloud->points[i];
-      double factor = 3.0 * pow(10,6);
+      double factor = 3.5 * pow(10,6);
       pointnew.r = (int)min(spatialVariances(i,0) * factor, 255.0);
       pointnew.g = 0;
       pointnew.b = 0;
@@ -950,10 +953,11 @@ bool ElevationMap::publishAveragedFootTipPositionMarkers()
 
     // Coloring as function of applied weight.
     bool footTipColoring = true;
+    double coloring_factor = 2.5;
     std_msgs::ColorRGBA c;
     c.g = 0;
-    c.b = 1-usedWeight_; // TODO set after tuning to get sensible results..
-    c.r = usedWeight_;
+    c.b = max(0.0, 1 - coloring_factor * usedWeight_); // TODO set after tuning to get sensible results..
+    c.r = min(1.0, coloring_factor * usedWeight_);
     c.a = 0.5;
 
     //boost::recursive_mutex::scoped_lock scopedLock(rawMapMutex_);
@@ -978,11 +982,6 @@ bool ElevationMap::publishAveragedFootTipPositionMarkers()
         footContactMarkerList_.points.push_back(p);
         if(footTipColoring)footContactMarkerList_.colors.push_back(c);
     }
-
-    // Uses the footContactMarkerList_, therefore called here.
-    // Updates the map layer, that purely relies on the last n foot tips.
-    int numberOfConsideredFootTips = 10;
-    updateFootTipBasedElevationMapLayer(numberOfConsideredFootTips);
 
     // Publish averaged foot tip positions
     footContactPublisher_.publish(footContactMarkerList_);
@@ -1099,6 +1098,12 @@ bool ElevationMap::footTipElevationMapComparison(std::string tip)
                 // TODO: Switch ON and OFF
                 publishFusedMapBoundMarkers(xTip, yTip, elevationFused, upperBoundFused, lowerBoundFused);
 
+
+                // Uses the footContactMarkerList_, therefore called here.
+                // Updates the map layer, that purely relies on the last n foot tips.
+                int numberOfConsideredFootTips = 10;
+                updateFootTipBasedElevationMapLayer(numberOfConsideredFootTips);
+
                 // TESTING DRIFT STUFF
 //                auto driftTuple = filteredDriftEstimation(weightedVerticalDifferenceIncrement, estimatedDriftChange_, estimatedDriftChangeVariance_);
 //                estimatedDriftChange_ = std::get<0>(driftTuple);
@@ -1119,13 +1124,16 @@ bool ElevationMap::footTipElevationMapComparison(std::string tip)
                 std::cout << "Weighted Height Difference: " << weightedDifferenceVector_[0] << "\n";
 
                 // Longer weightedDifferenceVector for PID drift calculation
-                //PIDWeightedDifferenceVector_.push_back(heightDifferenceFromComparison_ + weightedVerticalDifferenceIncrement);
-                //if(PIDWeightedDifferenceVector_.size() >= 30) PIDWeightedDifferenceVector_.erase(PIDWeightedDifferenceVector_.begin());
+                PIDWeightedDifferenceVector_.push_back(heightDifferenceFromComparison_); // Removed the vertical difference increment, TEST IT!
+                if(PIDWeightedDifferenceVector_.size() >= 30) PIDWeightedDifferenceVector_.erase(PIDWeightedDifferenceVector_.begin());
 
-                // TODO: for Kalman drift estimation: set old Diff comparison update to weighted Difference vector.. !!!!!
+                // TODO: for Kalman drift estimation, and PID with left and right separated...
 
                 // PID height offset calculation.
                 double heightDiffPID = differenceCalculationUsingPID();
+
+
+
 
                 // Avoid Old Nans to be included. TEST!! // TODO: check where nans might come from to avoid them earlier
                 //if(!isnan(heightDiffPID))
@@ -1146,8 +1154,10 @@ bool ElevationMap::footTipElevationMapComparison(std::string tip)
                 // TESTING:
                 //heightDifferenceFromComparison_ = estimatedKalmanDiff_;
 
-                //driftEstimationPID_ = driftCalculationUsingPID();
+                // PID based drift estimation.
+                driftEstimationPID_ = driftCalculationUsingPID();
 
+                performance_assessment_msg_.fifth_measure = driftEstimationPID_;
 
             }
             else{
@@ -1375,6 +1385,8 @@ bool ElevationMap::updateFootTipBasedElevationMapLayer(int numberOfConsideredFoo
     //             " " << footContactMarkerList_.points.back().z << std::endl;
     //std::cout << "Layers!!: " << rawMap_.getLayers()[11] << std::endl;
 
+    rawMap_.add("foot_tip_elevation", 0);
+
     double summedErrorValue = 0;
     for (GridMapIterator iterator(rawMap_); !iterator.isPastEnd(); ++iterator) {
 
@@ -1385,7 +1397,7 @@ bool ElevationMap::updateFootTipBasedElevationMapLayer(int numberOfConsideredFoo
         std::vector<geometry_msgs::Point>::iterator markerListIterator = footContactMarkerList_.points.end();
         if (footContactMarkerList_.points.size() <= 10) numberOfConsideredFootTips = footContactMarkerList_.points.size();
         double totalWeight = 0;
-        double factor = 100.0;
+        double factor = 20.0;
         std::vector<double> weightVector, distanceVector;
         for (unsigned int j = 0; j < numberOfConsideredFootTips; ++j){
 

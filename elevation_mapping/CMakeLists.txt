@@ -21,15 +21,20 @@ find_package(catkin REQUIRED COMPONENTS
   kindr_ros
 )
 
-add_message_files(FILES 
-    PerformanceAssessment.msg
+## Added for debugging
+find_package(
+    grid_map_core
+)
+
+add_message_files(
+  FILES
+  PerformanceAssessment.msg
 )
 
 ## Added by Timon for msg generation
-generate_messages(
-  DEPENDENCIES
-  std_msgs
-)
+generate_messages()
+
+
 
 ## System dependencies are found with CMake's conventions
 find_package(Boost REQUIRED COMPONENTS system)
@@ -106,13 +111,7 @@ add_executable(${PROJECT_NAME}
   src/elevation_mapping_node.cpp
 )
 
-add_executable(fake_imu_publisher src/FakeImuPublisher.cpp)
-
 target_link_libraries(${PROJECT_NAME}
-  ${PROJECT_NAME}_library
-)
-
-target_link_libraries(fake_imu_publisher
   ${PROJECT_NAME}_library
 )
 
