@@ -141,7 +141,7 @@ bool ElevationMap::add(const pcl::PointCloud<pcl::PointXYZRGB>::Ptr pointCloud, 
     return false;
   }
 
-  publishSpatialVariancePointCloud(pointCloud, spatialVariances);
+  if(false) publishSpatialVariancePointCloud(pointCloud, spatialVariances);
   // TESTING:
   //std::cout << "TIMING OF ADDING!! " << std::endl;
   // END TESTING
@@ -1049,7 +1049,7 @@ bool ElevationMap::footTipElevationMapComparison(std::string tip)
         Position tipPosition(xTip, yTip);
 
         // Make sure that the state is 1 and the foot tip is inside area covered by the elevation map.
-        if(rawMap_.isInside(tipPosition)){
+        if(rawMap_.isInside(tipPosition)){ // HACKED FOR TESTS!!!
             float heightMapRaw = rawMap_.atPosition("elevation", tipPosition);
             float varianceMapRaw = rawMap_.atPosition("variance", tipPosition);
             float heightMapRawElevationCorrected = rawMap_.atPosition("elevation", tipPosition) + heightDifferenceFromComparison_; // Changed, since frame transformed grid map used.
@@ -1070,7 +1070,7 @@ bool ElevationMap::footTipElevationMapComparison(std::string tip)
                 if(weightedDifferenceVector_.size() >= 4) performanceAssessment_ += fabs(verticalDifferenceCorrected);
                 std::cout << "Cumulative Performance Value (summed up weighted differences): " << performanceAssessment_ << std::endl;
 
-                performance_assessment_msg_.second_measure = performanceAssessment_;
+                //performance_assessment_msg_.second_measure = performanceAssessment_;
 
                 // Use 3 standard deviations of the uncertainty ellipse of the foot tip positions as fusion area.
                 Eigen::Array2d ellipseAxes;
@@ -1118,9 +1118,11 @@ bool ElevationMap::footTipElevationMapComparison(std::string tip)
                 // END TESTING
 
 
+                // TODO: test validity of these:
+
                 // Store the vertical difference history in a vector for PID controlling.
                 weightedDifferenceVector_.push_back(heightDifferenceFromComparison_ + weightedVerticalDifferenceIncrement); // TODO: check viability
-                if(weightedDifferenceVector_.size() >= 6) weightedDifferenceVector_.erase(weightedDifferenceVector_.begin());
+                if(weightedDifferenceVector_.size() > 6) weightedDifferenceVector_.erase(weightedDifferenceVector_.begin());
                 std::cout << "Weighted Height Difference: " << weightedDifferenceVector_[0] << "\n";
 
                 // Longer weightedDifferenceVector for PID drift calculation
@@ -1138,9 +1140,18 @@ bool ElevationMap::footTipElevationMapComparison(std::string tip)
                 // Avoid Old Nans to be included. TEST!! // TODO: check where nans might come from to avoid them earlier
                 //if(!isnan(heightDiffPID))
 
-                // TESTING, adjusted this, check consequences..
-                if(applyFrameCorrection_) heightDifferenceFromComparison_ = heightDiffPID;
+                // PID based drift estimation.
+                driftEstimationPID_ = driftCalculationUsingPID();
+                if (isnan(driftEstimationPID_)) driftEstimationPID_ = 0.0;
+
+                double driftEstimationPIDadder = 0;
+                if (heightDiffPID != 0.0) driftEstimationPIDadder = driftEstimationPID_ * (heightDiffPID/fabs(heightDiffPID));
+                else driftEstimationPIDadder = driftEstimationPID_;
+
+                // TESTING, adjusted this, check consequences..  // HACKED ALSO IN IF ARGUMENT!!!
+                if(applyFrameCorrection_) heightDifferenceFromComparison_ = heightDiffPID - driftEstimationPIDadder;// - driftEstimationPIDadder;//  driftEstimationPID_; //! HACKED FOR TESTING< ABSOLUTELY TAKE OUT AGAIN!!!
                 else heightDifferenceFromComparison_ = 0.0;
+                //if(applyFrameCorrection_ && !footTipOutsideBounds_)
 
                 // For Tuning.
                 performance_assessment_msg_.third_measure = heightDifferenceFromComparison_;
@@ -1154,11 +1165,14 @@ bool ElevationMap::footTipElevationMapComparison(std::string tip)
                 // TESTING:
                 //heightDifferenceFromComparison_ = estimatedKalmanDiff_;
 
-                // PID based drift estimation.
-                driftEstimationPID_ = driftCalculationUsingPID();
+
 
                 performance_assessment_msg_.fifth_measure = driftEstimationPID_;
 
+                double second_measure_factor = -10000.0;
+                performance_assessment_msg_.second_measure = driftEstimationPID_ * weightedDifferenceVector_[5] * second_measure_factor;
+                std::cout << "weightedDifferenceVector!!: LAst element: " << weightedDifferenceVector_[5] << " Drift Est PID!!!:::::: " << (double)driftEstimationPID_ << std::endl;
+                if (performance_assessment_msg_.second_measure > 0.1) std::cout << "HIGH GRASS MODE ACTIVATED!!!!!" << "\n" << "\n" << "\n" << "\n" << "\n" << std::endl;
             }
             else{
                 //if(!isnan(driftEstimationPID_)) heightDifferenceFromComparison_ += driftEstimationPID_; // HACKED AWAY FOR TESTING!
@@ -1307,9 +1321,11 @@ double ElevationMap::driftCalculationUsingPID(){
         double difference = PIDWeightedDifferenceVector_[i] - PIDWeightedDifferenceVector_[i-1];
         totalDifference += difference;
     }
-    double meanDifference = totalDifference / double(PIDWeightedDifferenceVector_.size() - 1.0);
+    double meanDifference = 0.0;
+    if (PIDWeightedDifferenceVector_.size() > 1) meanDifference = totalDifference / double(PIDWeightedDifferenceVector_.size() - 1.0);
     std::cout << "mean DRIFT PER STANCE USING PID !!! " << meanDifference << std::endl;
-    return meanDifference;
+    if (PIDWeightedDifferenceVector_.size() < 10) meanDifference = 0.0;
+    return meanDifference * (heightDifferenceFromComparison_ / fabs(heightDifferenceFromComparison_)); // Check sign policy!!!
 }
 
 float ElevationMap::gaussianWeightedDifferenceIncrement(double lowerBound, double elevation, double upperBound, double diff)
@@ -1322,7 +1338,7 @@ float ElevationMap::gaussianWeightedDifferenceIncrement(double lowerBound, doubl
         weight = normalDistribution(diff, 0.0, fabs(elevation-lowerBound)*standardDeviationFactor);
 
         // For Coloration
-        if(elevation - diff < lowerBound) footTipOutsideBounds_ = true;
+        if(elevation + diff < lowerBound) footTipOutsideBounds_ = true;
         else footTipOutsideBounds_ = false;
     }
     else{
@@ -1418,14 +1434,15 @@ bool ElevationMap::updateFootTipBasedElevationMapLayer(int numberOfConsideredFoo
              markerListIterator--;
         }
 
-        if (rawMap_.isInside(posMap)) rawMap_.atPosition("foot_tip_elevation", posMap) = cellHeight;
+        //if (rawMap_.isInside(posMap))) rawMap_.atPosition("foot_tip_elevation", posMap) = cellHeight;
 
         // TODO: calculate differences to elevation map corrected and colorize it accordingly..
 
         // Calculate Difference measure in restricted area around foot tips (the last two)
-        double threshold = 0.2;
+        double threshold = 0.4;
         if (rawMap_.isInside(posMap) && !isnan(rawMap_.atPosition("elevation", posMap)) && distanceVector.size() > 1){
             if (distanceVector[0] < threshold || distanceVector[1] < threshold)
+                if (rawMap_.isInside(posMap)) rawMap_.atPosition("foot_tip_elevation", posMap) = cellHeight; // Hacked to only update restricted area around foot tips..
                 summedErrorValue += fabs(cellHeight - (rawMap_.atPosition("elevation", posMap)+heightDifferenceFromComparison_)); // Hacked a little error to check sensitivity
             // Consider adding the offset, as the non moved one may be considered..
             //std::cout << "Difference in height, what about offset?: " << fabs(cellHeight - rawMap_.atPosition("elevation", posMap)) << std::endl;
@@ -1487,7 +1504,7 @@ bool ElevationMap::performanceAssessmentMeanElevationMap()
     std::cout << "PERFORMANCE ASSESSMENT MEAN:                                " << performanceAssessment/counter << std::endl;
 
     // Add a factor for scaling in rqt plot
-    double factor = 1000.0;
+    double factor = 200.0;
 
     performance_assessment_msg_.fourth_measure = factor * performanceAssessment/counter;
 
