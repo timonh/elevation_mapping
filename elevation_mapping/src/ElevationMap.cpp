@@ -114,6 +114,7 @@ ElevationMap::ElevationMap(ros::NodeHandle nodeHandle)
   PEstimatedKalmanDiffIncrement_ = 0.0;
   performanceAssessment_ = 0.0;
   driftEstimationPID_ = 0.0;
+  highGrassMode_ = false;
   // END NEW
 
   initialTime_ = ros::Time::now();
@@ -1003,7 +1004,7 @@ bool ElevationMap::publishFusedMapBoundMarkers(double& xTip, double& yTip,
     c.r = 1;
     c.g = 0.5;
     c.b = 0;
-    if(!applyFrameCorrection_) c.b = 1; // New, colors to show if frame correction on or high grass detection..
+    if(highGrassMode_) c.b = 1; // New, colors to show if frame correction on or high grass detection..
     c.a = 1;
     //footContactMarkerList_.points.push_back(p_elev);
     //footContactMarkerList_.colors.push_back(c);
@@ -1050,13 +1051,13 @@ bool ElevationMap::footTipElevationMapComparison(std::string tip)
         Position tipPosition(xTip, yTip);
 
         // Make sure that the state is 1 and the foot tip is inside area covered by the elevation map.
-        if(rawMap_.isInside(tipPosition)){ // HACKED FOR TESTS!!!
+        if(rawMap_.isInside(tipPosition) && !isnan(heightDifferenceFromComparison_)){ // HACKED FOR TESTS!!!
             float heightMapRaw = rawMap_.atPosition("elevation", tipPosition);
             float varianceMapRaw = rawMap_.atPosition("variance", tipPosition);
             float heightMapRawElevationCorrected = rawMap_.atPosition("elevation", tipPosition) + heightDifferenceFromComparison_; // Changed, since frame transformed grid map used.
 
             // Supress nans.
-            if(!isnan(heightMapRaw) && !isnan(heightDifferenceFromComparison_)){
+            if(!isnan(heightMapRaw)){
 
                 // Calculate difference.
                 verticalDifference = zTip - heightMapRaw;
@@ -1163,7 +1164,7 @@ bool ElevationMap::footTipElevationMapComparison(std::string tip)
                 else driftEstimationPIDadder = driftEstimationPID_;
 
                 // TESTING, adjusted this, check consequences..  // HACKED ALSO IN IF ARGUMENT!!! // Hacked from minus to plus!!!!
-                if(applyFrameCorrection_) heightDifferenceFromComparison_ = heightDiffPID + 0 * driftEstimationPIDadder;// - driftEstimationPIDadder;//  driftEstimationPID_; //! HACKED FOR TESTING< ABSOLUTELY TAKE OUT AGAIN!!!
+                if(applyFrameCorrection_ && !isnan(heightDiffPID)) heightDifferenceFromComparison_ = heightDiffPID;// + 0 * driftEstimationPIDadder;// - driftEstimationPIDadder;//  driftEstimationPID_; //! HACKED FOR TESTING< ABSOLUTELY TAKE OUT AGAIN!!!
                 else heightDifferenceFromComparison_ = 0.0;
                 //if(applyFrameCorrection_ && !footTipOutsideBounds_)
 
@@ -1200,8 +1201,8 @@ bool ElevationMap::footTipElevationMapComparison(std::string tip)
                 int sum_of_elems = 0;
                 for (bool n : grassDetectionHistory_)
                     sum_of_elems += n;
-                if (sum_of_elems > 0)
-                    std::cout << "HIGH GRASS MODE ACTIVATED!!!!!" << "\n" << "\n" << "\n" << "\n" << "\n" << std::endl;
+                //if (sum_of_elems > 0)
+                   // std::cout << "HIGH GRASS MODE ACTIVATED!!!!!" << "\n" << "\n" << "\n" << "\n" << "\n" << std::endl;
                 // End low pass filtering  ************************************************
 
 
@@ -1328,7 +1329,9 @@ bool ElevationMap::frameCorrection()
     tf::Transform odomMapTransform;
 
     odomMapTransform.setIdentity();
-    odomMapTransform.getOrigin()[2] += heightDifferenceFromComparison_;
+
+    if (!isnan(heightDifferenceFromComparison_)) odomMapTransform.getOrigin()[2] += heightDifferenceFromComparison_;
+    else std::cout << heightDifferenceFromComparison_ << " <- height diff is this kind of NAN for some reason? \n ? \n ? \n";
 
     //ros::Time stamp = ros::Time().fromNSec(fusedMap_.getTimestamp());
 
@@ -1388,17 +1391,16 @@ float ElevationMap::gaussianWeightedDifferenceIncrement(double lowerBound, doubl
 {
     diff -= heightDifferenceFromComparison_;
 
-
     // New Stuff for testing!!
     //! For testing
-    if(elevation + diff < lowerBound + 0.7 * (elevation - lowerBound)){
+    if(elevation + diff < lowerBound + 0.9 * (elevation - lowerBound)){
         std::cout << "************************************* SOFT LOWER!! **************************!!!!!!!!!!!!!!!!!!!!" << std::endl;
         grassDetectionHistory2_.push_back(1);
     }
     else{
         grassDetectionHistory2_.push_back(0);
     }
-    if (grassDetectionHistory2_.size() > 8) grassDetectionHistory2_.erase(grassDetectionHistory2_.begin());
+    if (grassDetectionHistory2_.size() > 12) grassDetectionHistory2_.erase(grassDetectionHistory2_.begin());
 
     // TODO: At some point create a triger fct, that does this..
     int triggerSum = 0;
@@ -1407,12 +1409,14 @@ float ElevationMap::gaussianWeightedDifferenceIncrement(double lowerBound, doubl
     }
 
     // DEBugging:
-    if (triggerSum > 1){
+    if (triggerSum > 3){
         std::cout << "<<<<<<<<>>>>>>>>> \n" << "<<<<<<<<<<>>>>>>>> \n" << "<<<<<<<<<<>>>>>>>>> \n";
-        applyFrameCorrection_ = false; // Hacked!!!!
+        highGrassMode_ = true; // Hacked!!!!
+        applyFrameCorrection_ = false;
     }
     else{
         std::cout << "!!!! \n" << "!!!! \n" << "!!!! \n";
+        highGrassMode_ = false;
         applyFrameCorrection_ = true;
     }
 

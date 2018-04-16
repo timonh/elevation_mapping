@@ -437,6 +437,9 @@ class ElevationMap
   bool driftAdjustment_;
   bool applyFrameCorrection_;
 
+  //! Bool to specify wheather in high grass or not:
+  bool highGrassMode_;
+
   //! For Tuning! To sum up the diffs between the moved elevation map and the foot tips.
   double performanceAssessment_;
 
