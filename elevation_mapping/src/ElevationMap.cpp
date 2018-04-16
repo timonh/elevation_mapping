@@ -1003,6 +1003,7 @@ bool ElevationMap::publishFusedMapBoundMarkers(double& xTip, double& yTip,
     c.r = 1;
     c.g = 0.5;
     c.b = 0;
+    if(!applyFrameCorrection_) c.b = 1; // New, colors to show if frame correction on or high grass detection..
     c.a = 1;
     //footContactMarkerList_.points.push_back(p_elev);
     //footContactMarkerList_.colors.push_back(c);
@@ -1162,7 +1163,7 @@ bool ElevationMap::footTipElevationMapComparison(std::string tip)
                 else driftEstimationPIDadder = driftEstimationPID_;
 
                 // TESTING, adjusted this, check consequences..  // HACKED ALSO IN IF ARGUMENT!!! // Hacked from minus to plus!!!!
-                if(applyFrameCorrection_) heightDifferenceFromComparison_ = heightDiffPID + driftEstimationPIDadder;// - driftEstimationPIDadder;//  driftEstimationPID_; //! HACKED FOR TESTING< ABSOLUTELY TAKE OUT AGAIN!!!
+                if(applyFrameCorrection_) heightDifferenceFromComparison_ = heightDiffPID + 0 * driftEstimationPIDadder;// - driftEstimationPIDadder;//  driftEstimationPID_; //! HACKED FOR TESTING< ABSOLUTELY TAKE OUT AGAIN!!!
                 else heightDifferenceFromComparison_ = 0.0;
                 //if(applyFrameCorrection_ && !footTipOutsideBounds_)
 
@@ -1209,9 +1210,22 @@ bool ElevationMap::footTipElevationMapComparison(std::string tip)
             else{
                 //if(!isnan(driftEstimationPID_)) heightDifferenceFromComparison_ += driftEstimationPID_; // HACKED AWAY FOR TESTING!
                 std::cout << "heightDifferenceFromComparison_ was Incremented by estimated Drift because NAN was found: " << (double)driftEstimationPID_ << std::endl;
+
+                // TODO: consider to set the height difference to zero when walking out of the map!!
+                // Delete the weighted Difference Vector if walking outside of the known mapped area to avoid large corrections when reentering..
+                if (weightedDifferenceVector_.size() > 0) weightedDifferenceVector_.erase(weightedDifferenceVector_.begin());
+                else heightDifferenceFromComparison_ = 0.0;
             }
         }
-        else std::cout << "heightDifferenceFromComparison_ wasnt changed because tip is not inside map area" << std::endl;
+        else{
+
+            std::cout << "heightDifferenceFromComparison_ wasnt changed because tip is not inside map area" << std::endl;
+
+
+            // Delete the weighted Difference Vector if walking outside of the known mapped area to avoid large corrections when reentering..
+            if (weightedDifferenceVector_.size() > 0) weightedDifferenceVector_.erase(weightedDifferenceVector_.begin());
+            else heightDifferenceFromComparison_ = 0.0;
+        }
     }
 
     // Publish frame, offset by the height difference parameter.
@@ -1377,13 +1391,11 @@ float ElevationMap::gaussianWeightedDifferenceIncrement(double lowerBound, doubl
 
     // New Stuff for testing!!
     //! For testing
-    if(elevation + diff < lowerBound + 0.5 * (elevation - lowerBound)){
+    if(elevation + diff < lowerBound + 0.7 * (elevation - lowerBound)){
         std::cout << "************************************* SOFT LOWER!! **************************!!!!!!!!!!!!!!!!!!!!" << std::endl;
-        applyFrameCorrection_ = false; // Hacked!!!!
         grassDetectionHistory2_.push_back(1);
     }
     else{
-        applyFrameCorrection_ = true;
         grassDetectionHistory2_.push_back(0);
     }
     if (grassDetectionHistory2_.size() > 8) grassDetectionHistory2_.erase(grassDetectionHistory2_.begin());
@@ -1397,9 +1409,11 @@ float ElevationMap::gaussianWeightedDifferenceIncrement(double lowerBound, doubl
     // DEBugging:
     if (triggerSum > 1){
         std::cout << "<<<<<<<<>>>>>>>>> \n" << "<<<<<<<<<<>>>>>>>> \n" << "<<<<<<<<<<>>>>>>>>> \n";
+        applyFrameCorrection_ = false; // Hacked!!!!
     }
     else{
-        std::cout << "!!!! /n" << "!!!! \n" << "!!!! \n";
+        std::cout << "!!!! \n" << "!!!! \n" << "!!!! \n";
+        applyFrameCorrection_ = true;
     }
 
     // End New *******************************************************************************************************************
@@ -1593,6 +1607,7 @@ bool ElevationMap::performanceAssessmentMeanElevationMap()
 
     performance_assessment_msg_.fourth_measure = factor * performanceAssessment/counter;
 
+    return true;
 }
 
 } /* namespace */
