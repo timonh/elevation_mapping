@@ -140,159 +140,207 @@ bool StructuredLightSensorProcessor::computeSpatialVariances(
         Eigen::VectorXf& spatialVariances)
 {
 
-    spatialVariances.resize(pointCloudMapFrame->size());
+    computePointcloudStatistics(pointCloudMapFrame);
+    if(false){
+        spatialVariances.resize(pointCloudMapFrame->size());
 
-    pcl::PointCloud<pcl::PointXYZRGB>::Ptr PointCloudColorSchemeSpatialVariance;
-    //const auto& sizespatialvar = spatialVariances.size();
-    //std::cout << "HERE IS THE SIZE OF THE VARIANCE POINTCLOUD!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!: " << sizespatialvar << std::endl;
+        pcl::PointCloud<pcl::PointXYZRGB>::Ptr PointCloudColorSchemeSpatialVariance;
+        //const auto& sizespatialvar = spatialVariances.size();
+        //std::cout << "HERE IS THE SIZE OF THE VARIANCE POINTCLOUD!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!: " << sizespatialvar << std::endl;
 
-    // Parameters.
-    int proximityParameter = 1500;
-    double thresholdRadius = 0.012;
+        // Parameters.
+        int proximityParameter = 1500;
+        double thresholdRadius = 0.012;
 
-    for (unsigned int i = 0; i < pointCloudMapFrame->size(); ++i) {
-        // For every point in point cloud.
+        for (unsigned int i = 0; i < pointCloudMapFrame->size(); ++i) {
+            // For every point in point cloud.
 
-        // Preparation.
-        auto& point = pointCloudMapFrame->points[i];
-        float varianceAccumulator = 0;
-        float varianceAccumulatorSquared = 0;
-        int varianceCalculationPointCounter = 0;
+            // Preparation.
+            auto& point = pointCloudMapFrame->points[i];
+            float varianceAccumulator = 0;
+            float varianceAccumulatorSquared = 0;
+            int varianceCalculationPointCounter = 0;
 
-        std::vector<int> jVector;
+            std::vector<int> jVector;
 
-        // For Plane fit.
-        double sumxx, sumxy, sumyy, sumxz, sumyz;
+            // For Plane fit.
+            double sumxx, sumxy, sumyy, sumxz, sumyz;
 
-        for (unsigned int j = std::max(0, int(i-proximityParameter)); j < std::min(int(pointCloudMapFrame->size()), int(i+proximityParameter)); ++j){
-            // For every point in logical proximity of point[j] (Pointcloud indexing).
-
-
-            // TODO: Plane fitting here! (Slopes will not have high variance anymore!)
-
-
-            auto& pointIter = pointCloudMapFrame->points[j];
+            for (unsigned int j = std::max(0, int(i-proximityParameter)); j < std::min(int(pointCloudMapFrame->size()), int(i+proximityParameter)); ++j){
+                // For every point in logical proximity of point[j] (Pointcloud indexing).
 
 
-
-            // If the point is within the thresholdRadius of point[j].
-            if(sqrt(pow((point.x-pointIter.x),2)+pow((point.y-pointIter.y),2)) < thresholdRadius) {
+                // TODO: Plane fitting here! (Slopes will not have high variance anymore!)
 
 
-                // TODO: Plane Fitting!!
-                sumxx += pow(pointIter.x,2);
-                sumxy += pointIter.x * pointIter.y;
-                sumyy += pow(pointIter.y,2);
-                sumxz += pointIter.x * pointIter.z;
-                sumyz += pointIter.y * pointIter.z;
-
-                // For quicker reiteration after plane fit to get the slope independent Variance.
-                jVector.push_back(j);
+                auto& pointIter = pointCloudMapFrame->points[j];
 
 
-            //    Status_T SolveLinearEquations(unsigned int number_of_equations,
-            //                                  const SparseMatrix & a_matrix,
-            //                                  const SparseVector & b_vector,
-            //                                  SparseVector & x_vector);
+
+                // If the point is within the thresholdRadius of point[j].
+                if(sqrt(pow((point.x-pointIter.x),2)+pow((point.y-pointIter.y),2)) < thresholdRadius) {
 
 
-                // END Plane fitting
+                    // TODO: Plane Fitting!!
+                    sumxx += pow(pointIter.x,2);
+                    sumxy += pointIter.x * pointIter.y;
+                    sumyy += pow(pointIter.y,2);
+                    sumxz += pointIter.x * pointIter.z;
+                    sumyz += pointIter.y * pointIter.z;
 
-                varianceAccumulator += std::abs(pointIter.z);
-                varianceAccumulatorSquared += pow(pointIter.z,2);
-                varianceCalculationPointCounter++;
+                    // For quicker reiteration after plane fit to get the slope independent Variance.
+                    jVector.push_back(j);
+
+
+                //    Status_T SolveLinearEquations(unsigned int number_of_equations,
+                //                                  const SparseMatrix & a_matrix,
+                //                                  const SparseVector & b_vector,
+                //                                  SparseVector & x_vector);
+
+
+                    // END Plane fitting
+
+                    varianceAccumulator += std::abs(pointIter.z);
+                    varianceAccumulatorSquared += pow(pointIter.z,2);
+                    varianceCalculationPointCounter++;
+                }
+
+
+
+            }
+            // Plane fit:
+            Eigen::Matrix2f leftMat;
+            leftMat(0, 0) = sumxx;
+            leftMat(1, 0) = leftMat (0, 1) = sumxy;
+            leftMat(1, 1) = sumyy;
+
+            Eigen::Vector2f rightVec;
+            rightVec(0) = sumxz;
+            rightVec(1) = sumyz;
+
+            Eigen::Vector2f sol = leftMat.jacobiSvd(Eigen::ComputeThinU | Eigen::ComputeThinV).solve(rightVec);
+            // To finish this here..
+
+            //! Still to do:
+            //! - Iterate through the j s
+            //! - correctly get the indep variance..
+            double totalSquaredDiff = 0;
+            for(unsigned int k = 0; k < jVector.size(); ++k){
+                auto& pointIter = pointCloudMapFrame->points[jVector[k]];
+                double squaredDiff = pow(pointIter.z - (point.z - sol(0) * (point.x - pointIter.x) - sol(1) * (point.y - pointIter.y)),2); // Check if plus or minus is better
+                totalSquaredDiff += squaredDiff;
+            }
+
+            //std::cout << "totalSquaredDiff!!!!!!!!!!!!!!!!!:::              " << totalSquaredDiff << jVector.size() << std::endl;
+
+            // Assign spatialVariance (Prevent division by zero).
+            float spatialVariance;
+            if(varianceCalculationPointCounter < 0.1){
+                std::cout << "WARNING: 0 points" << std::endl;
+                spatialVariance = 0.0;
+            }
+            else{
+                spatialVariance = fabs(totalSquaredDiff / float(jVector.size()));
+    //            spatialVariance = std::abs(varianceAccumulatorSquared / float(varianceCalculationPointCounter)
+    //                                       - pow(varianceAccumulator / float(varianceCalculationPointCounter),2));
+
             }
 
 
 
-        }
-        // Plane fit:
-        Eigen::Matrix2f leftMat;
-        leftMat(0, 0) = sumxx;
-        leftMat(1, 0) = leftMat (0, 1) = sumxy;
-        leftMat(1, 1) = sumyy;
+            // For Debugging. (Deprecated)
+            if(i%1000 == 0){
+                //std::cout << "Variances: " << spatialVariance << " X: "<< point.x << " Y: " << point.y << " Z: " << point.z << "P" << std::endl;
+            }
 
-        Eigen::Vector2f rightVec;
-        rightVec(0) = sumxz;
-        rightVec(1) = sumyz;
+            // Copy to List.
+            spatialVariances(i) = spatialVariance;
 
-        Eigen::Vector2f sol = leftMat.jacobiSvd(Eigen::ComputeThinU | Eigen::ComputeThinV).solve(rightVec);
-        // To finish this here..
+            // For Debugging. (Deprecated)
+            //if(i%1000 == 0){
+            //    std::cout << "Spatial var size" << spatialVariances.size() << std::endl;
+            //    std::cout << "Variances: " << spatialVariances(i) << " X: "<< point.x << " Y: " << point.y << " Z: " << point.z << "P" << std::endl;
+            //}
 
-        //! Still to do:
-        //! - Iterate through the j s
-        //! - correctly get the indep variance..
-        double totalSquaredDiff = 0;
-        for(unsigned int k = 0; k < jVector.size(); ++k){
-            auto& pointIter = pointCloudMapFrame->points[jVector[k]];
-            double squaredDiff = pow(pointIter.z - (point.z - sol(0) * (point.x - pointIter.x) - sol(1) * (point.y - pointIter.y)),2); // Check if plus or minus is better
-            totalSquaredDiff += squaredDiff;
-        }
 
-        //std::cout << "totalSquaredDiff!!!!!!!!!!!!!!!!!:::              " << totalSquaredDiff << jVector.size() << std::endl;
+            //double min_var = pow(10,-12);
+            //double max_var = pow(10,-6);
 
-        // Assign spatialVariance (Prevent division by zero).
-        float spatialVariance;
-        if(varianceCalculationPointCounter < 0.1){
-            std::cout << "WARNING: 0 points" << std::endl;
-            spatialVariance = 0.0;
-        }
-        else{
-            spatialVariance = fabs(totalSquaredDiff / float(jVector.size()));
-//            spatialVariance = std::abs(varianceAccumulatorSquared / float(varianceCalculationPointCounter)
-//                                       - pow(varianceAccumulator / float(varianceCalculationPointCounter),2));
+            //pcl::PointXYZRGB pointOut = point;
+            //pointOut.r = 255;
+            //pointOut.g = std::max(255.0, 255 * (spatialVariance - min_var) / max_var);
+            //pointOut.b = 100;
+            //pointOut.x = point.x;
+            //pointOut.y = point.y;
+            //pointOut.z = point.z;
+            //PointCloudColorSchemeSpatialVariance->push_back(pointOut);
+            // std::cout << "RGB: " << "R: " << point.r << " G:" << point.g << " B: " << point.b << std::endl;
+
+            // End New *****************************************************
+
+
+
 
         }
+        //spatialVarianceColoreSchemedPointcloudPublisher_.publish()
+        //sensor_msgs::PointCloud2 OutputVariancePointcloud;
+        //OutputVariancePointcloud.header.frame_id = "/map";
 
+        //toROSMsg(PointCloudColorSchemeSpatialVariance, OutputVariancePointcloud);
+        //spatialVarianceColoreSchemedPointcloudPublisher_.publish(OutputVariancePointcloud);
 
-
-        // For Debugging. (Deprecated)
-        if(i%1000 == 0){
-            //std::cout << "Variances: " << spatialVariance << " X: "<< point.x << " Y: " << point.y << " Z: " << point.z << "P" << std::endl;
-        }
-
-        // Copy to List.
-        spatialVariances(i) = spatialVariance;
-
-        // For Debugging. (Deprecated)
-        //if(i%1000 == 0){
-        //    std::cout << "Spatial var size" << spatialVariances.size() << std::endl;
-        //    std::cout << "Variances: " << spatialVariances(i) << " X: "<< point.x << " Y: " << point.y << " Z: " << point.z << "P" << std::endl;
-        //}
-
-
-        //double min_var = pow(10,-12);
-        //double max_var = pow(10,-6);
-
-        //pcl::PointXYZRGB pointOut = point;
-        //pointOut.r = 255;
-        //pointOut.g = std::max(255.0, 255 * (spatialVariance - min_var) / max_var);
-        //pointOut.b = 100;
-        //pointOut.x = point.x;
-        //pointOut.y = point.y;
-        //pointOut.z = point.z;
-        //PointCloudColorSchemeSpatialVariance->push_back(pointOut);
-        // std::cout << "RGB: " << "R: " << point.r << " G:" << point.g << " B: " << point.b << std::endl;
-
-        // End New *****************************************************
-
-
-
-
+        // New
+        //meanSpatialVariance = meanSpatialVariance / (float)pointCloudMapFrame->size();
+        //std::cout << "Mean Spatial Variance: " << meanSpatialVariance << std::endl;
+        // End New
     }
-    //spatialVarianceColoreSchemedPointcloudPublisher_.publish()
-    //sensor_msgs::PointCloud2 OutputVariancePointcloud;
-    //OutputVariancePointcloud.header.frame_id = "/map";
-
-    //toROSMsg(PointCloudColorSchemeSpatialVariance, OutputVariancePointcloud);
-    //spatialVarianceColoreSchemedPointcloudPublisher_.publish(OutputVariancePointcloud);
-
-    // New
-    //meanSpatialVariance = meanSpatialVariance / (float)pointCloudMapFrame->size();
-    //std::cout << "Mean Spatial Variance: " << meanSpatialVariance << std::endl;
-    // End New
     return true;
     // End New ***********************************************************************************************************
 }
+
+bool StructuredLightSensorProcessor::computePointcloudStatistics(const pcl::PointCloud<pcl::PointXYZRGB>::Ptr pointCloudMapFrame)
+{
+
+
+    // TODO: Find out how the pointcloud is iterated..
+    double totalElevation = 0.0;
+    double xMax, xMin, yMax, yMin;
+
+    // Initialize
+    xMax = pointCloudMapFrame->points[pointCloudMapFrame->size()].x;
+    yMax = pointCloudMapFrame->points[pointCloudMapFrame->size()].y;
+    xMin = pointCloudMapFrame->points[pointCloudMapFrame->size()].x;
+    yMin = pointCloudMapFrame->points[pointCloudMapFrame->size()].y;
+
+    int counter = 0;
+
+    for (unsigned int i = pointCloudMapFrame->size(); i > 3.0/5.0 * pointCloudMapFrame->size(); --i) {
+        // For every point in point cloud.
+
+        // TODO: also get the variance!! And Entropy!!
+
+        auto& point = pointCloudMapFrame->points[i];
+
+        counter++;
+
+        // Get the total elevation for mean calculation
+        totalElevation += point.z;
+
+        // Get the max and min for midpoint calculation (horizontal reference point for the statistics map)
+        if (point.x > xMax) xMax = point.x;
+        if (point.y > yMax) yMax = point.y;
+        if (point.x < xMin) xMin = point.x;
+        if (point.y < yMin) yMin = point.y;
+    }
+
+    double meanElevation = totalElevation / (double)counter;
+    std::cout << "this is the mean Elevation from the pointcloud statistics!!!!" << meanElevation << std::endl;
+
+
+
+    std::cout << "Getting The statistics!! \n";
+    return true;
+}
+
 
 } /* namespace */

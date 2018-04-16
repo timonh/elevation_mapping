@@ -649,7 +649,7 @@ bool ElevationMap::publishSpatialVariancePointCloud(const pcl::PointCloud<pcl::P
 
   pcl::PointCloud<pcl::PointXYZRGB> pointCloudColored;
   sensor_msgs::PointCloud2 variancePointCloud;
-  for(unsigned int i; i < pointCloud->size(); ++i){
+  for(unsigned int i = 0; i < pointCloud->size(); ++i){
       pcl::PointXYZRGB pointnew = pointCloud->points[i];
       double factor = 3.5 * pow(10,6);
       pointnew.r = (int)min(spatialVariances(i,0) * factor, 255.0);
@@ -1102,7 +1102,9 @@ bool ElevationMap::footTipElevationMapComparison(std::string tip)
                 // Uses the footContactMarkerList_, therefore called here.
                 // Updates the map layer, that purely relies on the last n foot tips.
                 int numberOfConsideredFootTips = 10;
-                updateFootTipBasedElevationMapLayer(numberOfConsideredFootTips);
+
+                //! HACKED AWAY, no foot tip layer updates now!!
+                //updateFootTipBasedElevationMapLayer(numberOfConsideredFootTips);
 
                 // TESTING DRIFT STUFF
 //                auto driftTuple = filteredDriftEstimation(weightedVerticalDifferenceIncrement, estimatedDriftChange_, estimatedDriftChangeVariance_);
@@ -1126,8 +1128,12 @@ bool ElevationMap::footTipElevationMapComparison(std::string tip)
                 std::cout << "Weighted Height Difference: " << weightedDifferenceVector_[0] << "\n";
 
                 // Longer weightedDifferenceVector for PID drift calculation
-                PIDWeightedDifferenceVector_.push_back(heightDifferenceFromComparison_); // Removed the vertical difference increment, TEST IT!
+                if(!isnan(heightDifferenceFromComparison_)) PIDWeightedDifferenceVector_.push_back(heightDifferenceFromComparison_); // Removed the vertical difference increment, TEST IT!
                 if(PIDWeightedDifferenceVector_.size() >= 30) PIDWeightedDifferenceVector_.erase(PIDWeightedDifferenceVector_.begin());
+
+
+                // New: create one for the left and one for the right foot tips, to get separate drift estimation
+                //if (tip == "right")
 
                 // TODO: for Kalman drift estimation, and PID with left and right separated...
 
@@ -1141,15 +1147,22 @@ bool ElevationMap::footTipElevationMapComparison(std::string tip)
                 //if(!isnan(heightDiffPID))
 
                 // PID based drift estimation.
-                driftEstimationPID_ = driftCalculationUsingPID();
-                if (isnan(driftEstimationPID_)) driftEstimationPID_ = 0.0;
+                driftEstimationPID_ = driftCalculationUsingPID(tip);
+                std::cout << "Size of left tip stance: " << LFTipStance_.size() << "\n";
+                std::cout << "Size of right tip stance: " << RFTipStance_.size() << "\n";
+
+
+                if (isnan(driftEstimationPID_)){
+                    std::cout << "NULLED THE DRIFT FOR NAN REASONS!! \n";
+                    driftEstimationPID_ = 0.0;
+                }
 
                 double driftEstimationPIDadder = 0;
                 if (heightDiffPID != 0.0) driftEstimationPIDadder = driftEstimationPID_ * (heightDiffPID/fabs(heightDiffPID));
                 else driftEstimationPIDadder = driftEstimationPID_;
 
-                // TESTING, adjusted this, check consequences..  // HACKED ALSO IN IF ARGUMENT!!!
-                if(applyFrameCorrection_) heightDifferenceFromComparison_ = heightDiffPID - driftEstimationPIDadder;// - driftEstimationPIDadder;//  driftEstimationPID_; //! HACKED FOR TESTING< ABSOLUTELY TAKE OUT AGAIN!!!
+                // TESTING, adjusted this, check consequences..  // HACKED ALSO IN IF ARGUMENT!!! // Hacked from minus to plus!!!!
+                if(applyFrameCorrection_) heightDifferenceFromComparison_ = heightDiffPID + driftEstimationPIDadder;// - driftEstimationPIDadder;//  driftEstimationPID_; //! HACKED FOR TESTING< ABSOLUTELY TAKE OUT AGAIN!!!
                 else heightDifferenceFromComparison_ = 0.0;
                 //if(applyFrameCorrection_ && !footTipOutsideBounds_)
 
@@ -1172,7 +1185,26 @@ bool ElevationMap::footTipElevationMapComparison(std::string tip)
                 double second_measure_factor = -10000.0;
                 performance_assessment_msg_.second_measure = driftEstimationPID_ * weightedDifferenceVector_[5] * second_measure_factor;
                 std::cout << "weightedDifferenceVector!!: LAst element: " << weightedDifferenceVector_[5] << " Drift Est PID!!!:::::: " << (double)driftEstimationPID_ << std::endl;
-                if (performance_assessment_msg_.second_measure > 0.1) std::cout << "HIGH GRASS MODE ACTIVATED!!!!!" << "\n" << "\n" << "\n" << "\n" << "\n" << std::endl;
+
+
+                // TODO: Add some low pass filtering: FUTURE: Low passing for Mode changing..
+                // Low pass filtering for robust high grass detection ****************************************************
+                if (grassDetectionHistory_.size() > 2) grassDetectionHistory_.erase(grassDetectionHistory_.begin());
+                if (performance_assessment_msg_.second_measure > 0.1){
+                    std::cout << "ADDED A 1 TO HIGH GRASS FILTERING!!" << std::endl;
+                    grassDetectionHistory_.push_back(1);
+                }
+                else grassDetectionHistory_.push_back(0);
+
+                int sum_of_elems = 0;
+                for (bool n : grassDetectionHistory_)
+                    sum_of_elems += n;
+                if (sum_of_elems > 0)
+                    std::cout << "HIGH GRASS MODE ACTIVATED!!!!!" << "\n" << "\n" << "\n" << "\n" << "\n" << std::endl;
+                // End low pass filtering  ************************************************
+
+
+
             }
             else{
                 //if(!isnan(driftEstimationPID_)) heightDifferenceFromComparison_ += driftEstimationPID_; // HACKED AWAY FOR TESTING!
@@ -1314,32 +1346,85 @@ float ElevationMap::differenceCalculationUsingPID()
     }
 }
 
-double ElevationMap::driftCalculationUsingPID(){
+double ElevationMap::driftCalculationUsingPID(std::string tip){
     //
     double totalDifference = 0.0;
-    for(unsigned int i = PIDWeightedDifferenceVector_.size(); i > 0; --i){
+    for(unsigned int i = PIDWeightedDifferenceVector_.size()-1; i > 0; --i){ // HACKED AGAIN HACKED
         double difference = PIDWeightedDifferenceVector_[i] - PIDWeightedDifferenceVector_[i-1];
         totalDifference += difference;
     }
     double meanDifference = 0.0;
-    if (PIDWeightedDifferenceVector_.size() > 1) meanDifference = totalDifference / double(PIDWeightedDifferenceVector_.size() - 1.0);
+    if (PIDWeightedDifferenceVector_.size() > 2) meanDifference = totalDifference / double(PIDWeightedDifferenceVector_.size() - 2.0);
+    else{
+        meanDifference = 0.0;
+        std::cout << "ATTENTIONATTENTION \n" << "******* \n" << "********* \n";
+    }
     std::cout << "mean DRIFT PER STANCE USING PID !!! " << meanDifference << std::endl;
-    if (PIDWeightedDifferenceVector_.size() < 10) meanDifference = 0.0;
-    return meanDifference * (heightDifferenceFromComparison_ / fabs(heightDifferenceFromComparison_)); // Check sign policy!!!
+    if (PIDWeightedDifferenceVector_.size() < 10){ // HACKED
+        meanDifference = 0.0;
+        std::cout << "NULLED FOR VECTOR SIZE REASONS!! " << PIDWeightedDifferenceVector_.size() << "\n";
+    }
+
+    if (heightDifferenceFromComparison_ != 0.0 && !isnan(heightDifferenceFromComparison_)) return meanDifference *
+            (heightDifferenceFromComparison_ / fabs(heightDifferenceFromComparison_)); // Check sign policy!!!
+    else return 0.0;
 }
 
 float ElevationMap::gaussianWeightedDifferenceIncrement(double lowerBound, double elevation, double upperBound, double diff)
 {
     diff -= heightDifferenceFromComparison_;
+
+
+    // New Stuff for testing!!
+    //! For testing
+    if(elevation + diff < lowerBound + 0.5 * (elevation - lowerBound)){
+        std::cout << "************************************* SOFT LOWER!! **************************!!!!!!!!!!!!!!!!!!!!" << std::endl;
+        applyFrameCorrection_ = false; // Hacked!!!!
+        grassDetectionHistory2_.push_back(1);
+    }
+    else{
+        applyFrameCorrection_ = true;
+        grassDetectionHistory2_.push_back(0);
+    }
+    if (grassDetectionHistory2_.size() > 8) grassDetectionHistory2_.erase(grassDetectionHistory2_.begin());
+
+    // TODO: At some point create a triger fct, that does this..
+    int triggerSum = 0;
+    for (auto n : grassDetectionHistory2_){
+        triggerSum += n;
+    }
+
+    // DEBugging:
+    if (triggerSum > 1){
+        std::cout << "<<<<<<<<>>>>>>>>> \n" << "<<<<<<<<<<>>>>>>>> \n" << "<<<<<<<<<<>>>>>>>>> \n";
+    }
+    else{
+        std::cout << "!!!! /n" << "!!!! \n" << "!!!! \n";
+    }
+
+    // End New *******************************************************************************************************************
+
+
     // Error difference weighted as (1 - gaussian), s.t. intervall from elevation map to bound contains two standard deviations
     double weight = 0.0;
     float standardDeviationFactor = 1;  //! THIS MAY BE A LEARNING FUNCTION IN FUTURE!! // CHANGED
     if(diff < 0.0){
         weight = normalDistribution(diff, 0.0, fabs(elevation-lowerBound)*standardDeviationFactor);
 
+
+
+
+
+        //! EndTesting
+
         // For Coloration
-        if(elevation + diff < lowerBound) footTipOutsideBounds_ = true;
+        if(elevation + diff < lowerBound){
+
+            std::cout << "******************************************** LOWER ******************************" << std::endl;
+            footTipOutsideBounds_ = true;
+        }
         else footTipOutsideBounds_ = false;
+
     }
     else{
         weight = normalDistribution(diff, 0.0, fabs(elevation-upperBound)*standardDeviationFactor);

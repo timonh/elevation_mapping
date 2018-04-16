@@ -22,9 +22,9 @@ find_package(catkin REQUIRED COMPONENTS
 )
 
 ## Added for debugging
-find_package(
-    grid_map_core
-)
+#find_package(catkin REQUIRED
+#    grid_map_core
+#)
 
 add_message_files(
   FILES

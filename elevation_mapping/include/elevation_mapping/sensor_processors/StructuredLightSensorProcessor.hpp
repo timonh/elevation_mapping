@@ -64,6 +64,8 @@ private:
     virtual bool computeSpatialVariances(
             const pcl::PointCloud<pcl::PointXYZRGB>::Ptr pointCloudMapFrame,
             Eigen::VectorXf& spatialVariances);
+
+    bool computePointcloudStatistics(const pcl::PointCloud<pcl::PointXYZRGB>::Ptr pointCloudMapFrame);
 };
 
 

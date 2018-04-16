@@ -331,7 +331,7 @@ class ElevationMap
   float normalDistribution(float arg, float mean, float stdDev);
 
   //! TODO: Description:
-  double driftCalculationUsingPID();
+  double driftCalculationUsingPID(std::string tip);
 
   //! TODO: Description:
   bool updateFootTipBasedElevationMapLayer(int numberOfConsideredFootTips);
@@ -440,8 +440,11 @@ class ElevationMap
   //! For Tuning! To sum up the diffs between the moved elevation map and the foot tips.
   double performanceAssessment_;
 
+  //! Store values for gras detection
+  std::vector<bool> grassDetectionHistory_, grassDetectionHistory2_;
+
   //! Longer weightedDifferenceVector for PID drift estimation
-  std::vector<double> PIDWeightedDifferenceVector_;
+  std::vector<double> PIDWeightedDifferenceVector_, leftPIDWeightedDifferenceVector_, rightPIDWeightedDifferenceVector_;
   double driftEstimationPID_;
 
   //! Kalman Filtered Drift Estimation
