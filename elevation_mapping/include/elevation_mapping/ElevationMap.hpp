@@ -37,7 +37,11 @@
 #include "tf/transform_broadcaster.h"
 
 // ROS msgs
-#include <elevation_mapping/PerformanceAssessment.h>
+//#include <elevation_mapping/PerformanceAssessment.h>
+
+// File IO
+#include <iostream>
+#include <fstream>
 
 namespace elevation_mapping {
 
@@ -341,6 +345,9 @@ class ElevationMap
    */
   bool performanceAssessmentMeanElevationMap();
 
+  //! TODO: Description:
+  bool writeFootTipStatisticsToFile(double& footTipVal);
+
 
 
 
@@ -457,7 +464,7 @@ class ElevationMap
   Eigen::Vector3f meanStance_;
 
   //! Message to publish performance assessment values
-  elevation_mapping::PerformanceAssessment performance_assessment_msg_;
+  //elevation_mapping::PerformanceAssessment performance_assessment_msg_;
 
   //! Transform Listener and broadcaster for generating the corrected frame
   tf::TransformListener odomDriftAdjustedTransformListener_;

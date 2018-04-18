@@ -3,7 +3,7 @@ project(elevation_mapping)
 
 set(CMAKE_CXX_FLAGS "-std=c++11 ${CMAKE_CXX_FLAGS}")
 
-## Find catkin macros and libraries
+# Find catkin macros and libraries
 find_package(catkin REQUIRED COMPONENTS
   grid_map_core
   grid_map_ros
@@ -13,7 +13,7 @@ find_package(catkin REQUIRED COMPONENTS
   message_filters
   sensor_msgs
   std_msgs
-  message_generation
+  #message_generation
   tf
   tf_conversions
   eigen_conversions
@@ -21,18 +21,25 @@ find_package(catkin REQUIRED COMPONENTS
   kindr_ros
 )
 
-## Added for debugging
+# Added for debugging
 #find_package(catkin REQUIRED
 #    grid_map_core
+#    grid_map_ros
+#    pcl_ros
+#    quadruped_msgs
+#    any_msgs
+#    tf
+#    tf_conversions
+#    genmsg
 #)
 
-add_message_files(
-  FILES
-  PerformanceAssessment.msg
-)
+#add_message_files(
+#  FILES
+#  PerformanceAssessment.msg
+#)
 
 ## Added by Timon for msg generation
-generate_messages()
+#generate_messages()
 
 
 
@@ -64,7 +71,7 @@ catkin_package(
     message_filters
     sensor_msgs
     std_msgs
-    message_runtime
+    #message_runtime
     tf
     tf_conversions
     eigen_conversions

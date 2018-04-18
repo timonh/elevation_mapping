@@ -39,7 +39,11 @@
 #include <pcl/features/normal_3d.h>
 
 // ROS msgs
-#include <elevation_mapping/PerformanceAssessment.h>
+//#include <elevation_mapping/PerformanceAssessment.h>
+
+// File IO
+//#include <iostream>
+//#include <fstream>
 
 using namespace std;
 using namespace grid_map;
@@ -96,7 +100,7 @@ ElevationMap::ElevationMap(ros::NodeHandle nodeHandle)
   initializeFootTipMarkers();
 
   // NEW: Publish data, for parameter tuning and visualization
-  tuningPublisher1_ = nodeHandle_.advertise<elevation_mapping::PerformanceAssessment>("performance_assessment", 1000);
+  //tuningPublisher1_ = nodeHandle_.advertise<elevation_mapping::PerformanceAssessment>("performance_assessment", 1000);
 
   // NEW: publish clored pointcloud visualizing the local pointcloud variance.
   coloredPointCloudPublisher_ = nodeHandle_.advertise<sensor_msgs::PointCloud2>("variance_pointcloud", 1);
@@ -116,6 +120,8 @@ ElevationMap::ElevationMap(ros::NodeHandle nodeHandle)
   driftEstimationPID_ = 0.0;
   highGrassMode_ = false;
   // END NEW
+
+
 
   initialTime_ = ros::Time::now();
 }
@@ -240,6 +246,7 @@ bool ElevationMap::add(const pcl::PointCloud<pcl::PointXYZRGB>::Ptr pointCloud, 
 
   const ros::WallDuration duration = ros::WallTime::now() - methodStartTime;
   ROS_INFO("Raw map has been updated with a new point cloud in %f s.", duration.toSec());
+
   return true;
 }
 
@@ -797,6 +804,9 @@ void ElevationMap::footTipStanceCallback(const quadruped_msgs::QuadrupedState& q
   LFTipState_ = quadrupedState.contacts[0].state;
   RFTipState_ = quadrupedState.contacts[1].state;
 
+  // Check if walking forward or backwards. TODO!
+  //(double)quadrupedState.twist.twist.linear.x;
+
   // Detect start and end of stances for each of the two front foot tips.
   detectStancePhase();
   //detectStancePhase("right");
@@ -818,10 +828,10 @@ bool ElevationMap::detectStancePhase()
     processStanceTriggerRight_.push_back(RFTipState_);
 
     // Constrain the size of the state arrays.
-    if(processStanceTriggerLeft_.size() > 1000){
+    if(processStanceTriggerLeft_.size() > 2000){
         processStanceTriggerLeft_.erase(processStanceTriggerLeft_.begin());
     }
-    if(processStanceTriggerRight_.size() > 1000){
+    if(processStanceTriggerRight_.size() > 2000){
         processStanceTriggerRight_.erase(processStanceTriggerRight_.begin());
     }
 
@@ -889,11 +899,13 @@ bool ElevationMap::processStance(std::string tip)
     getAverageFootTipPositions(tip);
     footTipElevationMapComparison(tip);
     publishAveragedFootTipPositionMarkers();
+
     // Performance Assessment, sensible if wanting to tune the system while walking on flat surface.
-    performanceAssessmentMeanElevationMap();
+    bool runPreformanceAssessmentForFlatGround = false;
+    if(runPreformanceAssessmentForFlatGround) performanceAssessmentMeanElevationMap();
 
     // Data Publisher for parameter tuning.
-    tuningPublisher1_.publish(performance_assessment_msg_); // HACKED FOR DEBUGGING!!
+    //tuningPublisher1_.publish(performance_assessment_msg_); // HACKED FOR DEBUGGING!!
 
 
 
@@ -1066,7 +1078,7 @@ bool ElevationMap::footTipElevationMapComparison(std::string tip)
 
                 // New Tuning piblisher.
 
-                performance_assessment_msg_.first_measure = verticalDifferenceCorrected;
+                //performance_assessment_msg_.first_measure = verticalDifferenceCorrected;
 
                 // Wait some stances to get sorted at the beginning.
                 if(weightedDifferenceVector_.size() >= 4) performanceAssessment_ += fabs(verticalDifferenceCorrected);
@@ -1169,7 +1181,7 @@ bool ElevationMap::footTipElevationMapComparison(std::string tip)
                 //if(applyFrameCorrection_ && !footTipOutsideBounds_)
 
                 // For Tuning.
-                performance_assessment_msg_.third_measure = heightDifferenceFromComparison_;
+                //performance_assessment_msg_.third_measure = heightDifferenceFromComparison_;
 
                 // Kalman Filter based offset calculation.
                 //auto diffTuple = differenceCalculationUsingKalmanFilter();
@@ -1182,25 +1194,25 @@ bool ElevationMap::footTipElevationMapComparison(std::string tip)
 
 
 
-                performance_assessment_msg_.fifth_measure = driftEstimationPID_;
+                //performance_assessment_msg_.fifth_measure = driftEstimationPID_;
 
                 double second_measure_factor = -10000.0;
-                performance_assessment_msg_.second_measure = driftEstimationPID_ * weightedDifferenceVector_[5] * second_measure_factor;
+                //performance_assessment_msg_.second_measure = driftEstimationPID_ * weightedDifferenceVector_[5] * second_measure_factor;
                 std::cout << "weightedDifferenceVector!!: LAst element: " << weightedDifferenceVector_[5] << " Drift Est PID!!!:::::: " << (double)driftEstimationPID_ << std::endl;
 
 
                 // TODO: Add some low pass filtering: FUTURE: Low passing for Mode changing..
                 // Low pass filtering for robust high grass detection ****************************************************
-                if (grassDetectionHistory_.size() > 2) grassDetectionHistory_.erase(grassDetectionHistory_.begin());
-                if (performance_assessment_msg_.second_measure > 0.1){
-                    std::cout << "ADDED A 1 TO HIGH GRASS FILTERING!!" << std::endl;
-                    grassDetectionHistory_.push_back(1);
-                }
-                else grassDetectionHistory_.push_back(0);
+                //if (grassDetectionHistory_.size() > 2) grassDetectionHistory_.erase(grassDetectionHistory_.begin());
+                //if (performance_assessment_msg_.second_measure > 0.1){
+                //    std::cout << "ADDED A 1 TO HIGH GRASS FILTERING!!" << std::endl;
+                //    grassDetectionHistory_.push_back(1);
+                //}
+                //else grassDetectionHistory_.push_back(0);
 
-                int sum_of_elems = 0;
-                for (bool n : grassDetectionHistory_)
-                    sum_of_elems += n;
+                //int sum_of_elems = 0;
+                //for (bool n : grassDetectionHistory_)
+                //    sum_of_elems += n;
                 //if (sum_of_elems > 0)
                    // std::cout << "HIGH GRASS MODE ACTIVATED!!!!!" << "\n" << "\n" << "\n" << "\n" << "\n" << std::endl;
                 // End low pass filtering  ************************************************
@@ -1391,7 +1403,7 @@ float ElevationMap::gaussianWeightedDifferenceIncrement(double lowerBound, doubl
 {
     diff -= heightDifferenceFromComparison_;
 
-    // New Stuff for testing!!
+    // New Stuff for testing!! ********************************************************************************************************
     //! For testing
     if(elevation + diff < lowerBound + 0.9 * (elevation - lowerBound)){
         std::cout << "************************************* SOFT LOWER!! **************************!!!!!!!!!!!!!!!!!!!!" << std::endl;
@@ -1412,13 +1424,28 @@ float ElevationMap::gaussianWeightedDifferenceIncrement(double lowerBound, doubl
     if (triggerSum > 3){
         std::cout << "<<<<<<<<>>>>>>>>> \n" << "<<<<<<<<<<>>>>>>>> \n" << "<<<<<<<<<<>>>>>>>>> \n";
         highGrassMode_ = true; // Hacked!!!!
-        applyFrameCorrection_ = false;
+        //applyFrameCorrection_ = false;
     }
     else{
         std::cout << "!!!! \n" << "!!!! \n" << "!!!! \n";
         highGrassMode_ = false;
-        applyFrameCorrection_ = true;
+        //applyFrameCorrection_ = true;
     }
+
+    double footTipVal;
+    // Get normalized foot tip position within bounds.
+    if(diff < 0.0){
+        footTipVal = diff / fabs(elevation - lowerBound);
+    }
+    else{
+        footTipVal = diff / fabs(elevation - upperBound);
+    }
+
+    // Write to file to visualize in Matlab.
+
+    writeFootTipStatisticsToFile(footTipVal);
+
+    // TODO: write the foot tip characterizing numbers to a file to histogram plot it in Matlab for discussion..
 
     // End New *******************************************************************************************************************
 
@@ -1428,12 +1455,6 @@ float ElevationMap::gaussianWeightedDifferenceIncrement(double lowerBound, doubl
     float standardDeviationFactor = 1;  //! THIS MAY BE A LEARNING FUNCTION IN FUTURE!! // CHANGED
     if(diff < 0.0){
         weight = normalDistribution(diff, 0.0, fabs(elevation-lowerBound)*standardDeviationFactor);
-
-
-
-
-
-        //! EndTesting
 
         // For Coloration
         if(elevation + diff < lowerBound){
@@ -1609,9 +1630,19 @@ bool ElevationMap::performanceAssessmentMeanElevationMap()
     // Add a factor for scaling in rqt plot
     double factor = 200.0;
 
-    performance_assessment_msg_.fourth_measure = factor * performanceAssessment/counter;
+    //performance_assessment_msg_.fourth_measure = factor * performanceAssessment/counter;
 
     return true;
+}
+
+bool ElevationMap::writeFootTipStatisticsToFile(double& footTipVal) {
+  std::cout << "WRITING TO FILE" << std::endl;
+  // Open the writing file.
+  ofstream myfile;
+  myfile.open ("/home/timon/FootTipStatistics.txt", ios::app);
+  myfile << "; " << footTipVal;
+  myfile.close();
+  return 0;
 }
 
 } /* namespace */
