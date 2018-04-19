@@ -128,6 +128,8 @@ ElevationMap::ElevationMap(ros::NodeHandle nodeHandle)
 
 ElevationMap::~ElevationMap()
 {
+    std::cout << "I am having a last message for you \n";
+    writeDataFileForParameterLearning();
 }
 
 void ElevationMap::setGeometry(const grid_map::Length& length, const double& resolution, const grid_map::Position& position)
@@ -900,6 +902,7 @@ bool ElevationMap::processStance(std::string tip)
     footTipElevationMapComparison(tip);
     publishAveragedFootTipPositionMarkers();
 
+
     // Performance Assessment, sensible if wanting to tune the system while walking on flat surface.
     bool runPreformanceAssessmentForFlatGround = false;
     if(runPreformanceAssessmentForFlatGround) performanceAssessmentMeanElevationMap();
@@ -941,6 +944,7 @@ bool ElevationMap::getAverageFootTipPositions(std::string tip)
     std::vector<Eigen::Vector3f> stance;
     if(tip == "left") stance = LFTipStance_;
     if(tip == "right") stance = RFTipStance_;
+
     LFTipStance_.clear();
     RFTipStance_.clear();
 
@@ -953,6 +957,13 @@ bool ElevationMap::getAverageFootTipPositions(std::string tip)
         meanStance_ = totalStance / float(stance.size());
         processStanceTriggerLeft_.clear();
     }
+
+    // Drift Estimation assuming flat ground.
+    bool driftEstimationwithflatGroundassumption = true;
+    if(driftEstimationwithflatGroundassumption) driftEstimationFlatGroundAssumption(tip);
+
+
+
     return true;
 }
 
@@ -1057,7 +1068,7 @@ bool ElevationMap::footTipElevationMapComparison(std::string tip)
         // Offset of each step versus Elevation map.
         double verticalDifference = 0;
         // Weighted offset depending on the upper and lower bounds of the fused map.
-        double weightedVerticalDifferenceIncrement = 0;
+        double weightedVerticalDifferenceIncrement = 0.0;
 
         // Horizontal position of the foot tip.
         Position tipPosition(xTip, yTip);
@@ -1099,6 +1110,7 @@ bool ElevationMap::footTipElevationMapComparison(std::string tip)
                 std::cout << "lower: " << lowerBoundFused << " elev: " << elevationFused << " upper: " << upperBoundFused << std::endl;
                 weightedVerticalDifferenceIncrement = gaussianWeightedDifferenceIncrement(lowerBoundFused, elevationFused, upperBoundFused, verticalDifference);
 
+                std::cout << "weightedVerticalDifferenceIncrement " << weightedVerticalDifferenceIncrement << std::endl;
                 // DEBUG:
 //                if (isnan(weightedVerticalDifferenceIncrement)){
 //                    std::cout << "NAN IN WEIGHTED DIFFERENCE INCREMENT!!!!!!!" << std::endl;
@@ -1136,6 +1148,10 @@ bool ElevationMap::footTipElevationMapComparison(std::string tip)
 
                 // TODO: test validity of these:
 
+                // DEBUG
+                std::cout << "heightDiff befor weighted difference vector creation: " << heightDifferenceFromComparison_ <<
+                             " weightedVerticalDiffIncrement: " << weightedVerticalDifferenceIncrement << std::endl;
+
                 // Store the vertical difference history in a vector for PID controlling.
                 weightedDifferenceVector_.push_back(heightDifferenceFromComparison_ + weightedVerticalDifferenceIncrement); // TODO: check viability
                 if(weightedDifferenceVector_.size() > 6) weightedDifferenceVector_.erase(weightedDifferenceVector_.begin());
@@ -1154,6 +1170,8 @@ bool ElevationMap::footTipElevationMapComparison(std::string tip)
                 // PID height offset calculation.
                 double heightDiffPID = differenceCalculationUsingPID();
 
+                // DEBUG
+                std::cout << "heightDiffPID" << heightDiffPID << std::endl;
 
 
 
@@ -1199,7 +1217,7 @@ bool ElevationMap::footTipElevationMapComparison(std::string tip)
                 double second_measure_factor = -10000.0;
                 //performance_assessment_msg_.second_measure = driftEstimationPID_ * weightedDifferenceVector_[5] * second_measure_factor;
                 std::cout << "weightedDifferenceVector!!: LAst element: " << weightedDifferenceVector_[5] << " Drift Est PID!!!:::::: " << (double)driftEstimationPID_ << std::endl;
-
+                std::cout << "heightDifferenceFromComparison::: " << heightDifferenceFromComparison_ << std::endl;
 
                 // TODO: Add some low pass filtering: FUTURE: Low passing for Mode changing..
                 // Low pass filtering for robust high grass detection ****************************************************
@@ -1363,16 +1381,19 @@ float ElevationMap::differenceCalculationUsingPID()
     float kd = -0.07; // Trying PI controller for now.. (Quite good between 0 and -0.1)
 
     // Nan prevention.
-    if(weightedDifferenceVector_.size() > 1 && isnan(weightedDifferenceVector_[1])) return 0.0;
+    if(weightedDifferenceVector_.size() < 1 || isnan(weightedDifferenceVector_[1])) return 0.0; // HACKED!!!!!
     else if(weightedDifferenceVector_.size() > 1){
-    // Calculate new total diff here
-    double totalDiff = 0.0;
-    for (auto& n : weightedDifferenceVector_)
-        totalDiff += n;
-    double meanDiff = totalDiff / float(weightedDifferenceVector_.size());
-    return kp * weightedDifferenceVector_[weightedDifferenceVector_.size()] + ki * meanDiff +
-            kd * (weightedDifferenceVector_[weightedDifferenceVector_.size()] - weightedDifferenceVector_[weightedDifferenceVector_.size()-1]);
+        // Calculate new total diff here
+        double totalDiff = 0.0;
+        for (auto& n : weightedDifferenceVector_)
+            totalDiff += n;
+        double meanDiff = totalDiff / float(weightedDifferenceVector_.size());
+        std::cout << "MeanDiff: " << meanDiff << std::endl;
+        return kp * weightedDifferenceVector_[weightedDifferenceVector_.size()-1] + ki * meanDiff +
+                kd * (weightedDifferenceVector_[weightedDifferenceVector_.size()-1] -
+                weightedDifferenceVector_[weightedDifferenceVector_.size()-2]);
     }
+    else return 0.0;
 }
 
 double ElevationMap::driftCalculationUsingPID(std::string tip){
@@ -1443,7 +1464,7 @@ float ElevationMap::gaussianWeightedDifferenceIncrement(double lowerBound, doubl
 
     // Write to file to visualize in Matlab.
 
-    writeFootTipStatisticsToFile(footTipVal);
+    writeFootTipStatisticsToFile(footTipVal, "/home/timon/FootTipStatistics.txt");
 
     // TODO: write the foot tip characterizing numbers to a file to histogram plot it in Matlab for discussion..
 
@@ -1635,14 +1656,94 @@ bool ElevationMap::performanceAssessmentMeanElevationMap()
     return true;
 }
 
-bool ElevationMap::writeFootTipStatisticsToFile(double& footTipVal) {
-  std::cout << "WRITING TO FILE" << std::endl;
-  // Open the writing file.
-  ofstream myfile;
-  myfile.open ("/home/timon/FootTipStatistics.txt", ios::app);
-  myfile << "; " << footTipVal;
-  myfile.close();
-  return 0;
+bool ElevationMap::writeFootTipStatisticsToFile(double& footTipVal, std::string filename) {
+    std::cout << "WRITING TO FILE" << std::endl;
+    // Open the writing file.
+    ofstream myfile;
+    myfile.open (filename, ios::app);
+    myfile << "; " << footTipVal;
+    myfile.close();
+    return true;
 }
+
+bool ElevationMap::driftEstimationFlatGroundAssumption(std::string tip){
+
+    // Only consider area where robot is trotting for now.
+    if (meanStance_(0) < 1.3 || meanStance_(0) > 2.75){
+        if (tip == "left") leftStanceVector_.push_back(meanStance_);
+        if (tip == "right") rightStanceVector_.push_back(meanStance_);
+        if (leftStanceVector_.size() > 2) leftStanceVector_.erase(leftStanceVector_.begin());
+        if (rightStanceVector_.size() > 2) rightStanceVector_.erase(rightStanceVector_.begin());
+
+    }
+
+
+
+    bool witeHorizontalFootTipEstimationStatisticsToFile = false;
+    if(witeHorizontalFootTipEstimationStatisticsToFile){
+        if (leftStanceVector_.size() > 1 && tip == "left"){
+            double diff = double(leftStanceVector_[1](0)-leftStanceVector_[0](0));
+            std::cout << "CHECK!!" << std::endl;
+            writeFootTipStatisticsToFile(diff, "/home/timon/driftEst.txt");
+        }
+        else if(rightStanceVector_.size() > 1){
+            double diff = double(rightStanceVector_[1](0)-rightStanceVector_[0](0));
+            std::cout << "CHECK!!" << std::endl;
+            writeFootTipStatisticsToFile(diff, "/home/timon/driftEst.txt");
+        }
+    }
+    proprioceptiveVariance(0.0467, tip);
+
+}
+
+bool ElevationMap::proprioceptiveVariance(double meanDrift, std::string tip){
+
+    double diff = 0.0;
+    if (leftStanceVector_.size() > 1 && tip == "left"){
+        diff = double((leftStanceVector_[1](0)-leftStanceVector_[0](0)) - meanDrift);
+        feetUnseenVarianceVector_.push_back(diff);
+        if (feetUnseenVarianceVector_.size() > 8) feetUnseenVarianceVector_.erase(feetUnseenVarianceVector_.begin());
+    }
+    else if(rightStanceVector_.size() > 1){
+        diff = double((rightStanceVector_[1](0)-rightStanceVector_[0](0))-meanDrift);
+        feetUnseenVarianceVector_.push_back(diff);
+        if (feetUnseenVarianceVector_.size() > 8) feetUnseenVarianceVector_.erase(feetUnseenVarianceVector_.begin());
+    }
+
+    // Calculate Variance.
+    double total = 0.0;
+    double totalSquared = 0.0;
+    for (auto& n : feetUnseenVarianceVector_){
+        total += n;
+        totalSquared += pow(n, 2);
+    }
+    double variance = totalSquared / (double)feetUnseenVarianceVector_.size() - pow(total/(double)feetUnseenVarianceVector_.size(), 2);
+    double mean = total/(double)feetUnseenVarianceVector_.size();
+
+    std::cout << "Variance::::::::::::::::::::::: " << variance << std::endl;
+    std::cout << "Mean::::::::::::::::::::::::::: " << mean << std::endl;
+
+    // TODO: add Layer, that takes variace uncertainty into account.
+
+}
+
+bool ElevationMap::writeDataFileForParameterLearning(){
+    // Open the writing file.
+    ofstream myfile;
+    myfile.open ("tuningParams.txt", ios::app);
+    // TODO add some calculation of total performance assessment value.
+    // Write the tuning params.
+
+    std::cout << "Destruction!!!!" << std::endl;
+   // myfile << "; " << footTipVal;
+    myfile.close();
+
+    myfile.open ("perfAssessment.txt", ios::app);
+
+    //myfile << "; " << footTipVal;
+    myfile.close();
+    return true;
+}
+
 
 } /* namespace */

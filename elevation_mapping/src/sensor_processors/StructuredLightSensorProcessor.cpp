@@ -334,6 +334,7 @@ bool StructuredLightSensorProcessor::computePointcloudStatistics(const pcl::Poin
     }
 
     double meanElevation = totalElevation / (double)counter;
+    std::cout << "COUNTER!!!!: " << counter << std::endl;
     std::cout << "this is the mean Elevation from the pointcloud statistics!!!!" << meanElevation << std::endl;
 
 

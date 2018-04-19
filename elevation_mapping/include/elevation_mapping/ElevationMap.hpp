@@ -346,7 +346,16 @@ class ElevationMap
   bool performanceAssessmentMeanElevationMap();
 
   //! TODO: Description:
-  bool writeFootTipStatisticsToFile(double& footTipVal);
+  bool writeFootTipStatisticsToFile(double& footTipVal, std::string filename);
+
+  //! TODO: Description:
+  bool driftEstimationFlatGroundAssumption(std::string tip);
+
+  //! TODO: Description:
+  bool proprioceptiveVariance(double meanDrift, std::string tip);
+
+  //! TODO: Description:
+  bool writeDataFileForParameterLearning();
 
 
 
@@ -462,6 +471,12 @@ class ElevationMap
 
   //! Mean foot tip positions
   Eigen::Vector3f meanStance_;
+
+  //! For drift Estimation under Flat ground assumption.
+  std::vector<Eigen::Vector3f> leftStanceVector_, rightStanceVector_;
+
+  //! Life Variance Calculation for roughness characterization in unseen terrain.
+  std::vector<double> feetUnseenVarianceVector_;
 
   //! Message to publish performance assessment values
   //elevation_mapping::PerformanceAssessment performance_assessment_msg_;
