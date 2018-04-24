@@ -293,7 +293,7 @@ class ElevationMap
   bool getAverageFootTipPositions(std::string tip);
 
   //! TODO: Description!
-  bool publishAveragedFootTipPositionMarkers();
+  bool publishAveragedFootTipPositionMarkers(bool hind);
 
   //! TODO: Description!
   bool publishFusedMapBoundMarkers(double& xTip, double& yTip,
@@ -349,7 +349,7 @@ class ElevationMap
   bool writeFootTipStatisticsToFile(double& footTipVal, std::string filename);
 
   //! TODO: Description:
-  bool driftEstimationFlatGroundAssumption(std::string tip);
+  bool proprioceptiveRoughnessEstimation(std::string tip);
 
   //! TODO: Description:
   bool proprioceptiveVariance(double meanDrift, std::string tip);
@@ -425,18 +425,13 @@ class ElevationMap
 
 
   //! Front Feet Positions:
-  Eigen::Vector3f LFTipPostiion_;
-  Eigen::Vector3f RFTipPostiion_;
-  std::vector<Eigen::Vector3f> LFTipStance_;
-  std::vector<Eigen::Vector3f> RFTipStance_;
-  std::vector<bool> processStanceTriggerLeft_;
-  std::vector<bool> processStanceTriggerRight_;
-  bool LFTipState_;
-  bool RFTipState_;
+  Eigen::Vector3f LFTipPosition_, RFTipPosition_, LHTipPosition_, RHTipPosition_;
+  std::vector<Eigen::Vector3f> LFTipStance_, RFTipStance_, LHTipStance_, RHTipStance_;
+  std::vector<bool> processStanceTriggerLeft_, processStanceTriggerRight_, processStanceTriggerLeftHind_, processStanceTriggerRightHind_;
+  bool LFTipState_, RFTipState_, LHTipState_, RHTipState_;
   double totalHeightDifference_;
   int heightDifferenceComponentCounter_;
-  bool isInStanceLeft_;
-  bool isInStanceRight_;
+  bool isInStanceLeft_, isInStanceRight_, isInStanceLeftHind_, isInStanceRightHind_;
   std::string comparisonMode_;
   double heightDifferenceFromComparison_;
   double estimatedDriftChange_, estimatedDriftChangeVariance_;
@@ -450,14 +445,19 @@ class ElevationMap
   //! Params set upon launching to specify which parts of the program are running.
   //! driftAdjustment_: drift adjustment program running at all.
   //! applyFrameCorrection_: apply the calculated frame Correction -> if false performance measures are still calculated.
+  //! runHindLegStanceDetection_: template based stance detection for hind legs for variance estimation in unseen terrain.
   bool driftAdjustment_;
   bool applyFrameCorrection_;
+  bool runHindLegStanceDetection_;
 
   //! Bool to specify wheather in high grass or not:
   bool highGrassMode_;
 
+  //! Tuneable Parameters.
+  double kp_, ki_, kd_, weightingFactor_;
+
   //! For Tuning! To sum up the diffs between the moved elevation map and the foot tips.
-  double performanceAssessment_;
+  double performanceAssessment_, performanceAssessmentFlat_;
 
   //! Store values for gras detection
   std::vector<bool> grassDetectionHistory_, grassDetectionHistory2_;

@@ -108,6 +108,9 @@ ElevationMapping::ElevationMapping(ros::NodeHandle& nodeHandle)
 
 ElevationMapping::~ElevationMapping()
 {
+  // New added to write data to file for learning.
+  map_.writeDataFileForParameterLearning();
+
   fusionServiceQueue_.clear();
   fusionServiceQueue_.disable();
   nodeHandle_.shutdown();
@@ -301,6 +304,8 @@ void ElevationMapping::pointCloudCallback(
   if (!map_.add(pointCloudProcessed, measurementVariances, spatialVariances, lastPointCloudUpdateTime_, Eigen::Affine3d(sensorProcessor_->transformationSensorToMap_))) {
     ROS_ERROR("Adding point cloud to elevation map failed.");
     resetMapUpdateTimer();
+    // DEBUG:
+    std::cout << "Elevation Mapping Checkpoint" << std::endl;
     return;
   }
 

@@ -52,7 +52,8 @@ namespace elevation_mapping {
 
 ElevationMap::ElevationMap(ros::NodeHandle nodeHandle)
     : nodeHandle_(nodeHandle),
-      rawMap_({"elevation", "variance", "horizontal_variance_x", "horizontal_variance_y", "horizontal_variance_xy", "color", "time", "lowest_scan_point", "sensor_x_at_lowest_scan", "sensor_y_at_lowest_scan", "sensor_z_at_lowest_scan"}),
+      rawMap_({"elevation", "variance", "horizontal_variance_x", "horizontal_variance_y", "horizontal_variance_xy",
+              "color", "time", "lowest_scan_point", "sensor_x_at_lowest_scan", "sensor_y_at_lowest_scan", "sensor_z_at_lowest_scan"}),
       fusedMap_({"elevation", "upper_bound", "lower_bound", "color"}),
       hasUnderlyingMap_(false),
       visibilityCleanupDuration_(0.0)
@@ -85,6 +86,11 @@ ElevationMap::ElevationMap(ros::NodeHandle nodeHandle)
   // Launching parameters.
   nodeHandle_.param("run_drift_adjustment", driftAdjustment_, true);
   nodeHandle_.param("apply_frame_correction", applyFrameCorrection_, true);
+  nodeHandle_.param("kp", kp_, 0.24);
+  nodeHandle_.param("ki", ki_, 0.67);
+  nodeHandle_.param("kd", kd_, -0.07);
+  nodeHandle_.param("weight_factor", weightingFactor_, 1.0);
+  nodeHandle_.param("run_hind_leg_stance_detection", runHindLegStanceDetection_, true); // TODO: add to config file
   bool use_bag = true;
 
   // (New:) Foot tip position Subscriber for Foot tip - Elevation comparison
@@ -117,8 +123,13 @@ ElevationMap::ElevationMap(ros::NodeHandle nodeHandle)
   estimatedKalmanDiffIncrement_ = 0.0;
   PEstimatedKalmanDiffIncrement_ = 0.0;
   performanceAssessment_ = 0.0;
+  performanceAssessmentFlat_ = 0.0;
   driftEstimationPID_ = 0.0;
   highGrassMode_ = false;
+  isInStanceLeft_ = false;
+  isInStanceLeftHind_ = false;
+  isInStanceRight_ = false;
+  isInStanceRightHind_ = false;
   // END NEW
 
 
@@ -128,8 +139,6 @@ ElevationMap::ElevationMap(ros::NodeHandle nodeHandle)
 
 ElevationMap::~ElevationMap()
 {
-    std::cout << "I am having a last message for you \n";
-    writeDataFileForParameterLearning();
 }
 
 void ElevationMap::setGeometry(const grid_map::Length& length, const double& resolution, const grid_map::Position& position)
@@ -243,11 +252,17 @@ bool ElevationMap::add(const pcl::PointCloud<pcl::PointXYZRGB>::Ptr pointCloud, 
     horizontalVarianceXY = 0.0;
   }
 
+  // DEBUG
+  std::cout << "THATS WHERE I GOT BEFORE STOPPING!!1 \n";
+
   clean();
   rawMap_.setTimestamp(timestamp.toNSec()); // Point cloud stores time in microseconds.
 
   const ros::WallDuration duration = ros::WallTime::now() - methodStartTime;
   ROS_INFO("Raw map has been updated with a new point cloud in %f s.", duration.toSec());
+
+  // DEBUG
+  std::cout << "THATS WHERE I GOT BEFORE STOPPING!!2 \n";
 
   return true;
 }
@@ -305,6 +320,8 @@ bool ElevationMap::fuseArea(const Eigen::Vector2d& position, const Eigen::Array2
   //std::cout << "This is the thread FUSE_AREA!!! : " << this_id << std::endl;
   //! END TEST
 
+  // DEBUG
+  std::cout << "THATS WHERE I GOT BEFORE STOPPING!! 3 \n";
 
   getSubmapInformation(topLeftIndex, submapBufferSize, submapPosition, submapLength,
                        requestedIndexInSubmap, position, length, rawMap_.getLength(),
@@ -797,14 +814,28 @@ void ElevationMap::footTipStanceCallback(const quadruped_msgs::QuadrupedState& q
 {
   //boost::recursive_mutex::scoped_lock scopedLockForFootTipStanceProcessor(footTipStanceProcessorMutex_);
   // Set class variables.
-  LFTipPostiion_(0) = (double)quadrupedState.contacts[0].position.x;
-  LFTipPostiion_(1) = (double)quadrupedState.contacts[0].position.y;
-  LFTipPostiion_(2) = (double)quadrupedState.contacts[0].position.z;
-  RFTipPostiion_(0) = (double)quadrupedState.contacts[1].position.x;
-  RFTipPostiion_(1) = (double)quadrupedState.contacts[1].position.y;
-  RFTipPostiion_(2) = (double)quadrupedState.contacts[1].position.z;
+  LFTipPosition_(0) = (double)quadrupedState.contacts[0].position.x;
+  LFTipPosition_(1) = (double)quadrupedState.contacts[0].position.y;
+  LFTipPosition_(2) = (double)quadrupedState.contacts[0].position.z;
+  RFTipPosition_(0) = (double)quadrupedState.contacts[1].position.x;
+  RFTipPosition_(1) = (double)quadrupedState.contacts[1].position.y;
+  RFTipPosition_(2) = (double)quadrupedState.contacts[1].position.z;
   LFTipState_ = quadrupedState.contacts[0].state;
   RFTipState_ = quadrupedState.contacts[1].state;
+
+
+  if(runHindLegStanceDetection_){
+      // Add hind legs for proprioceptive variance estimation.
+      LHTipPosition_(0) = (double)quadrupedState.contacts[2].position.x;
+      LHTipPosition_(1) = (double)quadrupedState.contacts[2].position.y;
+      LHTipPosition_(2) = (double)quadrupedState.contacts[2].position.z;
+      RHTipPosition_(0) = (double)quadrupedState.contacts[3].position.x;
+      RHTipPosition_(1) = (double)quadrupedState.contacts[3].position.y;
+      RHTipPosition_(2) = (double)quadrupedState.contacts[3].position.z;
+      LHTipState_ = quadrupedState.contacts[2].state;
+      RHTipState_ = quadrupedState.contacts[3].state;
+  }
+
 
   // Check if walking forward or backwards. TODO!
   //(double)quadrupedState.twist.twist.linear.x;
@@ -825,6 +856,8 @@ bool ElevationMap::detectStancePhase()
     //std::cout << "This is the thread: " << this_id << std::endl;
     //! END TEST
 
+
+
     // Collect State Data for stance phase detection
     processStanceTriggerLeft_.push_back(LFTipState_);
     processStanceTriggerRight_.push_back(RFTipState_);
@@ -839,21 +872,57 @@ bool ElevationMap::detectStancePhase()
 
     // Collect the foot tip position data (if foot tip in contact). (Prevent nans)
     if(LFTipState_ && isInStanceLeft_){
-        LFTipStance_.push_back(LFTipPostiion_);
+        LFTipStance_.push_back(LFTipPosition_);
     }
     if(RFTipState_ && isInStanceRight_){
-        RFTipStance_.push_back(RFTipPostiion_);
+        RFTipStance_.push_back(RFTipPosition_);
     }
 
     // Stance Detection
     templateMatchingForStanceDetection("left", processStanceTriggerLeft_);
     templateMatchingForStanceDetection("right", processStanceTriggerRight_);
 
+    // Here again for hind legs..
+    if (runHindLegStanceDetection_){
+
+
+        // Collect State Data for stance phase detection
+        processStanceTriggerLeftHind_.push_back(LHTipState_);
+        processStanceTriggerRightHind_.push_back(RHTipState_);
+
+        // Constrain the size of the state arrays.
+        if(processStanceTriggerLeftHind_.size() > 2000){
+            processStanceTriggerLeftHind_.erase(processStanceTriggerLeftHind_.begin());
+        }
+        if(processStanceTriggerRightHind_.size() > 2000){
+            processStanceTriggerRightHind_.erase(processStanceTriggerRightHind_.begin());
+        }
+
+        // Collect the foot tip position data (if foot tip in contact). (Prevent nans)
+        if(LHTipState_ && isInStanceLeftHind_){
+            LHTipStance_.push_back(LHTipPosition_);
+        }
+        if(RHTipState_ && isInStanceRightHind_){
+            RHTipStance_.push_back(RHTipPosition_);
+        }
+
+        // Stance Detection
+        templateMatchingForStanceDetection("lefthind", processStanceTriggerLeftHind_);
+        templateMatchingForStanceDetection("righthind", processStanceTriggerRightHind_);
+
+
+    }
+
     return true;
 }
 
 bool ElevationMap::templateMatchingForStanceDetection(std::string tip, std::vector<bool> &stateVector)
 {
+    //std::cout << "tip: " << tip << std::endl;
+    //std::cout << "statevec size: " << stateVector.size() << std::endl;
+    //std::cout << isInStanceLeftHind_ << std::endl;
+
+
     // Recognition of the end of a stance phase of the front legs.
     if(stateVector.size() >= 16 && stateVector.end()[-1]+stateVector.end()[-2]+
             stateVector.end()[-3]+stateVector.end()[-4]+stateVector.end()[-5]+
@@ -865,11 +934,25 @@ bool ElevationMap::templateMatchingForStanceDetection(std::string tip, std::vect
             std::cout << "Start of LEFT stance" << std::endl;
             isInStanceLeft_ = 1;
         }
+        if(tip == "lefthind" && !isInStanceLeftHind_){
+            isInStanceLeftHind_ = 1;
+        }
         if(tip == "right" && !isInStanceRight_){
             std::cout << "Start of Right stance" << std::endl;
             isInStanceRight_ = 1;
         }
+        if(tip == "righthind" && !isInStanceRightHind_){
+            isInStanceRightHind_ = 1;
+        }
     }
+
+    // DEBUG:
+    //std::cout << "tip: (OUTSIDE the state end detector) " << tip << std::endl;
+    //std::cout << "stateVector.size: " << stateVector.size() << std::endl;
+    //std::cout << "isInstancerighthind: " << isInStanceRightHind_ << std::endl;
+    //std::cout << "processStanceTrigger: " << processStanceTriggerRightHind_.size() << std::endl;
+    //std::cout << "processStanceTrigger: clssic " << processStanceTriggerRight_.size() << std::endl;
+
 
     // Recognition of the start of a stance phase of the front legs.
     if(stateVector.size() >= 16 &&
@@ -879,13 +962,34 @@ bool ElevationMap::templateMatchingForStanceDetection(std::string tip, std::vect
             stateVector.end()[-9]+stateVector.end()[-10] +
             stateVector.end()[-11]+stateVector.end()[-12]+ stateVector.end()[-13]+
             stateVector.end()[-14]+stateVector.end()[-15] >=1){
+
+        std::cout << "LLLLLLLLLLLLLLLLLLLLLLLLLL: " << tip << std::endl;
+
         if(tip == "left" && isInStanceLeft_){
             if(!processStance("left")) return false;
             isInStanceLeft_ = 0;
+            processStanceTriggerLeft_.clear();
+        }
+        if(tip == "lefthind" && isInStanceLeftHind_){
+            if(!processStance("lefthind")) return false;
+            isInStanceLeftHind_ = 0;
+            processStanceTriggerLeftHind_.clear();
         }
         if(tip == "right" && isInStanceRight_){
             if(!processStance("right")) return false;
             isInStanceRight_ = 0;
+            processStanceTriggerRight_.clear();
+        }
+        std::cout << "CHECK THE RIGHT HIND BOOL MUST BE ONE: " << isInStanceRightHind_ << std::endl;
+        if(tip == "righthind" && isInStanceRightHind_){
+            std::cout << "succi" << std::endl;
+            if(!processStance("righthind")){
+                std::cout << " -> this is the success!!" << std::endl;
+                return false;
+                std::cout << " -> this is the success!!!!!!!" << std::endl;
+            }
+            isInStanceRightHind_ = 0;
+            processStanceTriggerRightHind_.clear();
         }
     }
     return true;
@@ -896,15 +1000,17 @@ bool ElevationMap::processStance(std::string tip)
     std::cout << "Processing: " << tip <<std::endl;
 
 
+    bool hind = false;
     // Delete the last 10 entries of the Foot Stance Position Vector, as these are used for transition detection
     deleteLastEntriesOfStances(tip);
     getAverageFootTipPositions(tip);
-    footTipElevationMapComparison(tip);
-    publishAveragedFootTipPositionMarkers();
+    if(tip != "lefthind" && tip != "righthind") footTipElevationMapComparison(tip);
+    else hind = true;
+    publishAveragedFootTipPositionMarkers(hind);
 
 
     // Performance Assessment, sensible if wanting to tune the system while walking on flat surface.
-    bool runPreformanceAssessmentForFlatGround = false;
+    bool runPreformanceAssessmentForFlatGround = true;
     if(runPreformanceAssessmentForFlatGround) performanceAssessmentMeanElevationMap();
 
     // Data Publisher for parameter tuning.
@@ -919,19 +1025,33 @@ bool ElevationMap::deleteLastEntriesOfStances(std::string tip)
 {
     // Delete the last entries of the stance, as these might be in the false state
     // (half the number of elements used in template matching are deleted)
-    if (LFTipStance_.size() < 8){
+    if (tip == "left" && LFTipStance_.size() < 8){
         std::cout << "WARNING: LEFT STANCE PHASE HAS TOO LITTLE ENTRIES TO BE PROCESSED" << std::endl;
     }
-    else if (RFTipStance_.size() < 8){
+    else if (tip == "right" && RFTipStance_.size() < 8){
         std::cout << "WARNING: RIGHT STANCE PHASE HAS TOO LITTLE ENTRIES TO BE PROCESSED" << std::endl;
+    }
+    else if (tip == "lefthind" && LHTipStance_.size() < 8){
+        std::cout << "WARNING: LEFT HIND STANCE PHASE HAS TOO LITTLE ENTRIES TO BE PROCESSED" << std::endl;
+    }
+    else if (tip == "righthind" && RHTipStance_.size() < 8){
+        std::cout << "WARNING: RIGHT HIND STANCE PHASE HAS TOO LITTLE ENTRIES TO BE PROCESSED" << std::endl;
     }
     else{
         for (unsigned int i = 0; i < 8; ++i){
             if (tip == "left"){
+                std::cout << "LEFT ANALYSIS: LFTipStance.size: " << LFTipStance_.size() << std::endl;
                 LFTipStance_.pop_back();
             }
-            else if (tip == "right"){
+            if (tip == "right"){
                 RFTipStance_.pop_back();
+            }
+            if (tip == "lefthind"){
+                std::cout << "LEFT ANALYSIS: LHTipStance.size: " << LHTipStance_.size() << std::endl;
+                LHTipStance_.pop_back();
+            }
+            if (tip == "righthind"){
+                RHTipStance_.pop_back();
             }
         }
     }
@@ -940,13 +1060,31 @@ bool ElevationMap::deleteLastEntriesOfStances(std::string tip)
 
 bool ElevationMap::getAverageFootTipPositions(std::string tip)
 {
+    std::cout << "GET THIS FOOTTIP POSITION" << tip << std::endl;
+
     Eigen::Vector3f totalStance(0, 0, 0);
     std::vector<Eigen::Vector3f> stance;
-    if(tip == "left") stance = LFTipStance_;
-    if(tip == "right") stance = RFTipStance_;
+    if(tip == "left"){
+        stance = LFTipStance_;
+        LFTipStance_.clear();
+    }
+    if(tip == "right"){
+        stance = RFTipStance_;
+        RFTipStance_.clear();
+    }
+    if(tip == "lefthind"){
+        stance = LHTipStance_;
+        LHTipStance_.clear();
+    }
+    if(tip == "righthind"){
+        stance = RHTipStance_;
+        RHTipStance_.clear();
+    }
 
-    LFTipStance_.clear();
-    RFTipStance_.clear();
+
+
+
+
 
     // Derive mean foot tip positions
     if(stance.size() > 1){
@@ -955,19 +1093,18 @@ bool ElevationMap::getAverageFootTipPositions(std::string tip)
             totalStance += n;
         }
         meanStance_ = totalStance / float(stance.size());
-        processStanceTriggerLeft_.clear();
     }
 
-    // Drift Estimation assuming flat ground.
-    bool driftEstimationwithflatGroundassumption = true;
-    if(driftEstimationwithflatGroundassumption) driftEstimationFlatGroundAssumption(tip);
+    // TODO: change this into proper proprioceptive roughness estimation.
+    bool runProprioceptiveRoughnessEstimation = true;
+    if(runProprioceptiveRoughnessEstimation) proprioceptiveRoughnessEstimation(tip);
 
 
 
     return true;
 }
 
-bool ElevationMap::publishAveragedFootTipPositionMarkers()
+bool ElevationMap::publishAveragedFootTipPositionMarkers(bool hind)
 {
     // Positions for publisher.
     geometry_msgs::Point p;
@@ -983,6 +1120,13 @@ bool ElevationMap::publishAveragedFootTipPositionMarkers()
     c.b = max(0.0, 1 - coloring_factor * usedWeight_); // TODO set after tuning to get sensible results..
     c.r = min(1.0, coloring_factor * usedWeight_);
     c.a = 0.5;
+
+    if(hind){
+        c.g = 1;
+        c.b = 1;
+        c.r = 1;
+        c.a = 1;
+    }
 
     //boost::recursive_mutex::scoped_lock scopedLock(rawMapMutex_);
 
@@ -1027,7 +1171,11 @@ bool ElevationMap::publishFusedMapBoundMarkers(double& xTip, double& yTip,
     c.r = 1;
     c.g = 0.5;
     c.b = 0;
-    if(highGrassMode_) c.b = 1; // New, colors to show if frame correction on or high grass detection..
+    if(highGrassMode_){
+        c.g = 0.3;
+        c.r = 0.0;
+        c.b = 0.0;
+    }// New, colors to show if frame correction on or high grass detection..
     c.a = 1;
     //footContactMarkerList_.points.push_back(p_elev);
     //footContactMarkerList_.colors.push_back(c);
@@ -1094,6 +1242,7 @@ bool ElevationMap::footTipElevationMapComparison(std::string tip)
                 // Wait some stances to get sorted at the beginning.
                 if(weightedDifferenceVector_.size() >= 4) performanceAssessment_ += fabs(verticalDifferenceCorrected);
                 std::cout << "Cumulative Performance Value (summed up weighted differences): " << performanceAssessment_ << std::endl;
+
 
                 //performance_assessment_msg_.second_measure = performanceAssessment_;
 
@@ -1216,6 +1365,7 @@ bool ElevationMap::footTipElevationMapComparison(std::string tip)
 
                 double second_measure_factor = -10000.0;
                 //performance_assessment_msg_.second_measure = driftEstimationPID_ * weightedDifferenceVector_[5] * second_measure_factor;
+
                 std::cout << "weightedDifferenceVector!!: LAst element: " << weightedDifferenceVector_[5] << " Drift Est PID!!!:::::: " << (double)driftEstimationPID_ << std::endl;
                 std::cout << "heightDifferenceFromComparison::: " << heightDifferenceFromComparison_ << std::endl;
 
@@ -1376,9 +1526,9 @@ bool ElevationMap::frameCorrection()
 float ElevationMap::differenceCalculationUsingPID()
 {
     // TODO: Tune these, they are only guessed so far.
-    float kp = 0.24;
-    float ki = 0.76;
-    float kd = -0.07; // Trying PI controller for now.. (Quite good between 0 and -0.1)
+    float kp = kp_;
+    float ki = ki_;
+    float kd = kd_; // Trying PI controller for now.. (Quite good between 0 and -0.1)
 
     // Nan prevention.
     if(weightedDifferenceVector_.size() < 1 || isnan(weightedDifferenceVector_[1])) return 0.0; // HACKED!!!!!
@@ -1472,8 +1622,12 @@ float ElevationMap::gaussianWeightedDifferenceIncrement(double lowerBound, doubl
 
 
     // Error difference weighted as (1 - gaussian), s.t. intervall from elevation map to bound contains two standard deviations
+
+    // Initialize
     double weight = 0.0;
-    float standardDeviationFactor = 1;  //! THIS MAY BE A LEARNING FUNCTION IN FUTURE!! // CHANGED
+
+    float standardDeviationFactor = weightingFactor_;  //! THIS MAY BE A LEARNING FUNCTION IN FUTURE!! // CHANGED
+
     if(diff < 0.0){
         weight = normalDistribution(diff, 0.0, fabs(elevation-lowerBound)*standardDeviationFactor);
 
@@ -1651,6 +1805,7 @@ bool ElevationMap::performanceAssessmentMeanElevationMap()
     // Add a factor for scaling in rqt plot
     double factor = 200.0;
 
+    performanceAssessmentFlat_ += factor * performanceAssessment/counter;
     //performance_assessment_msg_.fourth_measure = factor * performanceAssessment/counter;
 
     return true;
@@ -1666,7 +1821,15 @@ bool ElevationMap::writeFootTipStatisticsToFile(double& footTipVal, std::string 
     return true;
 }
 
-bool ElevationMap::driftEstimationFlatGroundAssumption(std::string tip){
+bool ElevationMap::proprioceptiveRoughnessEstimation(std::string tip){
+
+
+    //! TODO next! Roughness estimate:
+    //! - variance of differences of consecutive placements of the same foot tip
+    //! - plane fit into the four feet, deviation is a roughness measure as well
+    //! - other correlation between differences? Think of that..
+
+
 
     // Only consider area where robot is trotting for now.
     if (meanStance_(0) < 1.3 || meanStance_(0) > 2.75){
@@ -1700,12 +1863,12 @@ bool ElevationMap::proprioceptiveVariance(double meanDrift, std::string tip){
 
     double diff = 0.0;
     if (leftStanceVector_.size() > 1 && tip == "left"){
-        diff = double((leftStanceVector_[1](0)-leftStanceVector_[0](0)) - meanDrift);
+        diff = double((leftStanceVector_[1](0) - leftStanceVector_[0](0)) - meanDrift);
         feetUnseenVarianceVector_.push_back(diff);
         if (feetUnseenVarianceVector_.size() > 8) feetUnseenVarianceVector_.erase(feetUnseenVarianceVector_.begin());
     }
     else if(rightStanceVector_.size() > 1){
-        diff = double((rightStanceVector_[1](0)-rightStanceVector_[0](0))-meanDrift);
+        diff = double((rightStanceVector_[1](0) - rightStanceVector_[0](0)) - meanDrift);
         feetUnseenVarianceVector_.push_back(diff);
         if (feetUnseenVarianceVector_.size() > 8) feetUnseenVarianceVector_.erase(feetUnseenVarianceVector_.begin());
     }
@@ -1729,21 +1892,22 @@ bool ElevationMap::proprioceptiveVariance(double meanDrift, std::string tip){
 
 bool ElevationMap::writeDataFileForParameterLearning(){
     // Open the writing file.
-    ofstream myfile;
-    myfile.open ("tuningParams.txt", ios::app);
+    ofstream tunefile;
+    tunefile.open ("/home/timon/usedParams.txt", ios::app);
+    tunefile << kp_ << " " << ki_ << " " << kd_ << " " << weightingFactor_ << "\n";
     // TODO add some calculation of total performance assessment value.
     // Write the tuning params.
 
-    std::cout << "Destruction!!!!" << std::endl;
-   // myfile << "; " << footTipVal;
-    myfile.close();
+    std::cout << "Written Params to file!!!!" << std::endl;
 
-    myfile.open ("perfAssessment.txt", ios::app);
+    ofstream perffile;
+    perffile.open ("/home/timon/perfAssessment.txt", ios::app);
 
-    //myfile << "; " << footTipVal;
-    myfile.close();
+    // TODO: This value is calculated as:
+    perffile << performanceAssessment_ + performanceAssessmentFlat_ << "\n";
+    perffile.close();
+
     return true;
 }
-
 
 } /* namespace */

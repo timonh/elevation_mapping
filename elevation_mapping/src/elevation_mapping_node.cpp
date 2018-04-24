@@ -12,15 +12,17 @@
 
 int main(int argc, char** argv)
 {
-  ros::init(argc, argv, "elevation_mapping");
-  ros::NodeHandle nodeHandle("~");
-  elevation_mapping::ElevationMapping elevationMap(nodeHandle);
-  //elevation_mapping::HighGrassElevationMapping highGrassElevationMap(nodeHandle);
+    {
+    ros::init(argc, argv, "elevation_mapping");
+    ros::NodeHandle nodeHandle("~");
+    elevation_mapping::ElevationMapping elevationMap(nodeHandle);
+    //elevation_mapping::HighGrassElevationMapping highGrassElevationMap(nodeHandle);
 
-  // Spin
-  ros::AsyncSpinner spinner(2); // Use n threads // MANIPULATED!!!!!
-  spinner.start();
+    // Spin
+    ros::AsyncSpinner spinner(2); // Use n threads // MANIPULATED!!!!!
+    spinner.start();
 
-  ros::waitForShutdown();
+    ros::waitForShutdown();
+    }
   return 0;
 }
