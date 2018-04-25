@@ -352,7 +352,7 @@ class ElevationMap
   bool proprioceptiveRoughnessEstimation(std::string tip);
 
   //! TODO: Description:
-  bool proprioceptiveVariance(double meanDrift, std::string tip);
+  bool proprioceptiveVariance(std::string tip);
 
   //! TODO: Description:
   bool writeDataFileForParameterLearning();
@@ -473,7 +473,7 @@ class ElevationMap
   Eigen::Vector3f meanStance_;
 
   //! For drift Estimation under Flat ground assumption.
-  std::vector<Eigen::Vector3f> leftStanceVector_, rightStanceVector_;
+  std::vector<Eigen::Vector3f> leftStanceVector_, rightStanceVector_, leftHindStanceVector_, rightHindStanceVector_;
 
   //! Life Variance Calculation for roughness characterization in unseen terrain.
   std::vector<double> feetUnseenVarianceVector_;

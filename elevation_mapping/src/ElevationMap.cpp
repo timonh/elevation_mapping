@@ -1833,45 +1833,68 @@ bool ElevationMap::proprioceptiveRoughnessEstimation(std::string tip){
 
     // Only consider area where robot is trotting for now.
     if (meanStance_(0) < 1.3 || meanStance_(0) > 2.75){
-        if (tip == "left") leftStanceVector_.push_back(meanStance_);
-        if (tip == "right") rightStanceVector_.push_back(meanStance_);
-        if (leftStanceVector_.size() > 2) leftStanceVector_.erase(leftStanceVector_.begin());
-        if (rightStanceVector_.size() > 2) rightStanceVector_.erase(rightStanceVector_.begin());
-
+        if (tip == "left"){
+            leftStanceVector_.push_back(meanStance_);
+            if (leftStanceVector_.size() > 2) leftStanceVector_.erase(leftStanceVector_.begin());
+        }
+        if (tip == "right"){
+            rightStanceVector_.push_back(meanStance_);
+            if (rightStanceVector_.size() > 2) rightStanceVector_.erase(rightStanceVector_.begin());
+        }
+        if (tip == "lefthind"){
+            leftHindStanceVector_.push_back(meanStance_);
+            if (leftHindStanceVector_.size() > 2) leftHindStanceVector_.erase(leftHindStanceVector_.begin());
+        }
+        if (tip == "righthind"){
+            rightHindStanceVector_.push_back(meanStance_);
+            if (rightHindStanceVector_.size() > 2) rightHindStanceVector_.erase(rightHindStanceVector_.begin());
+        }
     }
 
 
 
-    bool witeHorizontalFootTipEstimationStatisticsToFile = false;
-    if(witeHorizontalFootTipEstimationStatisticsToFile){
+    bool writeHorizontalFootTipEstimationStatisticsToFile = false;
+    if(writeHorizontalFootTipEstimationStatisticsToFile){
         if (leftStanceVector_.size() > 1 && tip == "left"){
             double diff = double(leftStanceVector_[1](0)-leftStanceVector_[0](0));
-            std::cout << "CHECK!!" << std::endl;
-            writeFootTipStatisticsToFile(diff, "/home/timon/driftEst.txt");
+            //writeFootTipStatisticsToFile(diff, "/home/timon/driftEst.txt");
         }
-        else if(rightStanceVector_.size() > 1){
+        else if(rightStanceVector_.size() > 1 && tip == "right"){
             double diff = double(rightStanceVector_[1](0)-rightStanceVector_[0](0));
-            std::cout << "CHECK!!" << std::endl;
-            writeFootTipStatisticsToFile(diff, "/home/timon/driftEst.txt");
+            //writeFootTipStatisticsToFile(diff, "/home/timon/driftEst.txt");
+        }
+        else if(leftHindStanceVector_.size() > 1 && tip == "lefthind"){
+            double diff = double(rightStanceVector_[1](0)-rightStanceVector_[0](0));
+            //writeFootTipStatisticsToFile(diff, "/home/timon/driftEst.txt");
+        }
+        else if(rightHindStanceVector_.size() > 1 && tip == "righthind"){
+            double diff = double(rightStanceVector_[1](0)-rightStanceVector_[0](0));
+            //writeFootTipStatisticsToFile(diff, "/home/timon/driftEst.txt");
         }
     }
-    proprioceptiveVariance(0.0467, tip);
+    proprioceptiveVariance(tip); //! Mean drift value could be found by calibration during flat ground walking
 
 }
 
-bool ElevationMap::proprioceptiveVariance(double meanDrift, std::string tip){
+bool ElevationMap::proprioceptiveVariance(std::string tip){
 
     double diff = 0.0;
+    double meanDrift = 0.467;
     if (leftStanceVector_.size() > 1 && tip == "left"){
-        diff = double((leftStanceVector_[1](0) - leftStanceVector_[0](0)) - meanDrift);
-        feetUnseenVarianceVector_.push_back(diff);
-        if (feetUnseenVarianceVector_.size() > 8) feetUnseenVarianceVector_.erase(feetUnseenVarianceVector_.begin());
+        diff = double((leftStanceVector_[1](0) - leftStanceVector_[0](0)));
+    }
+    else if(rightStanceVector_.size() > 1 && tip == "right"){
+        diff = double((rightStanceVector_[1](0) - rightStanceVector_[0](0)));
+    }
+    else if(rightStanceVector_.size() > 1 && tip == "lefthind"){
+        diff = double((leftHindStanceVector_[1](0) - leftHindStanceVector_[0](0)));
     }
     else if(rightStanceVector_.size() > 1){
-        diff = double((rightStanceVector_[1](0) - rightStanceVector_[0](0)) - meanDrift);
-        feetUnseenVarianceVector_.push_back(diff);
-        if (feetUnseenVarianceVector_.size() > 8) feetUnseenVarianceVector_.erase(feetUnseenVarianceVector_.begin());
+        diff = double((rightHindStanceVector_[1](0) - rightHindStanceVector_[0](0)));
     }
+
+    feetUnseenVarianceVector_.push_back(diff);
+    if (feetUnseenVarianceVector_.size() > 12) feetUnseenVarianceVector_.erase(feetUnseenVarianceVector_.begin());
 
     // Calculate Variance.
     double total = 0.0;
@@ -1880,13 +1903,48 @@ bool ElevationMap::proprioceptiveVariance(double meanDrift, std::string tip){
         total += n;
         totalSquared += pow(n, 2);
     }
-    double variance = totalSquared / (double)feetUnseenVarianceVector_.size() - pow(total/(double)feetUnseenVarianceVector_.size(), 2);
+    double varianceConsecutiveFootTipPositions = totalSquared / (double)feetUnseenVarianceVector_.size() - pow(total/(double)feetUnseenVarianceVector_.size(), 2);
     double mean = total/(double)feetUnseenVarianceVector_.size();
 
-    std::cout << "Variance::::::::::::::::::::::: " << variance << std::endl;
+    // TODO: add 4 feet plane fit variance calculation..
+    // TODO: think about what slope is adding to roughness estimate..
+    // TODO: and other roughness assessment measures
+
+    std::cout << "varianceConsecutiveFootTipPositions::::::::::::::::::::::: " << varianceConsecutiveFootTipPositions << std::endl;
     std::cout << "Mean::::::::::::::::::::::::::: " << mean << std::endl;
 
+    // Plane fitting variance:
+
+
+
+    //    for all 4 feet..
+    // TODO: Plane Fitting for the 4 foot tips to get deviation from it (formulate as variance if squared difference, is that valid?)
+    Eigen::Vector3f leftTip, rightTip, leftHindTip, rightHindTip;
+    leftTip = leftStanceVector_[leftStanceVector_.size()-1];
+    rightTip = rightStanceVector_[rightStanceVector_.size()-1];
+    leftHindTip = leftHindStanceVector_[leftHindStanceVector_.size()-1];
+    rightHindTip = rightHindStanceVector_[rightHindStanceVector_.size()-1];
+    Eigen::Matrix2f leftMat;
+    leftMat(0, 0) = pow(leftTip(0),2)+pow(rightTip(0),2) + pow(leftHindTip(0),2)+pow(rightHindTip(0),2);
+    leftMat(1, 0) = leftMat(0, 1) = leftTip(0) * leftTip(1) + rightTip(0) * rightTip(1) +
+            leftHindTip(0) * leftHindTip(1) + rightHindTip(0) * rightHindTip(1);
+    leftMat(1, 1) = pow(leftTip(1),2)+pow(rightTip(1),2) + pow(leftHindTip(1),2)+pow(rightHindTip(1),2);
+    Eigen::Vector2f rightVec;
+    rightVec(0) = leftTip(0) * leftTip(2) + rightTip(0) * rightTip(2) +
+            leftHindTip(0) * leftHindTip(2) + rightHindTip(0) * rightHindTip(2);
+    rightVec(1) = leftTip(1) * leftTip(2) + rightTip(1) * rightTip(2) +
+            leftHindTip(1) * leftHindTip(2) + rightHindTip(1) * rightHindTip(2);
+
+    Eigen::Vector2f sol = leftMat.jacobiSvd(Eigen::ComputeThinU | Eigen::ComputeThinV).solve(rightVec);
+
+    bool visualizeFootTipPlaneFit = true;
+    if (visualizeFootTipPlaneFit){
+        // TODO: Do visualize fitted Plane!!
+    }
+
     // TODO: add Layer, that takes variace uncertainty into account.
+    // Consider the Page, where these equations come from or the form of the Plane equation and
+    // Visualize the plane as an array of points!
 
 }
 
