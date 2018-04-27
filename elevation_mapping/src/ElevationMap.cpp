@@ -103,6 +103,7 @@ ElevationMap::ElevationMap(ros::NodeHandle nodeHandle)
   // NEW: publish foot tip markers
   footContactPublisher_ = nodeHandle_.advertise<visualization_msgs::Marker>("mean_foot_contact_markers_rviz", 1000);
   elevationMapBoundPublisher_ = nodeHandle_.advertise<visualization_msgs::Marker>("map_bound_markers_rviz", 1000);
+  planeFitVisualizationPublisher_ = nodeHandle_.advertise<visualization_msgs::Marker>("plane_fit_visualization_marker_list", 1000);
   initializeFootTipMarkers();
 
   // NEW: Publish data, for parameter tuning and visualization
@@ -131,8 +132,6 @@ ElevationMap::ElevationMap(ros::NodeHandle nodeHandle)
   isInStanceRight_ = false;
   isInStanceRightHind_ = false;
   // END NEW
-
-
 
   initialTime_ = ros::Time::now();
 }
@@ -1449,6 +1448,26 @@ bool ElevationMap::initializeFootTipMarkers()
     footContactMarkerList_.color.r = elevationMapBoundMarkerList_.color.r = 0.0;
     footContactMarkerList_.color.g = elevationMapBoundMarkerList_.color.g = 1.0;
     footContactMarkerList_.color.b = elevationMapBoundMarkerList_.color.b = 0.7;
+
+    // Visualize the plane, that is fit to the foot tip in a least squares fashion.
+    footTipPlaneFitVisualization_.header.frame_id = "odom";
+    footTipPlaneFitVisualization_.header.stamp = ros::Time();
+    footTipPlaneFitVisualization_.ns = "elevation_mapping";
+    footTipPlaneFitVisualization_.id = 0;
+    footTipPlaneFitVisualization_.type = visualization_msgs::Marker::CUBE_LIST;
+    footTipPlaneFitVisualization_.action = visualization_msgs::Marker::ADD;
+    footTipPlaneFitVisualization_.pose.orientation.x = 0.0;
+    footTipPlaneFitVisualization_.pose.orientation.y = 0.0;
+    footTipPlaneFitVisualization_.pose.orientation.z = 0.0;
+    footTipPlaneFitVisualization_.pose.orientation.w = 1.0;
+    footTipPlaneFitVisualization_.scale.x = 0.07;
+    footTipPlaneFitVisualization_.scale.y = 0.07;
+    footTipPlaneFitVisualization_.scale.z = 0.07;
+    footTipPlaneFitVisualization_.color.a = 1.0;
+    footTipPlaneFitVisualization_.color.r = 0.3;
+    footTipPlaneFitVisualization_.color.g = 0.05;
+    footTipPlaneFitVisualization_.color.b = 0.55;
+
     return true;
 }
 
@@ -1786,7 +1805,7 @@ bool ElevationMap::performanceAssessmentMeanElevationMap()
             }
         }
     }
-    std::cout << "MEAN:                                " << totalElevationMapHeight / double(counter) << std::endl;
+   // std::cout << "MEAN:                                " << totalElevationMapHeight / double(counter) << std::endl;
     double mean = totalElevationMapHeight / double(counter);
     for (GridMapIterator iterator(rawMap_); !iterator.isPastEnd(); ++iterator) {
         Position3 posMap3;
@@ -1800,7 +1819,7 @@ bool ElevationMap::performanceAssessmentMeanElevationMap()
     }
     // TODO: Cut out are (of ostacle..)
 
-    std::cout << "PERFORMANCE ASSESSMENT MEAN:                                " << performanceAssessment/counter << std::endl;
+   // std::cout << "PERFORMANCE ASSESSMENT MEAN:                                " << performanceAssessment/counter << std::endl;
 
     // Add a factor for scaling in rqt plot
     double factor = 200.0;
@@ -1912,6 +1931,7 @@ bool ElevationMap::proprioceptiveVariance(std::string tip){
 
     std::cout << "varianceConsecutiveFootTipPositions::::::::::::::::::::::: " << varianceConsecutiveFootTipPositions << std::endl;
     std::cout << "Mean::::::::::::::::::::::::::: " << mean << std::endl;
+    // TODO: Consider low pass filtering effect on roughness estimation!
 
     // Plane fitting variance:
 
@@ -1919,34 +1939,73 @@ bool ElevationMap::proprioceptiveVariance(std::string tip){
 
     //    for all 4 feet..
     // TODO: Plane Fitting for the 4 foot tips to get deviation from it (formulate as variance if squared difference, is that valid?)
-    Eigen::Vector3f leftTip, rightTip, leftHindTip, rightHindTip;
-    leftTip = leftStanceVector_[leftStanceVector_.size()-1];
-    rightTip = rightStanceVector_[rightStanceVector_.size()-1];
-    leftHindTip = leftHindStanceVector_[leftHindStanceVector_.size()-1];
-    rightHindTip = rightHindStanceVector_[rightHindStanceVector_.size()-1];
-    Eigen::Matrix2f leftMat;
-    leftMat(0, 0) = pow(leftTip(0),2)+pow(rightTip(0),2) + pow(leftHindTip(0),2)+pow(rightHindTip(0),2);
-    leftMat(1, 0) = leftMat(0, 1) = leftTip(0) * leftTip(1) + rightTip(0) * rightTip(1) +
-            leftHindTip(0) * leftHindTip(1) + rightHindTip(0) * rightHindTip(1);
-    leftMat(1, 1) = pow(leftTip(1),2)+pow(rightTip(1),2) + pow(leftHindTip(1),2)+pow(rightHindTip(1),2);
-    Eigen::Vector2f rightVec;
-    rightVec(0) = leftTip(0) * leftTip(2) + rightTip(0) * rightTip(2) +
-            leftHindTip(0) * leftHindTip(2) + rightHindTip(0) * rightHindTip(2);
-    rightVec(1) = leftTip(1) * leftTip(2) + rightTip(1) * rightTip(2) +
-            leftHindTip(1) * leftHindTip(2) + rightHindTip(1) * rightHindTip(2);
+    if (leftStanceVector_.size() > 0 && rightStanceVector_.size() > 0 &&
+            leftHindStanceVector_.size() > 0 && rightHindStanceVector_.size() > 0){ // Check, that at least one stance position per foot tip is available.
+        Eigen::Vector3f leftTip, rightTip, leftHindTip, rightHindTip;
+        leftTip = leftStanceVector_[leftStanceVector_.size()-1];
+        rightTip = rightStanceVector_[rightStanceVector_.size()-1];
+        leftHindTip = leftHindStanceVector_[leftHindStanceVector_.size()-1];
+        rightHindTip = rightHindStanceVector_[rightHindStanceVector_.size()-1];
 
-    Eigen::Vector2f sol = leftMat.jacobiSvd(Eigen::ComputeThinU | Eigen::ComputeThinV).solve(rightVec);
+        double meanZelevation = (leftTip(2) + rightTip(2) + leftHindTip(2) + rightHindTip(2)) / 4.0;
+        std::cout << "meanzvaluefrom foottips: " << meanZelevation << std::endl;
 
-    bool visualizeFootTipPlaneFit = true;
-    if (visualizeFootTipPlaneFit){
-        // TODO: Do visualize fitted Plane!!
+        Eigen::Matrix2f leftMat;
+        leftMat(0, 0) = pow(leftTip(0),2)+pow(rightTip(0),2) + pow(leftHindTip(0),2)+pow(rightHindTip(0),2);
+        leftMat(1, 0) = leftMat(0, 1) = leftTip(0) * leftTip(1) + rightTip(0) * rightTip(1) +
+                leftHindTip(0) * leftHindTip(1) + rightHindTip(0) * rightHindTip(1);
+        leftMat(1, 1) = pow(leftTip(1),2)+pow(rightTip(1),2) + pow(leftHindTip(1),2)+pow(rightHindTip(1),2);
+        Eigen::Vector2f rightVec;
+        rightVec(0) = leftTip(0) * (leftTip(2)-meanZelevation) + rightTip(0) * (rightTip(2)-meanZelevation) +
+                leftHindTip(0) * (leftHindTip(2)-meanZelevation) + rightHindTip(0) * (rightHindTip(2)-meanZelevation);
+        rightVec(1) = leftTip(1) * (leftTip(2)-meanZelevation) + rightTip(1) * (rightTip(2)-meanZelevation) +
+                leftHindTip(1) * (leftHindTip(2)-meanZelevation) + rightHindTip(1) * (rightHindTip(2)-meanZelevation);
+
+        Eigen::Vector2f sol = leftMat.jacobiSvd(Eigen::ComputeThinU | Eigen::ComputeThinV).solve(-rightVec);
+
+        bool visualizeFootTipPlaneFit = true;
+        if (visualizeFootTipPlaneFit){
+
+            geometry_msgs::Point p1, p2, p3, p4;
+            p1.x = leftTip(0);
+            p2.x = rightTip(0);
+            p3.x = leftHindTip(0);
+            p4.x = rightHindTip(0);
+            p1.y = leftTip(1);
+            p2.y = rightTip(1);
+            p3.y = leftHindTip(1);
+            p4.y = rightHindTip(1);
+
+            p1.z = -(sol(0) * leftTip(0) + sol(1) * leftTip(1)) + meanZelevation;
+            p2.z = -(sol(0) * rightTip(0) + sol(1) * rightTip(1)) + meanZelevation;
+            p3.z = -(sol(0) * leftHindTip(0) + sol(1) * leftHindTip(1)) + meanZelevation;
+            p4.z = -(sol(0) * rightHindTip(0) + sol(1) * rightHindTip(1)) + meanZelevation;
+            footTipPlaneFitVisualization_.points.push_back(p1);
+            footTipPlaneFitVisualization_.points.push_back(p2);
+            footTipPlaneFitVisualization_.points.push_back(p3);
+            footTipPlaneFitVisualization_.points.push_back(p4);
+
+            // DUDUDUDUDU
+            planeFitVisualizationPublisher_.publish(footTipPlaneFitVisualization_);
+
+            // Calculate squared difference from plane:
+            double variancePlaneFit = pow(p1.z - leftTip(2), 2) + pow(p2.z - rightTip(2), 2) +
+                    pow(p3.z - leftHindTip(2), 2) + pow(p4.z - rightHindTip(2), 2);
+            std::cout << "variancePlaneFit: " << variancePlaneFit << std::endl;
+
+
+           // footTipPlaneFitVisualization_.action = visualization_msgs::Marker::;
+
+            // TODO: Do visualize fitted Plane!!
+        }
+
     }
-
     // TODO: add Layer, that takes variace uncertainty into account.
-    // Consider the Page, where these equations come from or the form of the Plane equation and
-    // Visualize the plane as an array of points!
-
 }
+
+//bool ElevationMap::penetrationDepthEstimation(std::string tip){
+
+//}
 
 bool ElevationMap::writeDataFileForParameterLearning(){
     // Open the writing file.

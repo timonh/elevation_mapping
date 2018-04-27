@@ -493,6 +493,7 @@ class ElevationMap
   //! ROS publishers
   ros::Publisher footContactPublisher_;
   ros::Publisher elevationMapBoundPublisher_;
+  ros::Publisher planeFitVisualizationPublisher_;
   ros::Publisher tuningPublisher1_;
   ros::Publisher tuningPublisher2_;
   ros::Publisher tuningPublisher3_;
@@ -500,6 +501,7 @@ class ElevationMap
   //! Publication of Markers:
   visualization_msgs::Marker footContactMarkerList_;
   visualization_msgs::Marker elevationMapBoundMarkerList_;
+  visualization_msgs::Marker footTipPlaneFitVisualization_;
 
 };
 
