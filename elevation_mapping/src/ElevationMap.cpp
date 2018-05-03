@@ -53,7 +53,7 @@ namespace elevation_mapping {
 ElevationMap::ElevationMap(ros::NodeHandle nodeHandle)
     : nodeHandle_(nodeHandle),
       rawMap_({"elevation", "variance", "horizontal_variance_x", "horizontal_variance_y", "horizontal_variance_xy",
-              "color", "time", "lowest_scan_point", "sensor_x_at_lowest_scan", "sensor_y_at_lowest_scan", "sensor_z_at_lowest_scan"}),
+              "color", "time", "lowest_scan_point", "sensor_x_at_lowest_scan", "sensor_y_at_lowest_scan", "sensor_z_at_lowest_scan", "foot_tip_elevation"}),
       fusedMap_({"elevation", "upper_bound", "lower_bound", "color"}),
       hasUnderlyingMap_(false),
       visibilityCleanupDuration_(0.0)
@@ -61,6 +61,7 @@ ElevationMap::ElevationMap(ros::NodeHandle nodeHandle)
     // Timon added foot_tip_elevation layer
   rawMap_.setBasicLayers({"elevation", "variance"});
   fusedMap_.setBasicLayers({"elevation", "upper_bound", "lower_bound"});
+
 
 
 
@@ -104,6 +105,7 @@ ElevationMap::ElevationMap(ros::NodeHandle nodeHandle)
   footContactPublisher_ = nodeHandle_.advertise<visualization_msgs::Marker>("mean_foot_contact_markers_rviz", 1000);
   elevationMapBoundPublisher_ = nodeHandle_.advertise<visualization_msgs::Marker>("map_bound_markers_rviz", 1000);
   planeFitVisualizationPublisher_ = nodeHandle_.advertise<visualization_msgs::Marker>("plane_fit_visualization_marker_list", 1000);
+  varianceTwistPublisher_ = nodeHandle_.advertise<geometry_msgs::Twist>("variances", 1000);
   initializeFootTipMarkers();
 
   // NEW: Publish data, for parameter tuning and visualization
@@ -169,8 +171,8 @@ bool ElevationMap::add(const pcl::PointCloud<pcl::PointXYZRGB>::Ptr pointCloud, 
   boost::recursive_mutex::scoped_lock scopedLockForRawData(rawMapMutex_);
 
   //! TEST about the two threads
-  std::thread::id this_id = std::this_thread::get_id();
-  std::cout << "This is the thread ADD: " << this_id << std::endl;
+//  std::thread::id this_id = std::this_thread::get_id();
+//  std::cout << "This is the thread ADD: " << this_id << std::endl;
   //! END TEST
 
 
@@ -811,6 +813,9 @@ float ElevationMap::cumulativeDistributionFunction(float x, float mean, float st
 
 void ElevationMap::footTipStanceCallback(const quadruped_msgs::QuadrupedState& quadrupedState)
 {
+
+  //std::cout << "Calling Back still!!!" << std::endl;
+
   //boost::recursive_mutex::scoped_lock scopedLockForFootTipStanceProcessor(footTipStanceProcessorMutex_);
   // Set class variables.
   LFTipPosition_(0) = (double)quadrupedState.contacts[0].position.x;
@@ -998,18 +1003,24 @@ bool ElevationMap::processStance(std::string tip)
 {
     std::cout << "Processing: " << tip <<std::endl;
 
+    // The ordering here is crucial!
 
     bool hind = false;
     // Delete the last 10 entries of the Foot Stance Position Vector, as these are used for transition detection
     deleteLastEntriesOfStances(tip);
     getAverageFootTipPositions(tip);
+
+    bool runProprioceptiveRoughnessEstimation = true;
+    if(runProprioceptiveRoughnessEstimation) proprioceptiveRoughnessEstimation(tip);
+
+
     if(tip != "lefthind" && tip != "righthind") footTipElevationMapComparison(tip);
     else hind = true;
     publishAveragedFootTipPositionMarkers(hind);
 
 
     // Performance Assessment, sensible if wanting to tune the system while walking on flat surface.
-    bool runPreformanceAssessmentForFlatGround = true;
+    bool runPreformanceAssessmentForFlatGround = false;
     if(runPreformanceAssessmentForFlatGround) performanceAssessmentMeanElevationMap();
 
     // Data Publisher for parameter tuning.
@@ -1093,10 +1104,6 @@ bool ElevationMap::getAverageFootTipPositions(std::string tip)
         }
         meanStance_ = totalStance / float(stance.size());
     }
-
-    // TODO: change this into proper proprioceptive roughness estimation.
-    bool runProprioceptiveRoughnessEstimation = true;
-    if(runProprioceptiveRoughnessEstimation) proprioceptiveRoughnessEstimation(tip);
 
 
 
@@ -1187,6 +1194,13 @@ bool ElevationMap::publishFusedMapBoundMarkers(double& xTip, double& yTip,
 
     elevationMapBoundPublisher_.publish(elevationMapBoundMarkerList_);
 
+    // Uses the footContactMarkerList_, therefore called here.
+    // Updates the map layer, that purely relies on the last n foot tips.
+    int numberOfConsideredFootTips = 4;
+
+    //! HACKED AWAY, no foot tip layer updates now!!
+    updateFootTipBasedElevationMapLayer(numberOfConsideredFootTips);
+
     return true;
 }
 
@@ -1272,13 +1286,6 @@ bool ElevationMap::footTipElevationMapComparison(std::string tip)
                 // TODO: Switch ON and OFF
                 publishFusedMapBoundMarkers(xTip, yTip, elevationFused, upperBoundFused, lowerBoundFused);
 
-
-                // Uses the footContactMarkerList_, therefore called here.
-                // Updates the map layer, that purely relies on the last n foot tips.
-                int numberOfConsideredFootTips = 10;
-
-                //! HACKED AWAY, no foot tip layer updates now!!
-                //updateFootTipBasedElevationMapLayer(numberOfConsideredFootTips);
 
                 // TESTING DRIFT STUFF
 //                auto driftTuple = filteredDriftEstimation(weightedVerticalDifferenceIncrement, estimatedDriftChange_, estimatedDriftChangeVariance_);
@@ -1614,12 +1621,12 @@ float ElevationMap::gaussianWeightedDifferenceIncrement(double lowerBound, doubl
     if (triggerSum > 3){
         std::cout << "<<<<<<<<>>>>>>>>> \n" << "<<<<<<<<<<>>>>>>>> \n" << "<<<<<<<<<<>>>>>>>>> \n";
         highGrassMode_ = true; // Hacked!!!!
-        //applyFrameCorrection_ = false;
+        applyFrameCorrection_ = false;
     }
     else{
         std::cout << "!!!! \n" << "!!!! \n" << "!!!! \n";
         highGrassMode_ = false;
-        //applyFrameCorrection_ = true;
+        applyFrameCorrection_ = true;
     }
 
     double footTipVal;
@@ -1672,6 +1679,10 @@ float ElevationMap::gaussianWeightedDifferenceIncrement(double lowerBound, doubl
 
     usedWeight_ = (1.0 - weight);
 
+    // TOOD: code function that does sigmoid droppoff between 1.5 and 2 times the confidence bound -> no weight in this case -> no correction (Marco Hutters comment..)
+
+
+
     std::cout << "WEIGHT: " << (1-weight) << " diff: " << diff << " elevation: " << elevation <<
                  " lower: " << lowerBound << " upper: " << upperBound << std::endl;
     return (1.0 - weight) * diff;
@@ -1719,7 +1730,14 @@ bool ElevationMap::updateFootTipBasedElevationMapLayer(int numberOfConsideredFoo
     //             " " << footContactMarkerList_.points.back().z << std::endl;
     //std::cout << "Layers!!: " << rawMap_.getLayers()[11] << std::endl;
 
-    rawMap_.add("foot_tip_elevation", 0);
+    //rawMap_.add("foot_tip_elevation", 0);
+
+
+    // Get parameters used for the plane fit through foot tips.
+    Eigen::Vector2f planeCoeffs = getFootTipPlaneFitCoeffcients();
+    std::cout << "These are the coeffs form the GETTER function: a->" << planeCoeffs(0) << " b->" << planeCoeffs(1) << std::endl;
+    Eigen::Vector3f meanOfAllFootTips = getMeanOfAllFootTips();
+
 
     double summedErrorValue = 0;
     for (GridMapIterator iterator(rawMap_); !iterator.isPastEnd(); ++iterator) {
@@ -1728,45 +1746,62 @@ bool ElevationMap::updateFootTipBasedElevationMapLayer(int numberOfConsideredFoo
         //rawMap_.getPosition3("foot_tip_elevation", *iterator, posMap);
         Position posMap;
         rawMap_.getPosition(*iterator, posMap);
-        std::vector<geometry_msgs::Point>::iterator markerListIterator = footContactMarkerList_.points.end();
-        if (footContactMarkerList_.points.size() <= 10) numberOfConsideredFootTips = footContactMarkerList_.points.size();
-        double totalWeight = 0;
-        double factor = 20.0;
-        std::vector<double> weightVector, distanceVector;
-        for (unsigned int j = 0; j < numberOfConsideredFootTips; ++j){
 
-            --markerListIterator;
-            //std::cout << markerListIterator->z << std::endl;
-            double distance = sqrt(pow(fabs(markerListIterator->x - posMap[0]),2) + pow(fabs(markerListIterator->y - posMap[1]),2));
-            //std::cout << distance << std::endl;
+        bool complicatedVersionOfFootTipLayer = false;
+        if(complicatedVersionOfFootTipLayer){
+            std::vector<geometry_msgs::Point>::iterator markerListIterator = footContactMarkerList_.points.end();
+            if (footContactMarkerList_.points.size() <= 10) numberOfConsideredFootTips = footContactMarkerList_.points.size();
+            double totalWeight = 0;
+            double factor = 20.0;
+            std::vector<double> weightVector, distanceVector;
+            for (unsigned int j = 0; j < numberOfConsideredFootTips; ++j){
 
-            distanceVector.push_back(distance);
-            totalWeight += 1.0/exp(factor*distance); // Changed to exp
-            weightVector.push_back(1.0/exp(factor*distance)); // Changed to exp
+                --markerListIterator;
+                //std::cout << markerListIterator->z << std::endl;
+                double distance = sqrt(pow(fabs(markerListIterator->x - posMap[0]),2) + pow(fabs(markerListIterator->y - posMap[1]),2));
+                //std::cout << distance << std::endl;
+
+                distanceVector.push_back(distance);
+                totalWeight += 1.0/exp(factor*distance); // Changed to exp
+                weightVector.push_back(1.0/exp(factor*distance)); // Changed to exp
+            }
+            double cellHeight = 0;
+            markerListIterator = footContactMarkerList_.points.end();
+            markerListIterator--;
+            for (unsigned int i = 0; i < weightVector.size(); ++i){
+                 cellHeight += markerListIterator->z * (weightVector[i] / totalWeight); // TODO: stronger functional dependency, e.g. exp..
+                 markerListIterator--;
+            }
+
+            //if (rawMap_.isInside(posMap))) rawMap_.atPosition("foot_tip_elevation", posMap) = cellHeight;
+
+            // TODO: calculate differences to elevation map corrected and colorize it accordingly..
+
+
+            // HERE: get the height of the plane fit map layer and add it ..
         }
-        double cellHeight = 0;
-        markerListIterator = footContactMarkerList_.points.end();
-        markerListIterator--;
-        for (unsigned int i = 0; i < weightVector.size(); ++i){
-             cellHeight += markerListIterator->z * (weightVector[i] / totalWeight); // TODO: stronger functional dependency, e.g. exp..
-             markerListIterator--;
-        }
+        // Set the height of the plane fit for each cell.
+        double cellHeightPlaneFit = -(posMap(0) - meanOfAllFootTips(0)) * planeCoeffs(0) - (posMap(1) - meanOfAllFootTips(1)) * planeCoeffs(1) + meanOfAllFootTips(2);
 
-        //if (rawMap_.isInside(posMap))) rawMap_.atPosition("foot_tip_elevation", posMap) = cellHeight;
-
-        // TODO: calculate differences to elevation map corrected and colorize it accordingly..
 
         // Calculate Difference measure in restricted area around foot tips (the last two)
         double threshold = 0.4;
-        if (rawMap_.isInside(posMap) && !isnan(rawMap_.atPosition("elevation", posMap)) && distanceVector.size() > 1){
-            if (distanceVector[0] < threshold || distanceVector[1] < threshold)
-                if (rawMap_.isInside(posMap)) rawMap_.atPosition("foot_tip_elevation", posMap) = cellHeight; // Hacked to only update restricted area around foot tips..
-                summedErrorValue += fabs(cellHeight - (rawMap_.atPosition("elevation", posMap)+heightDifferenceFromComparison_)); // Hacked a little error to check sensitivity
+        if (rawMap_.isInside(posMap) && !isnan(rawMap_.atPosition("elevation", posMap))){
+           // if (distanceVector[0] < threshold || distanceVector[1] < threshold)
+                //if (rawMap_.isInside(posMap)) rawMap_.atPosition("foot_tip_elevation", posMap) = cellHeight; // Hacked to only update restricted area around foot tips..
+                //if (rawMap_.isInside(posMap)) rawMap_.atPosition("foot_tip_elevation", posMap) = (0.7 * cellHeightPlaneFit + 0.3 * cellHeight); // Hacked to get the plane fit version only! //! Hacked, such that half plane fit half the complicated one..
+                if (rawMap_.isInside(posMap)) rawMap_.atPosition("foot_tip_elevation", posMap) = 0.7 * cellHeightPlaneFit + 0.3 * rawMap_.atPosition("foot_tip_elevation", posMap); // Low Pass filtering of plane fit only prediction.. TODO: check if 0 after each round..
+               // summedErrorValue += fabs(cellHeight - (rawMap_.atPosition("elevation", posMap) + heightDifferenceFromComparison_)); // Hacked a little error to check sensitivity
             // Consider adding the offset, as the non moved one may be considered..
             //std::cout << "Difference in height, what about offset?: " << fabs(cellHeight - rawMap_.atPosition("elevation", posMap)) << std::endl;
         }
     }
-    std::cout << "Total ERROR VALUE OF FOOT TIP ELVATION MAP VS CAMERA ELEVATION MAP: " << summedErrorValue << std::endl;
+
+    // TODO: getthe foot tip layer to be at all spots, not only where the raw map is definded..
+    // TODO: consider low pass filtering, i.e. 0.7, 0.3 to avoid left-right motion..
+
+
+    std::cout << "Total ERROR VALUE OF FOOT TIP ELEVATION MAP VS CAMERA ELEVATION MAP: " << summedErrorValue << std::endl;
     return true;
 }
 
@@ -1851,24 +1886,24 @@ bool ElevationMap::proprioceptiveRoughnessEstimation(std::string tip){
 
 
     // Only consider area where robot is trotting for now.
-    if (meanStance_(0) < 1.3 || meanStance_(0) > 2.75){
-        if (tip == "left"){
-            leftStanceVector_.push_back(meanStance_);
-            if (leftStanceVector_.size() > 2) leftStanceVector_.erase(leftStanceVector_.begin());
-        }
-        if (tip == "right"){
-            rightStanceVector_.push_back(meanStance_);
-            if (rightStanceVector_.size() > 2) rightStanceVector_.erase(rightStanceVector_.begin());
-        }
-        if (tip == "lefthind"){
-            leftHindStanceVector_.push_back(meanStance_);
-            if (leftHindStanceVector_.size() > 2) leftHindStanceVector_.erase(leftHindStanceVector_.begin());
-        }
-        if (tip == "righthind"){
-            rightHindStanceVector_.push_back(meanStance_);
-            if (rightHindStanceVector_.size() > 2) rightHindStanceVector_.erase(rightHindStanceVector_.begin());
-        }
+    //if (meanStance_(0) < 1.3 || meanStance_(0) > 2.75){
+    if (tip == "left"){
+        leftStanceVector_.push_back(meanStance_);
+        if (leftStanceVector_.size() > 2) leftStanceVector_.erase(leftStanceVector_.begin());
     }
+    if (tip == "right"){
+        rightStanceVector_.push_back(meanStance_);
+        if (rightStanceVector_.size() > 2) rightStanceVector_.erase(rightStanceVector_.begin());
+    }
+    if (tip == "lefthind"){
+        leftHindStanceVector_.push_back(meanStance_);
+        if (leftHindStanceVector_.size() > 2) leftHindStanceVector_.erase(leftHindStanceVector_.begin());
+    }
+    if (tip == "righthind"){
+        rightHindStanceVector_.push_back(meanStance_);
+        if (rightHindStanceVector_.size() > 2) rightHindStanceVector_.erase(rightHindStanceVector_.begin());
+    }
+    //}
 
 
 
@@ -1963,6 +1998,12 @@ bool ElevationMap::proprioceptiveVariance(std::string tip){
 
         Eigen::Vector2f sol = leftMat.jacobiSvd(Eigen::ComputeThinU | Eigen::ComputeThinV).solve(-rightVec);
 
+        setFootTipPlaneFitCoefficients(sol);
+        Eigen::Vector3f meanOfAllFootTips;
+        for (unsigned int j = 0; j <= 2; ++j) meanOfAllFootTips(j) = 0.25 * (leftTip(j) + rightTip(j) + leftHindTip(j) + rightHindTip(j));
+        setMeanOfAllFootTips(meanOfAllFootTips);
+
+
         bool visualizeFootTipPlaneFit = true;
         if (visualizeFootTipPlaneFit){
 
@@ -1976,10 +2017,11 @@ bool ElevationMap::proprioceptiveVariance(std::string tip){
             p3.y = leftHindTip(1);
             p4.y = rightHindTip(1);
 
-            p1.z = -(sol(0) * leftTip(0) + sol(1) * leftTip(1)) + meanZelevation;
-            p2.z = -(sol(0) * rightTip(0) + sol(1) * rightTip(1)) + meanZelevation;
-            p3.z = -(sol(0) * leftHindTip(0) + sol(1) * leftHindTip(1)) + meanZelevation;
-            p4.z = -(sol(0) * rightHindTip(0) + sol(1) * rightHindTip(1)) + meanZelevation;
+            // Attention: TODO mean position is important!!! (mean x and y..)
+            p1.z = -(sol(0) * (leftTip(0) - meanOfAllFootTips(0)) + sol(1) * (leftTip(1) - meanOfAllFootTips(1))) + meanZelevation;
+            p2.z = -(sol(0) * (rightTip(0) - meanOfAllFootTips(0)) + sol(1) * (rightTip(1) - meanOfAllFootTips(1))) + meanZelevation;
+            p3.z = -(sol(0) * (leftHindTip(0) - meanOfAllFootTips(0)) + sol(1) * (leftHindTip(1) - meanOfAllFootTips(1))) + meanZelevation;
+            p4.z = -(sol(0) * (rightHindTip(0) - meanOfAllFootTips(0)) + sol(1) * (rightHindTip(1) - meanOfAllFootTips(1))) + meanZelevation;
             footTipPlaneFitVisualization_.points.push_back(p1);
             footTipPlaneFitVisualization_.points.push_back(p2);
             footTipPlaneFitVisualization_.points.push_back(p3);
@@ -1993,10 +2035,15 @@ bool ElevationMap::proprioceptiveVariance(std::string tip){
                     pow(p3.z - leftHindTip(2), 2) + pow(p4.z - rightHindTip(2), 2);
             std::cout << "variancePlaneFit: " << variancePlaneFit << std::endl;
 
+            geometry_msgs::Twist varianceMsg;
+            varianceMsg.linear.x = varianceConsecutiveFootTipPositions;
+            varianceMsg.linear.y = variancePlaneFit;
+            varianceMsg.linear.z = varianceConsecutiveFootTipPositions + variancePlaneFit;
 
            // footTipPlaneFitVisualization_.action = visualization_msgs::Marker::;
 
             // TODO: Do visualize fitted Plane!!
+            varianceTwistPublisher_.publish(varianceMsg);
         }
 
     }
@@ -2004,8 +2051,35 @@ bool ElevationMap::proprioceptiveVariance(std::string tip){
 }
 
 //bool ElevationMap::penetrationDepthEstimation(std::string tip){
-
+//    // TODO: penetration depth estimation here
 //}
+
+void ElevationMap::setFootTipPlaneFitCoefficients(Eigen::Vector2f& coeffs){
+    footTipPlaneFitCoefficients_ = coeffs;
+    std::cout << "SET THE COEFFICIENTS!!!! "  << std::endl;
+}
+
+Eigen::Vector2f ElevationMap::getFootTipPlaneFitCoeffcients(){
+    return footTipPlaneFitCoefficients_;
+}
+
+void ElevationMap::setMeanOfAllFootTips(Eigen::Vector3f& mean){
+    meanOfAllFootTips_ = mean;
+}
+
+Eigen::Vector3f ElevationMap::getMeanOfAllFootTips(){
+    return meanOfAllFootTips_;
+}
+
+
+
+
+bool ElevationMap::penetrationDepthVarianceEstimation(std::string tip){
+    // TODO: get variance here
+}
+
+
+
 
 bool ElevationMap::writeDataFileForParameterLearning(){
     // Open the writing file.
@@ -2025,6 +2099,45 @@ bool ElevationMap::writeDataFileForParameterLearning(){
     perffile.close();
 
     return true;
+}
+
+// High Grass Functions from here:
+
+bool ElevationMap::updateSupportSurfaceEstimation(){
+
+    // Here all the functions are called and weighting is set..
+
+    // For testing: initialize the support surface layer as the foot tip elevation layer..
+    rawMap_.add("support_surface", rawMap_.get("foot"));
+    penetrationDepthContinuityPropagation();
+
+    // TODO: at some point initialize the first two elevation map layers, maybe heavy weight on foot tip only layer..
+}
+
+bool ElevationMap::penetrationDepthContinuityPropagation(){
+
+    // TESTING:
+    double penContinuity = 1.0;
+    // Iterate through all grid map cells and update support surface..
+    for (GridMapIterator iterator(rawMap_); !iterator.isPastEnd(); ++iterator) {
+        Position posMap;
+        rawMap_.getPosition(*iterator, posMap);
+        std::cout << "penetrationDepthContinuityPropagation: Analysis of iteration scheme: posMap(0)" << posMap(0) << " posMap(1) " << posMap(1) << std::endl;
+    }
+
+
+}
+
+bool ElevationMap::terrainContinuityPropagation(){
+
+}
+
+bool ElevationMap::gaussianWeightingForCellPropagation(){
+
+}
+
+bool ElevationMap::footTipBasedElevationMapIncorporation(){
+
 }
 
 } /* namespace */

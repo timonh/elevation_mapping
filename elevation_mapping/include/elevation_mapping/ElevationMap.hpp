@@ -355,7 +355,40 @@ class ElevationMap
   bool proprioceptiveVariance(std::string tip);
 
   //! TODO: Description:
+  bool penetrationDepthEstimation(std::string tip);
+
+  //! TODO: Description:
+  bool penetrationDepthVarianceEstimation(std::string tip);
+
+  //! TODO: Description:
   bool writeDataFileForParameterLearning();
+
+  //! TODO: Description:
+  bool updateSupportSurfaceEstimation();
+
+  //! TODO: Description:
+  bool penetrationDepthContinuityPropagation();
+
+  //! TODO: Description:
+  bool terrainContinuityPropagation();
+
+  //! TODO: Description:
+  bool gaussianWeightingForCellPropagation();
+
+  //! TODO: Description:
+  bool footTipBasedElevationMapIncorporation();
+
+  //! TODO:Description:
+  void setFootTipPlaneFitCoefficients(Eigen::Vector2f& coeffs);
+
+  //! TODO: Description:
+  Eigen::Vector2f getFootTipPlaneFitCoeffcients();
+
+  //! TODO: Description:
+  void setMeanOfAllFootTips(Eigen::Vector3f& mean);
+
+  //! TODO: Description:
+  Eigen::Vector3f getMeanOfAllFootTips();
 
 
 
@@ -494,15 +527,18 @@ class ElevationMap
   ros::Publisher footContactPublisher_;
   ros::Publisher elevationMapBoundPublisher_;
   ros::Publisher planeFitVisualizationPublisher_;
-  ros::Publisher tuningPublisher1_;
-  ros::Publisher tuningPublisher2_;
-  ros::Publisher tuningPublisher3_;
+  ros::Publisher varianceTwistPublisher_;
 
   //! Publication of Markers:
   visualization_msgs::Marker footContactMarkerList_;
   visualization_msgs::Marker elevationMapBoundMarkerList_;
   visualization_msgs::Marker footTipPlaneFitVisualization_;
 
+  //! Coefficients of the foot tip plane fit, calculated in proprioceptive variance estimation and reused in foot tip only elevation map layer..
+  Eigen::Vector2f footTipPlaneFitCoefficients_;
+
+  //! Mean values of the three foot tips, used for plane fitting
+  Eigen::Vector3f meanOfAllFootTips_;
 };
 
 } /* namespace */
