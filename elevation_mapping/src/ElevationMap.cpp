@@ -73,8 +73,11 @@ ElevationMap::ElevationMap(ros::NodeHandle nodeHandle)
 
   // testing
   //rawMap_.setBasicLayers({"foot_tip_elevation"});
+  //rawMap_.add("foot_tip_elevation", 0);
 
-
+  // For clean start of the foot_tip_elevation layer. As it is used in the end of the first spin..
+  //rawMap_["foot_tip_elevation"].setConstant(0.0);
+  //"variance"
   // testing
 
   elevationMapRawPublisher_ = nodeHandle_.advertise<grid_map_msgs::GridMap>("elevation_map_raw", 1);
@@ -200,6 +203,8 @@ bool ElevationMap::add(const pcl::PointCloud<pcl::PointXYZRGB>::Ptr pointCloud, 
     auto& sensorYatLowestScan = rawMap_.at("sensor_y_at_lowest_scan", index);
     auto& sensorZatLowestScan = rawMap_.at("sensor_z_at_lowest_scan", index);
 
+    auto& footTipElevation = rawMap_.at("foot_tip_elevation", index); // New
+
     const float& pointVariance = pointCloudVariances(i);
     const float scanTimeSinceInitialization = (timestamp - initialTime_).toSec();
 
@@ -211,6 +216,9 @@ bool ElevationMap::add(const pcl::PointCloud<pcl::PointXYZRGB>::Ptr pointCloud, 
       horizontalVarianceY = minHorizontalVariance_;
       horizontalVarianceXY = 0.0;
       colorVectorToValue(point.getRGBVector3i(), color);
+
+      footTipElevation = 0.0; // New
+
       continue;
     }
 
@@ -1159,6 +1167,15 @@ bool ElevationMap::publishAveragedFootTipPositionMarkers(bool hind)
 
     // Publish averaged foot tip positions
     footContactPublisher_.publish(footContactMarkerList_);
+
+
+    // Uses the footContactMarkerList_, therefore called here.
+    // Updates the map layer, that purely relies on the last n foot tips.
+    int numberOfConsideredFootTips = 4;
+
+    //! HACKED AWAY, no foot tip layer updates now!!
+    updateFootTipBasedElevationMapLayer(numberOfConsideredFootTips);
+
     return true;
 }
 
@@ -1193,13 +1210,6 @@ bool ElevationMap::publishFusedMapBoundMarkers(double& xTip, double& yTip,
     elevationMapBoundMarkerList_.colors.push_back(c);
 
     elevationMapBoundPublisher_.publish(elevationMapBoundMarkerList_);
-
-    // Uses the footContactMarkerList_, therefore called here.
-    // Updates the map layer, that purely relies on the last n foot tips.
-    int numberOfConsideredFootTips = 4;
-
-    //! HACKED AWAY, no foot tip layer updates now!!
-    updateFootTipBasedElevationMapLayer(numberOfConsideredFootTips);
 
     return true;
 }
@@ -1730,7 +1740,9 @@ bool ElevationMap::updateFootTipBasedElevationMapLayer(int numberOfConsideredFoo
     //             " " << footContactMarkerList_.points.back().z << std::endl;
     //std::cout << "Layers!!: " << rawMap_.getLayers()[11] << std::endl;
 
-    //rawMap_.add("foot_tip_elevation", 0);
+    //rawMap_.add("foot_tip_elevation", rawMap_.get("foot_tip_elevation"));
+
+    // TODO: clean nans and if necessary set everything to zero
 
 
     // Get parameters used for the plane fit through foot tips.
