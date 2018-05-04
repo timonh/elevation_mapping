@@ -273,6 +273,8 @@ bool ElevationMap::add(const pcl::PointCloud<pcl::PointXYZRGB>::Ptr pointCloud, 
   // DEBUG
   std::cout << "THATS WHERE I GOT BEFORE STOPPING!!2 \n";
 
+  updateSupportSurfaceEstimation(); // NEW
+
   return true;
 }
 
@@ -1058,14 +1060,12 @@ bool ElevationMap::deleteLastEntriesOfStances(std::string tip)
     else{
         for (unsigned int i = 0; i < 8; ++i){
             if (tip == "left"){
-                std::cout << "LEFT ANALYSIS: LFTipStance.size: " << LFTipStance_.size() << std::endl;
                 LFTipStance_.pop_back();
             }
             if (tip == "right"){
                 RFTipStance_.pop_back();
             }
             if (tip == "lefthind"){
-                std::cout << "LEFT ANALYSIS: LHTipStance.size: " << LHTipStance_.size() << std::endl;
                 LHTipStance_.pop_back();
             }
             if (tip == "righthind"){
@@ -1078,8 +1078,6 @@ bool ElevationMap::deleteLastEntriesOfStances(std::string tip)
 
 bool ElevationMap::getAverageFootTipPositions(std::string tip)
 {
-    std::cout << "GET THIS FOOTTIP POSITION" << tip << std::endl;
-
     Eigen::Vector3f totalStance(0, 0, 0);
     std::vector<Eigen::Vector3f> stance;
     if(tip == "left"){
@@ -1120,6 +1118,12 @@ bool ElevationMap::getAverageFootTipPositions(std::string tip)
 
 bool ElevationMap::publishAveragedFootTipPositionMarkers(bool hind)
 {
+
+    // TESTING:
+    std::cout << "xTip: " << meanStance_(0) << std::endl;
+    std::cout << "yTip: " << meanStance_(0) << std::endl;
+    // END TESTING
+
     // Positions for publisher.
     geometry_msgs::Point p;
     p.x = meanStance_(0);
@@ -1227,10 +1231,6 @@ bool ElevationMap::footTipElevationMapComparison(std::string tip)
     yTip = meanStance_(1);
     zTip = meanStance_(2);
 
-    // TESTING:
-    std::cout << "xTip: " << xTip << std::endl;
-    std::cout << "yTip: " << yTip << std::endl;
-    // END TESTING
 
     // TODO: Clean nan supression scheme.
     bool useNewMethod = true;
@@ -1802,7 +1802,8 @@ bool ElevationMap::updateFootTipBasedElevationMapLayer(int numberOfConsideredFoo
            // if (distanceVector[0] < threshold || distanceVector[1] < threshold)
                 //if (rawMap_.isInside(posMap)) rawMap_.atPosition("foot_tip_elevation", posMap) = cellHeight; // Hacked to only update restricted area around foot tips..
                 //if (rawMap_.isInside(posMap)) rawMap_.atPosition("foot_tip_elevation", posMap) = (0.7 * cellHeightPlaneFit + 0.3 * cellHeight); // Hacked to get the plane fit version only! //! Hacked, such that half plane fit half the complicated one..
-                if (rawMap_.isInside(posMap)) rawMap_.atPosition("foot_tip_elevation", posMap) = 0.7 * cellHeightPlaneFit + 0.3 * rawMap_.atPosition("foot_tip_elevation", posMap); // Low Pass filtering of plane fit only prediction.. TODO: check if 0 after each round..
+                if (rawMap_.isInside(posMap)) rawMap_.atPosition("foot_tip_elevation", posMap) = 0.7 * cellHeightPlaneFit + 0.3 * rawMap_.atPosition("foot_tip_elevation", posMap);
+                // Low Pass filtering of plane fit only prediction..
                // summedErrorValue += fabs(cellHeight - (rawMap_.atPosition("elevation", posMap) + heightDifferenceFromComparison_)); // Hacked a little error to check sensitivity
             // Consider adding the offset, as the non moved one may be considered..
             //std::cout << "Difference in height, what about offset?: " << fabs(cellHeight - rawMap_.atPosition("elevation", posMap)) << std::endl;
@@ -2120,36 +2121,122 @@ bool ElevationMap::updateSupportSurfaceEstimation(){
     // Here all the functions are called and weighting is set..
 
     // For testing: initialize the support surface layer as the foot tip elevation layer..
-    rawMap_.add("support_surface", rawMap_.get("foot"));
+    //rawMap_.add("support_surface", rawMap_.get("foot"));
+
+    // TODO: Here get position of foot tips and get indeces and insert them as the starting indices.. Insert them as arguments into the functions..
+
     penetrationDepthContinuityPropagation();
+    terrainContinuityPropagation();
+    footTipBasedElevationMapIncorporation();
 
     // TODO: at some point initialize the first two elevation map layers, maybe heavy weight on foot tip only layer..
 }
 
 bool ElevationMap::penetrationDepthContinuityPropagation(){
 
-    // TESTING:
-    double penContinuity = 1.0;
-    // Iterate through all grid map cells and update support surface..
-    for (GridMapIterator iterator(rawMap_); !iterator.isPastEnd(); ++iterator) {
-        Position posMap;
-        rawMap_.getPosition(*iterator, posMap);
-        std::cout << "penetrationDepthContinuityPropagation: Analysis of iteration scheme: posMap(0)" << posMap(0) << " posMap(1) " << posMap(1) << std::endl;
-    }
+//    if (false){
+//        // TESTING:
+//        double penContinuity = 0.5;
+//        // Iterate through all grid map cells and update support surface..
+//        for (GridMapIterator iterator(rawMap_); !iterator.isPastEnd(); ++iterator) {
+//        //    Position posMap;
+//        //    rawMap_.getPosition(*iterator, posMap);
+//        //    grid_map::Index indexMap;
+//        //    rawMap_.getIndex(posMap, indexMap);
+//           // std::cout << "penetrationDepthContinuityPropagation: Analysis of iteration scheme: posMap(0)" << posMap(0) << " posMap(1) " << posMap(1) << std::endl;
+//        //    grid_map::Index indexMap(1,1);
+//        //    std::cout << "penetrationDepthContinuityPropagation: Analysis of iteration scheme: posMap(0) " << indexMap(0) << " posMap(1) " << indexMap(1) << std::endl;
+//            const Index index(*iterator);
+
+//            //std::cout << "size of the raw map: " << rawMap_.getSize()(0) << "    " << rawMap_.getSize()(1) << std::endl;
+
+//        // Technique: get position of the older front foot tip.. and get index, then iterate -> issue: stopping criterion.
+//        // Process the pointcloud that way at the frequency of adding..
+//            std::cout << "Valid: " << rawMap_.isValid(index) << std::endl;
+//            std::cout << "Elevation at index: " << rawMap_.at("elevation",index) << std::endl;
+
+//            // TODO: find out how cells are Iterated and how to access adjacent cells.
+//        }
+
+//
+//        // TODO: clean tactic to check, that starting at 3rd x direction row..
 
 
+
+
+//    }
+
+    double penContinuity = 0.5;
+
+    double factorProp = penContinuity; // Multiplier for values of comparison cells
+    double factorComp = 1 - penContinuity; // Multiplier for values of propagation product cell
+    //cellPropagation(factor1, factor2, startingIndex, "penDepth");
+
+
+
+    return true;
 }
 
 bool ElevationMap::terrainContinuityPropagation(){
+    double terrContinuity = 0.5;
 
+    double factorProp = 1 - terrContinuity;
+    double factorComp = terrContinuity;
+    //cellPropagation(factor1, factor2, startingIndex, "terr");
+    return true;
 }
 
-bool ElevationMap::gaussianWeightingForCellPropagation(){
+bool ElevationMap::cellPropagation(double factorProp, double factorComp, grid_map::Index& startingIndex, std::string propagationMethod){
 
+    grid_map::Matrix& dataSupp = rawMap_["support_surface"];
+    grid_map::Matrix& dataElev = rawMap_["elevation"];
+
+    // TODO: set sensible starting index..
+    double weight;
+    int totalWeight = 11; // The total weight of the comparison cells in int (without the factor)
+    for (unsigned int i = 199; i >= 0 ; --i){
+        for (unsigned int j = 0; j < 200; ++j){
+
+            double totalValue = 0;
+            for (unsigned int n = 1; n <= 2; ++n){
+                for (int m = -1; m <= 1; ++m){
+
+                    grid_map::Index indexComp(i+n,j+m);
+                    weight = 4 - n - fabs(m);
+
+                    // validity checks here..
+
+                    if (propagationMethod == "penDepth") totalValue += weight * (dataElev(indexComp(0), indexComp(1)) - dataSupp(indexComp(0), indexComp(1)));
+                    if (propagationMethod == "terr") totalValue += weight * (dataSupp(indexComp(0), indexComp(1)) - dataSupp(indexComp(0)+1, indexComp(1)));
+                }
+            }
+
+            grid_map::Index indexProp(i,j);
+
+            double propagatedDifference;
+            if(propagationMethod == "penDepth"){
+                propagatedDifference = factorProp * (dataElev(indexProp(0), indexProp(1)) - dataSupp(indexProp(0), indexProp(1))) +
+                        factorComp * (totalValue / totalWeight);
+                dataSupp(indexProp(0), indexProp(1)) = dataElev(indexProp(0), indexProp(1)) - propagatedDifference;
+            }
+            if(propagationMethod == "terr"){
+                propagatedDifference = factorProp * (dataSupp(indexProp(0), indexProp(1)) - dataSupp(indexProp(0) + 1, indexProp(1))) +
+                        factorComp * (totalValue / totalWeight);
+                dataSupp(indexProp(0), indexProp(1)) = dataSupp(indexProp(0) + 1, indexProp(1)) + propagatedDifference;
+            }
+            // TODO: add some security checks for nans and stuff..
+        }
+
+    }
+
+
+
+
+    // Necessary arguments, i.e. diffs: factor1, factor2, starting x starting y, terrain/pendepth.. do the faster version here..
 }
 
 bool ElevationMap::footTipBasedElevationMapIncorporation(){
-
+    // One liner..
 }
 
 } /* namespace */

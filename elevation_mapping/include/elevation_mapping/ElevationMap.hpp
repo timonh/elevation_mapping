@@ -373,7 +373,7 @@ class ElevationMap
   bool terrainContinuityPropagation();
 
   //! TODO: Description:
-  bool gaussianWeightingForCellPropagation();
+  bool cellPropagation(double factor1, double factor2, grid_map::Index& startingIndex, std::string propagationMethod);
 
   //! TODO: Description:
   bool footTipBasedElevationMapIncorporation();
