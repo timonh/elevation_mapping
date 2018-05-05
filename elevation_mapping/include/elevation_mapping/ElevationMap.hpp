@@ -390,6 +390,15 @@ class ElevationMap
   //! TODO: Description:
   Eigen::Vector3f getMeanOfAllFootTips();
 
+  //! TODO: Description:
+  Eigen::Vector3f getMeanStance();
+
+  //! TODO: Description:
+  Eigen::Vector3f getLatestLeftStance();
+
+  //! TODO: Description:
+  Eigen::Vector3f getLatestRightStance();
+
 
 
 
