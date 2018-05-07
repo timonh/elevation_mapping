@@ -1281,6 +1281,11 @@ bool ElevationMap::footTipElevationMapComparison(std::string tip)
                 weightedVerticalDifferenceIncrement = gaussianWeightedDifferenceIncrement(lowerBoundFused, elevationFused, upperBoundFused, verticalDifference);
 
                 std::cout << "weightedVerticalDifferenceIncrement " << weightedVerticalDifferenceIncrement << std::endl;
+
+
+                bool runPenetrationDepthVarianceEstimation = true;
+                if (runPenetrationDepthVarianceEstimation) penetrationDepthVarianceEstimation(tip, verticalDifference);
+
                 // DEBUG:
 //                if (isnan(weightedVerticalDifferenceIncrement)){
 //                    std::cout << "NAN IN WEIGHTED DIFFERENCE INCREMENT!!!!!!!" << std::endl;
@@ -2054,6 +2059,7 @@ bool ElevationMap::proprioceptiveVariance(std::string tip){
             varianceMsg.linear.y = variancePlaneFit;
             varianceMsg.linear.z = varianceConsecutiveFootTipPositions + variancePlaneFit;
 
+            varianceMsg.angular.x = getPenetrationDepthVariance();
            // footTipPlaneFitVisualization_.action = visualization_msgs::Marker::;
 
             // TODO: Do visualize fitted Plane!!
@@ -2088,8 +2094,25 @@ Eigen::Vector3f ElevationMap::getMeanOfAllFootTips(){
 
 
 
-bool ElevationMap::penetrationDepthVarianceEstimation(std::string tip){
-    // TODO: get variance here
+bool ElevationMap::penetrationDepthVarianceEstimation(std::string tip, double verticalDifference){
+    verticalDifferenceVector_.push_back(verticalDifference);
+    if (verticalDifferenceVector_.size() > 6) verticalDifferenceVector_.erase(verticalDifferenceVector_.begin());
+    double totalVerticalDifference = 0.0;
+    double squaredTotalVerticalDifference = 0.0;
+    int count = verticalDifferenceVector_.size();
+    for (auto& n : verticalDifferenceVector_){
+        totalVerticalDifference += n;
+        squaredTotalVerticalDifference += pow(n,2);
+    }
+
+    double penetrationDepthVariance = squaredTotalVerticalDifference / double(count) +
+            pow(totalVerticalDifference / double(count), 2);
+
+    setPenetrationDepthVariance(penetrationDepthVariance);
+
+    std::cout << std::endl << "HERE IS THE PEN VARIANCE!! " << penetrationDepthVariance << std::endl << std::endl;
+
+    return true;
 }
 
 
@@ -2139,7 +2162,7 @@ bool ElevationMap::updateSupportSurfaceEstimation(){
 
 bool ElevationMap::penetrationDepthContinuityPropagation(){
 
-    double penContinuity = 0.8;
+    double penContinuity = 0.1;
 
     double factorProp = 1.0 - penContinuity; // Multiplier for values of comparison cells
     double factorComp = penContinuity; // Multiplier for values of propagation product cell
@@ -2151,14 +2174,11 @@ bool ElevationMap::penetrationDepthContinuityPropagation(){
     // ENS TESTS
     cellPropagation(factorProp, factorComp, startingIndex, "penDepth");
 
-
-
-
     return true;
 }
 
 bool ElevationMap::terrainContinuityPropagation(){
-    double terrContinuity = 0.2;
+    double terrContinuity = 0.95;
 
     double factorProp = 1.0 - terrContinuity;
     double factorComp = terrContinuity;
@@ -2233,7 +2253,7 @@ bool ElevationMap::cellPropagation(double factorProp, double factorComp, grid_ma
         for (unsigned int i = startingIndex(0); i >= startingIndex(0) - 1; --i){
             for (unsigned int j = startingIndex(1); j < 199; ++j){
                 grid_map::Index indexInit(i,j);
-                dataSupp(indexInit(0), indexInit(1)) = 0.15 * dataFoot(indexInit(0), indexInit(1)) + 0.85 * dataSupp(indexInit(0), indexInit(1));
+                dataSupp(indexInit(0), indexInit(1)) = 0.1 * dataFoot(indexInit(0), indexInit(1)) + 0.9 * dataSupp(indexInit(0), indexInit(1));
             }
         }
 
@@ -2256,8 +2276,14 @@ bool ElevationMap::cellPropagation(double factorProp, double factorComp, grid_ma
             for (unsigned int j = startingIndex(1); j < 199; ++j){  // ATTENTION HACKED AROUND HERE..
 
 
+                //if (isnan(dataElev(i,j))){
+                    //std::cout << "zeroed it " << dataElev(i,j) << std::endl;
+                //    dataElev(i,j) = 3.0;
+                //}
+
                 int totalWeight = 0; // The total weight of the comparison cells in int (without the factor)
-                double totalValue = 0;
+                double totalValue = 0.0;
+                double totalAbsValue = 0.0; // Testing, for more stable terrain continuity propagation
                 for (unsigned int n = 1; n <= 2; ++n){
                     for (int m = -1; m <= 1; ++m){
 
@@ -2277,7 +2303,7 @@ bool ElevationMap::cellPropagation(double factorProp, double factorComp, grid_ma
                             // HAcked Foot in here instead of supp..
                             if (propagationMethod == "penDepth") totalValue += weight * (dataElev(indexComp(0), indexComp(1)) - dataSupp(indexComp(0), indexComp(1))); // CHenged back from foot to supp
                             if (propagationMethod == "terr" && rawMap_.isValid(indexHelp)) totalValue += weight * (dataSupp(indexComp(0), indexComp(1)) - dataSupp(indexComp(0)+1, indexComp(1)));
-                            //if (propagationMethod == "terr" && rawMap_.isValid(indexHelp)) totalValue += weight * (dataSupp(indexComp(0), indexComp(1))); // HACKED
+                            if (propagationMethod == "terr" && rawMap_.isValid(indexHelp)) totalAbsValue += weight * (dataSupp(indexComp(0), indexComp(1))); // HACKED
                         }
                     }
                 }
@@ -2304,15 +2330,30 @@ bool ElevationMap::cellPropagation(double factorProp, double factorComp, grid_ma
                     propagatedDifference = factorProp * (dataSupp(indexProp(0), indexProp(1)) - dataSupp(indexProp(0) + 1, indexProp(1))) +
                             factorComp * (totalValue / (double)totalWeight);
 
-                    // Weighted version for testing. HACKED not nice, reason about this..
-                    dataSupp(indexProp(0), indexProp(1)) = dataSupp(indexProp(0) + 1, indexProp(1)) + propagatedDifference;
 
-                    //dataSupp(indexProp(0), indexProp(1)) = factorProp * dataSupp(indexProp(0), indexProp(1)) + factorComp * (totalValue / (double)totalWeight); // HACKED
+                    double absVersion = factorProp * dataSupp(indexProp(0), indexProp(1)) + factorComp * (totalAbsValue / (double)totalWeight); // HACKED
+
+                    dataSupp(indexProp(0), indexProp(1)) = absVersion + propagatedDifference; // New version
+
+                    // Weighted version for testing. HACKED not nice, reason about this..
+                    //dataSupp(indexProp(0), indexProp(1)) = dataSupp(indexProp(0) + 1, indexProp(1)) + propagatedDifference; // This is the original!
+
+
+
+                    //dataSupp(indexProp(0), indexProp(1)) = factorProp * dataSupp(indexProp(0), indexProp(1)) + factorComp * (totalAbsValue / (double)totalWeight); // HACKED
+
+
+
 
                     // For robustness. (maybe unnecessary..)
                     dataSupp(indexProp(0), indexProp(1)) = fmin(dataSupp(indexProp(0), indexProp(1)), dataElev(indexProp(0), indexProp(1)));
 
-                    if (isnan(propagatedDifference)) std::cout << "NAN in diff calculation was the reason!!!!" << std::endl;
+                    //if (isnan(propagatedDifference)) std::cout << "NAN in diff calculation was the reason!!!! totalweight: " << totalWeight << std::endl;
+
+                    // Hacking for debugging:
+                    // Check which ones are nans, and how to differenciate them from the outliers..
+                    if (isnan(dataElev(indexProp(0), indexProp(1)))) dataSupp(indexProp(0), indexProp(1)) = 0.0;
+
                 }
                 // TODO: add some security checks for nans and stuff..
             }
@@ -2322,18 +2363,22 @@ bool ElevationMap::cellPropagation(double factorProp, double factorComp, grid_ma
         if (i < 0) i = 200 + i;
         //std::cout << "Continuing: " << i << std::endl;
         }
-
-        std::cout << "GOT out of the LOOP!!! \n \n \n \n \n ";
-
     }
-
-
     return true;
     // Necessary arguments, i.e. diffs: factor1, factor2, starting x starting y, terrain/pendepth.. do the faster version here..
 }
 
 bool ElevationMap::footTipBasedElevationMapIncorporation(){
     // One liner..
+}
+
+// For using it in the penetration depth estimation.
+void ElevationMap::setPenetrationDepthVariance(double penetrationDepthVariance){
+    if (!isnan(penetrationDepthVariance)) penetrationDepthVariance_ = penetrationDepthVariance;
+}
+
+double ElevationMap::getPenetrationDepthVariance(){
+    return penetrationDepthVariance_;
 }
 
 } /* namespace */

@@ -358,7 +358,7 @@ class ElevationMap
   bool penetrationDepthEstimation(std::string tip);
 
   //! TODO: Description:
-  bool penetrationDepthVarianceEstimation(std::string tip);
+  bool penetrationDepthVarianceEstimation(std::string tip, double verticalDifference);
 
   //! TODO: Description:
   bool writeDataFileForParameterLearning();
@@ -399,6 +399,11 @@ class ElevationMap
   //! TODO: Description:
   Eigen::Vector3f getLatestRightStance();
 
+  //! TODO: Description:
+  void setPenetrationDepthVariance(double verticalDifference);
+
+  //! TODO: Description:
+  double getPenetrationDepthVariance();
 
 
 
@@ -550,6 +555,12 @@ class ElevationMap
   Eigen::Vector3f meanOfAllFootTips_;
 
   bool supportSurfaceInitializationTrigger_;
+
+  //! For use in penetrationDepthVarianceEstimation
+  double penetrationDepthVariance_;
+  std::vector<double> verticalDifferenceVector_;
+
+
 };
 
 } /* namespace */
