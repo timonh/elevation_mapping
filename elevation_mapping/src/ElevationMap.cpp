@@ -136,6 +136,7 @@ ElevationMap::ElevationMap(ros::NodeHandle nodeHandle)
   isInStanceLeftHind_ = false;
   isInStanceRight_ = false;
   isInStanceRightHind_ = false;
+  supportSurfaceInitializationTrigger_ = false;
   // END NEW
 
   initialTime_ = ros::Time::now();
@@ -1029,8 +1030,8 @@ bool ElevationMap::processStance(std::string tip)
 
 
     // Performance Assessment, sensible if wanting to tune the system while walking on flat surface.
-    bool runPreformanceAssessmentForFlatGround = false;
-    if(runPreformanceAssessmentForFlatGround) performanceAssessmentMeanElevationMap();
+    //bool runPreformanceAssessmentForFlatGround = false;
+    //if(runPreformanceAssessmentForFlatGround) performanceAssessmentMeanElevationMap();
 
     // Data Publisher for parameter tuning.
     //tuningPublisher1_.publish(performance_assessment_msg_); // HACKED FOR DEBUGGING!!
@@ -1097,10 +1098,6 @@ bool ElevationMap::getAverageFootTipPositions(std::string tip)
     }
 
 
-
-
-
-
     // Derive mean foot tip positions
     if(stance.size() > 1){
         for (auto& n : stance){
@@ -1109,8 +1106,6 @@ bool ElevationMap::getAverageFootTipPositions(std::string tip)
         }
         meanStance_ = totalStance / float(stance.size());
     }
-
-
 
     return true;
 }
@@ -1832,7 +1827,7 @@ bool ElevationMap::performanceAssessmentMeanElevationMap()
     xMaxCutoff = yMaxCutoff = 100000000000;
 
     // Set them.
-    xMinCutoff = 1.3;
+    xMinCutoff = 0.4;
     xMaxCutoff = 1.83;
 
 
@@ -2144,9 +2139,9 @@ bool ElevationMap::updateSupportSurfaceEstimation(){
 
 bool ElevationMap::penetrationDepthContinuityPropagation(){
 
-    double penContinuity = 0.4;
+    double penContinuity = 0.8;
 
-    double factorProp = 1 - penContinuity; // Multiplier for values of comparison cells
+    double factorProp = 1.0 - penContinuity; // Multiplier for values of comparison cells
     double factorComp = penContinuity; // Multiplier for values of propagation product cell
 
     std::cout << "Called the pendepth function" << std::endl;
@@ -2163,9 +2158,9 @@ bool ElevationMap::penetrationDepthContinuityPropagation(){
 }
 
 bool ElevationMap::terrainContinuityPropagation(){
-    double terrContinuity = 0.7;
+    double terrContinuity = 0.2;
 
-    double factorProp = 1 - terrContinuity;
+    double factorProp = 1.0 - terrContinuity;
     double factorComp = terrContinuity;
 
     // TESTING:
@@ -2204,7 +2199,25 @@ bool ElevationMap::cellPropagation(double factorProp, double factorComp, grid_ma
             Index indLeftTip, indRightTip;
 
 
-            //if ()
+            if (supportSurfaceInitializationTrigger_ == false){
+                dataSupp = dataElev; // New!!
+                supportSurfaceInitializationTrigger_ = true;
+
+                std::cout << "INITIALIZED, only once" << std::endl;
+                std::cout << "INITIALIZED, only once" << std::endl;
+                std::cout << "INITIALIZED, only once" << std::endl;
+                std::cout << "INITIALIZED, only once" << std::endl;
+                std::cout << "INITIALIZED, only once" << std::endl;
+                std::cout << "INITIALIZED, only once" << std::endl;
+                std::cout << "INITIALIZED, only once" << std::endl;
+                std::cout << "INITIALIZED, only once" << std::endl;
+                std::cout << "INITIALIZED, only once" << std::endl;
+                std::cout << "INITIALIZED, only once" << std::endl;
+                std::cout << "INITIALIZED, only once" << std::endl;
+                std::cout << "INITIALIZED, only once" << std::endl;
+
+
+            }
 
             rawMap_.getIndex(posLatestLeft, indLeftTip);
             rawMap_.getIndex(posLatestRight, indRightTip);
@@ -2217,14 +2230,33 @@ bool ElevationMap::cellPropagation(double factorProp, double factorComp, grid_ma
         }
 
         // Here: heavy weighting of the first two rows against foot tip only elevation map! Diagonal in case of diagonal walking direction..
+        for (unsigned int i = startingIndex(0); i >= startingIndex(0) - 1; --i){
+            for (unsigned int j = startingIndex(1); j < 199; ++j){
+                grid_map::Index indexInit(i,j);
+                dataSupp(indexInit(0), indexInit(1)) = 0.15 * dataFoot(indexInit(0), indexInit(1)) + 0.85 * dataSupp(indexInit(0), indexInit(1));
+            }
+        }
 
-
+        std::cout << "HERE I GOT TO!" << std::endl;
 
         double weight;
-        int totalWeight = 11; // The total weight of the comparison cells in int (without the factor)
-        for (unsigned int i = startingIndex(0); i >= 1 ; --i){
+
+        // Introduce a version with ending index, as indices are restarting after some distance
+        Index endingIndex;
+        if (startingIndex(0) - 199 < 1) endingIndex(0) = 200 + (startingIndex(0) - 199); // HACKED FROM 100 to 10
+        else endingIndex(0) = startingIndex(0) - 199;
+        int i = startingIndex(0) - 2;
+
+        //std::cout << "HERE I ALSO GOT TO!" << std::endl;
+
+        while (i != endingIndex(0)){
+        //for (unsigned int i = startingIndex(0); i >= 1 ; --i){   // This was replaced by a while loop
+        //    std::cout << "HERE I GOT TO INSIDE LOOP!: " << i <<  std::endl << std::endl;
+
             for (unsigned int j = startingIndex(1); j < 199; ++j){  // ATTENTION HACKED AROUND HERE..
 
+
+                int totalWeight = 0; // The total weight of the comparison cells in int (without the factor)
                 double totalValue = 0;
                 for (unsigned int n = 1; n <= 2; ++n){
                     for (int m = -1; m <= 1; ++m){
@@ -2234,14 +2266,18 @@ bool ElevationMap::cellPropagation(double factorProp, double factorComp, grid_ma
 
                         // validity checks here..
                        // std::cout << "Here I came to.." << std::endl;
+                        // Realized!!: Iteration is flawed, indices start to repeat at some point -> new stopping criterion!!!
 
                         grid_map::Index indexHelp(indexComp(0)+1, indexComp(1));
+
+                        totalWeight += weight;
 
                         if (rawMap_.isValid(indexComp)){ // How to characterize a nan to be in the area of interest and to fill the hole?
 
                             // HAcked Foot in here instead of supp..
-                            if (propagationMethod == "penDepth") totalValue += weight * (dataElev(indexComp(0), indexComp(1)) - dataFoot(indexComp(0), indexComp(1)));
+                            if (propagationMethod == "penDepth") totalValue += weight * (dataElev(indexComp(0), indexComp(1)) - dataSupp(indexComp(0), indexComp(1))); // CHenged back from foot to supp
                             if (propagationMethod == "terr" && rawMap_.isValid(indexHelp)) totalValue += weight * (dataSupp(indexComp(0), indexComp(1)) - dataSupp(indexComp(0)+1, indexComp(1)));
+                            //if (propagationMethod == "terr" && rawMap_.isValid(indexHelp)) totalValue += weight * (dataSupp(indexComp(0), indexComp(1))); // HACKED
                         }
                     }
                 }
@@ -2251,25 +2287,44 @@ bool ElevationMap::cellPropagation(double factorProp, double factorComp, grid_ma
                 //std::cout << "i: " << i << "j: " << j << std::endl;
 
                 double propagatedDifference;
-                if(propagationMethod == "penDepth"){
+                if(propagationMethod == "penDepth" && totalWeight > 0){
                     propagatedDifference = factorProp * (dataElev(indexProp(0), indexProp(1)) - dataSupp(indexProp(0), indexProp(1))) +
                             factorComp * (totalValue / (double)totalWeight);
                     dataSupp(indexProp(0), indexProp(1)) = dataElev(indexProp(0), indexProp(1)) - propagatedDifference;
+
+                    // For robustness. (maybe unnecessary..)
+                    dataSupp(indexProp(0), indexProp(1)) = fmin(dataSupp(indexProp(0), indexProp(1)), dataElev(indexProp(0), indexProp(1)));
                 }
 
 
                 grid_map::Index indexHelp2(indexProp(0)+1, indexProp(1)); // For nan suppression, prelim.
 
-                if(propagationMethod == "terr" && rawMap_.isValid(indexHelp2)){
-                    if (isnan(propagatedDifference)) std::cout << "NAN in diff calculation was the reason!!!!" << std::endl;
+                if(propagationMethod == "terr" && rawMap_.isValid(indexHelp2) && totalWeight > 0){
+
                     propagatedDifference = factorProp * (dataSupp(indexProp(0), indexProp(1)) - dataSupp(indexProp(0) + 1, indexProp(1))) +
                             factorComp * (totalValue / (double)totalWeight);
+
+                    // Weighted version for testing. HACKED not nice, reason about this..
                     dataSupp(indexProp(0), indexProp(1)) = dataSupp(indexProp(0) + 1, indexProp(1)) + propagatedDifference;
+
+                    //dataSupp(indexProp(0), indexProp(1)) = factorProp * dataSupp(indexProp(0), indexProp(1)) + factorComp * (totalValue / (double)totalWeight); // HACKED
+
+                    // For robustness. (maybe unnecessary..)
+                    dataSupp(indexProp(0), indexProp(1)) = fmin(dataSupp(indexProp(0), indexProp(1)), dataElev(indexProp(0), indexProp(1)));
+
+                    if (isnan(propagatedDifference)) std::cout << "NAN in diff calculation was the reason!!!!" << std::endl;
                 }
                 // TODO: add some security checks for nans and stuff..
             }
 
+        --i;
+        //std::cout << "After decrementing I: " << i << std::endl;
+        if (i < 0) i = 200 + i;
+        //std::cout << "Continuing: " << i << std::endl;
         }
+
+        std::cout << "GOT out of the LOOP!!! \n \n \n \n \n ";
+
     }
 
 

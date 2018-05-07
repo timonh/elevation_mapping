@@ -548,6 +548,8 @@ class ElevationMap
 
   //! Mean values of the three foot tips, used for plane fitting
   Eigen::Vector3f meanOfAllFootTips_;
+
+  bool supportSurfaceInitializationTrigger_;
 };
 
 } /* namespace */
