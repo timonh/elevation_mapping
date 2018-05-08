@@ -1740,15 +1740,6 @@ float ElevationMap::normalDistribution(float arg, float mean, float stdDev)
 
 bool ElevationMap::updateFootTipBasedElevationMapLayer(int numberOfConsideredFootTips)
 {
-    //std::cout << "points inside updateFootTipBased...: " << footContactMarkerList_.points.back().x << " " << footContactMarkerList_.points.back().y <<
-    //             " " << footContactMarkerList_.points.back().z << std::endl;
-    //std::cout << "Layers!!: " << rawMap_.getLayers()[11] << std::endl;
-
-    //rawMap_.add("foot_tip_elevation", rawMap_.get("foot_tip_elevation"));
-
-    // TODO: clean nans and if necessary set everything to zero
-
-
     // Get parameters used for the plane fit through foot tips.
     Eigen::Vector2f planeCoeffs = getFootTipPlaneFitCoeffcients();
     std::cout << "These are the coeffs form the GETTER function: a->" << planeCoeffs(0) << " b->" << planeCoeffs(1) << std::endl;
@@ -1758,8 +1749,6 @@ bool ElevationMap::updateFootTipBasedElevationMapLayer(int numberOfConsideredFoo
     double summedErrorValue = 0;
     for (GridMapIterator iterator(rawMap_); !iterator.isPastEnd(); ++iterator) {
 
-        //Position3 posMap;
-        //rawMap_.getPosition3("foot_tip_elevation", *iterator, posMap);
         Position posMap;
         rawMap_.getPosition(*iterator, posMap);
 
@@ -1799,7 +1788,7 @@ bool ElevationMap::updateFootTipBasedElevationMapLayer(int numberOfConsideredFoo
         // Set the height of the plane fit for each cell.
         double cellHeightPlaneFit = 0.0;
         if (!isnan(planeCoeffs(0)) && !isnan(planeCoeffs(1)) && !isnan(meanOfAllFootTips(0)) && !isnan(meanOfAllFootTips(1))) {
-            cellHeightPlaneFit = -(posMap(0) - meanOfAllFootTips(0)) * planeCoeffs(0) - (posMap(1) - meanOfAllFootTips(1)) * planeCoeffs(1) + meanOfAllFootTips(2);
+            cellHeightPlaneFit = -(posMap(0) - meanOfAllFootTips(0)) * planeCoeffs(0) - (posMap(1) - meanOfAllFootTips(1)) * planeCoeffs(1) + meanOfAllFootTips(2); // Hacked the sign!!!!
         }
 
         // Calculate Difference measure in restricted area around foot tips (the last two)
@@ -1959,10 +1948,10 @@ bool ElevationMap::proprioceptiveVariance(std::string tip){
     else if(rightStanceVector_.size() > 1 && tip == "right"){
         diff = double((rightStanceVector_[1](0) - rightStanceVector_[0](0)));
     }
-    else if(rightStanceVector_.size() > 1 && tip == "lefthind"){
+    else if(leftHindStanceVector_.size() > 1 && tip == "lefthind"){
         diff = double((leftHindStanceVector_[1](0) - leftHindStanceVector_[0](0)));
     }
-    else if(rightStanceVector_.size() > 1){
+    else if(rightHindStanceVector_.size() > 1){
         diff = double((rightHindStanceVector_[1](0) - rightHindStanceVector_[0](0)));
     }
 
@@ -2162,7 +2151,7 @@ bool ElevationMap::updateSupportSurfaceEstimation(){
 
 bool ElevationMap::penetrationDepthContinuityPropagation(){
 
-    double penContinuity = 0.1;
+    double penContinuity = 0.8;
 
     double factorProp = 1.0 - penContinuity; // Multiplier for values of comparison cells
     double factorComp = penContinuity; // Multiplier for values of propagation product cell
@@ -2178,7 +2167,9 @@ bool ElevationMap::penetrationDepthContinuityPropagation(){
 }
 
 bool ElevationMap::terrainContinuityPropagation(){
-    double terrContinuity = 0.95;
+    double terrContinuity = 0.85;
+
+    std::cout << "What I am doing has some effect!! " << std::endl << std::endl;
 
     double factorProp = 1.0 - terrContinuity;
     double factorComp = terrContinuity;
@@ -2250,10 +2241,10 @@ bool ElevationMap::cellPropagation(double factorProp, double factorComp, grid_ma
         }
 
         // Here: heavy weighting of the first two rows against foot tip only elevation map! Diagonal in case of diagonal walking direction..
-        for (unsigned int i = startingIndex(0); i >= startingIndex(0) - 1; --i){
+        for (unsigned int i = startingIndex(0); i >= startingIndex(0) - 2; --i){ // Hacked in here..
             for (unsigned int j = startingIndex(1); j < 199; ++j){
                 grid_map::Index indexInit(i,j);
-                dataSupp(indexInit(0), indexInit(1)) = 0.1 * dataFoot(indexInit(0), indexInit(1)) + 0.9 * dataSupp(indexInit(0), indexInit(1));
+                dataSupp(indexInit(0), indexInit(1)) = 0.09 * dataFoot(indexInit(0), indexInit(1)) + 0.91 * dataSupp(indexInit(0), indexInit(1)); // Hacked here..
             }
         }
 
@@ -2265,7 +2256,7 @@ bool ElevationMap::cellPropagation(double factorProp, double factorComp, grid_ma
         Index endingIndex;
         if (startingIndex(0) - 199 < 1) endingIndex(0) = 200 + (startingIndex(0) - 199); // HACKED FROM 100 to 10
         else endingIndex(0) = startingIndex(0) - 199;
-        int i = startingIndex(0) - 2;
+        int i = startingIndex(0) - 3;
 
         //std::cout << "HERE I ALSO GOT TO!" << std::endl;
 
@@ -2333,7 +2324,7 @@ bool ElevationMap::cellPropagation(double factorProp, double factorComp, grid_ma
 
                     double absVersion = factorProp * dataSupp(indexProp(0), indexProp(1)) + factorComp * (totalAbsValue / (double)totalWeight); // HACKED
 
-                    dataSupp(indexProp(0), indexProp(1)) = absVersion + propagatedDifference; // New version
+                    dataSupp(indexProp(0), indexProp(1)) = absVersion + 0.9 * propagatedDifference; // New version Hacked factor 0.6 into this!
 
                     // Weighted version for testing. HACKED not nice, reason about this..
                     //dataSupp(indexProp(0), indexProp(1)) = dataSupp(indexProp(0) + 1, indexProp(1)) + propagatedDifference; // This is the original!
@@ -2352,7 +2343,7 @@ bool ElevationMap::cellPropagation(double factorProp, double factorComp, grid_ma
 
                     // Hacking for debugging:
                     // Check which ones are nans, and how to differenciate them from the outliers..
-                    if (isnan(dataElev(indexProp(0), indexProp(1)))) dataSupp(indexProp(0), indexProp(1)) = 0.0;
+                    //if (isnan(dataElev(indexProp(0), indexProp(1)))) dataSupp(indexProp(0), indexProp(1)) = 0.0;
 
                 }
                 // TODO: add some security checks for nans and stuff..
@@ -2364,12 +2355,19 @@ bool ElevationMap::cellPropagation(double factorProp, double factorComp, grid_ma
         //std::cout << "Continuing: " << i << std::endl;
         }
     }
+
+
+    // Incorporate foot tip elevation. -> @ some point, tune this according to:
+    // discontinuity estimations..
+    //dataSupp = 0.98 * dataSupp + 0.02 * dataFoot;
+
+
     return true;
     // Necessary arguments, i.e. diffs: factor1, factor2, starting x starting y, terrain/pendepth.. do the faster version here..
 }
 
 bool ElevationMap::footTipBasedElevationMapIncorporation(){
-    // One liner..
+
 }
 
 // For using it in the penetration depth estimation.
