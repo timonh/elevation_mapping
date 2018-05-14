@@ -1,0 +1,26 @@
+grid_map_filters:
+
+  - name: buffer_normalizer
+    type: gridMapFilters/BufferNormalizerFilter
+
+  # # Duplicate layer.
+  # - name: duplicate
+  #   type: gridMapFilters/DuplicationFilter
+  #   params:
+  #     input_layer: ...
+  #     output_layer: ...
+
+  # Delete color layer.
+  - name: delete_original_layers
+    type: gridMapFilters/DeletionFilter
+    params:
+      layers: [color] # List of layers.
+
+  # Fill holes in the map with inpainting.
+  - name: inpaint
+    type: gridMapCv/InpaintFilter
+    params:
+      input_layer: elevation
+      output_layer: elevation_inpainted
+      radius: 2
+

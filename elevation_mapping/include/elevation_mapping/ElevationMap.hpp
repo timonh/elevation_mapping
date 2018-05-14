@@ -1,4 +1,4 @@
-/*
+ /*
  * ElevationMap.hpp
  *
  *  Created on: Feb 5, 2014
@@ -9,6 +9,13 @@
 #pragma once
 
 // Grid Map
+#include <grid_map_ros/grid_map_ros.hpp>
+
+#include <filters/filter_chain.h> // For high grass new
+#include <grid_map_msgs/GridMap.h>
+#include <grid_map_core/grid_map_core.hpp>
+#include <grid_map_cv/grid_map_cv.hpp> // New for high grass
+#include <grid_map_cv/InpaintFilter.hpp> // New for high grass
 #include <grid_map_ros/grid_map_ros.hpp>
 
 // Eigen
@@ -405,6 +412,12 @@ class ElevationMap
   //! TODO: Description:
   double getPenetrationDepthVariance();
 
+  //! TODO: Description:
+  bool penetrationDepthContinuityProcessing();
+
+  //! TODO: Description:
+  bool terrainContinuityProcessing();
+
 
 
   //! ROS nodehandle.
@@ -415,6 +428,11 @@ class ElevationMap
 
   //! Fused elevation map as grid map.
   grid_map::GridMap fusedMap_;
+
+  // New
+  //! New grid map for support surface to increase the scope of definition, i.e. fill in holes.
+  grid_map::GridMap supportMap_;
+  // End New
 
   //! Visibility cleanup debug map.
   grid_map::GridMap visibilityCleanupMap_;
@@ -435,6 +453,8 @@ class ElevationMap
 
   // New
   ros::Publisher elevationMapCorrectedPublisher_;
+  ros::Publisher elevationMapSupportPublisher_;
+  ros::Publisher elevationMapInpaintedPublisher_;
   ros::Publisher coloredPointCloudPublisher_;
   // End New
 
@@ -560,6 +580,7 @@ class ElevationMap
   double penetrationDepthVariance_;
   std::vector<double> verticalDifferenceVector_;
 
+  filters::FilterChain<grid_map::GridMap> filterChain_;
 
 };
 

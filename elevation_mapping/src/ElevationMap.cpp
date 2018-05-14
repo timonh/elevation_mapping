@@ -15,6 +15,20 @@
 
 // Grid Map
 #include <grid_map_msgs/GridMap.h>
+#include <grid_map_core/grid_map_core.hpp> // New for high grass
+#include <grid_map_filters/BufferNormalizerFilter.hpp>
+#include <grid_map_cv/grid_map_cv.hpp> // New for high grass
+
+#include <grid_map_cv/InpaintFilter.hpp> // New for high grass
+#include <opencv/cv.h>
+#include <grid_map_filters/ThresholdFilter.hpp>
+
+#include <grid_map_cv/InpaintFilter.hpp>
+#include <pluginlib/class_list_macros.h>
+#include <ros/ros.h>
+
+#include <grid_map_cv/GridMapCvConverter.hpp>
+#include <grid_map_cv/GridMapCvProcessing.hpp>
 
 // TEST
 #include <any_msgs/State.h>
@@ -53,14 +67,17 @@ namespace elevation_mapping {
 ElevationMap::ElevationMap(ros::NodeHandle nodeHandle)
     : nodeHandle_(nodeHandle),
       rawMap_({"elevation", "variance", "horizontal_variance_x", "horizontal_variance_y", "horizontal_variance_xy",
-              "color", "time", "lowest_scan_point", "sensor_x_at_lowest_scan", "sensor_y_at_lowest_scan", "sensor_z_at_lowest_scan", "foot_tip_elevation", "support_surface"}),
+              "color", "time", "lowest_scan_point", "sensor_x_at_lowest_scan", "sensor_y_at_lowest_scan", "sensor_z_at_lowest_scan", "foot_tip_elevation", "support_surface", "elevation_inpainted"}),
       fusedMap_({"elevation", "upper_bound", "lower_bound", "color"}),
+      supportMap_({"elevation", "elevation_inpainted"}), // New
       hasUnderlyingMap_(false),
-      visibilityCleanupDuration_(0.0)
+      visibilityCleanupDuration_(0.0),
+      filterChain_("grid_map::GridMap") // New
 {
     // Timon added foot_tip_elevation layer
   rawMap_.setBasicLayers({"elevation", "variance"});
   fusedMap_.setBasicLayers({"elevation", "upper_bound", "lower_bound"});
+  supportMap_.setBasicLayers({"elevation", "elevation_inpainted"}); // New
 
 
 
@@ -69,6 +86,8 @@ ElevationMap::ElevationMap(ros::NodeHandle nodeHandle)
 
   // TEST:
   elevationMapCorrectedPublisher_ = nodeHandle_.advertise<grid_map_msgs::GridMap>("elevation_map_drift_adjusted", 1);
+  elevationMapSupportPublisher_ = nodeHandle_.advertise<grid_map_msgs::GridMap>("support_elevation", 1);
+  elevationMapInpaintedPublisher_ = nodeHandle_.advertise<grid_map_msgs::GridMap>("elevation_inpainted", 1);
   // END TEST
 
   // testing
@@ -152,6 +171,7 @@ void ElevationMap::setGeometry(const grid_map::Length& length, const double& res
   boost::recursive_mutex::scoped_lock scopedLockForFusedData(fusedMapMutex_);
   rawMap_.setGeometry(length, resolution, position);
   fusedMap_.setGeometry(length, resolution, position);
+  supportMap_.setGeometry(length, resolution, position); // New
   ROS_INFO_STREAM("Elevation map grid resized to " << rawMap_.getSize()(0) << " rows and "  << rawMap_.getSize()(1) << " columns.");
 }
 
@@ -206,6 +226,8 @@ bool ElevationMap::add(const pcl::PointCloud<pcl::PointXYZRGB>::Ptr pointCloud, 
 
     auto& footTipElevation = rawMap_.at("foot_tip_elevation", index); // New
     auto& supportSurface = rawMap_.at("support_surface", index); // New
+    auto& elevationInpainted = rawMap_.at("elevation_inpainted", index); // New
+    auto& elevationInpaintedSupport = supportMap_.at("elevation", index); // New
 
     const float& pointVariance = pointCloudVariances(i);
     const float scanTimeSinceInitialization = (timestamp - initialTime_).toSec();
@@ -220,7 +242,9 @@ bool ElevationMap::add(const pcl::PointCloud<pcl::PointXYZRGB>::Ptr pointCloud, 
       colorVectorToValue(point.getRGBVector3i(), color);
 
       footTipElevation = 0.0; // New
-      supportSurface = 0.0;
+      supportSurface = point.z;
+      elevationInpainted = point.z;
+      elevationInpaintedSupport = point.z;
 
       continue;
     }
@@ -2140,8 +2164,14 @@ bool ElevationMap::updateSupportSurfaceEstimation(){
 
     std::cout << "Called the update function" << std::endl;
 
-    penetrationDepthContinuityPropagation();
-    terrainContinuityPropagation();
+    //penetrationDepthContinuityPropagation();
+    //terrainContinuityPropagation();
+
+
+    penetrationDepthContinuityProcessing();
+    terrainContinuityProcessing();
+
+
     footTipBasedElevationMapIncorporation();
 
 
@@ -2151,7 +2181,7 @@ bool ElevationMap::updateSupportSurfaceEstimation(){
 
 bool ElevationMap::penetrationDepthContinuityPropagation(){
 
-    double penContinuity = 0.8;
+    double penContinuity = 0.98;
 
     double factorProp = 1.0 - penContinuity; // Multiplier for values of comparison cells
     double factorComp = penContinuity; // Multiplier for values of propagation product cell
@@ -2167,7 +2197,7 @@ bool ElevationMap::penetrationDepthContinuityPropagation(){
 }
 
 bool ElevationMap::terrainContinuityPropagation(){
-    double terrContinuity = 0.85;
+    double terrContinuity = 0.75;
 
     std::cout << "What I am doing has some effect!! " << std::endl << std::endl;
 
@@ -2377,6 +2407,75 @@ void ElevationMap::setPenetrationDepthVariance(double penetrationDepthVariance){
 
 double ElevationMap::getPenetrationDepthVariance(){
     return penetrationDepthVariance_;
+}
+
+bool ElevationMap::penetrationDepthContinuityProcessing(){
+
+    grid_map::Matrix& dataSupp = rawMap_["support_surface"];
+    grid_map::Matrix& dataElev = rawMap_["elevation"];
+    grid_map::Matrix& dataFoot = rawMap_["foot_tip_elevation"];
+
+    // initialization of dataSupp.
+    if (supportSurfaceInitializationTrigger_ == false){
+        dataSupp = dataElev;
+        supportSurfaceInitializationTrigger_ = true;
+    }
+
+    rawMap_.add("vegetation_height", dataElev - dataSupp);
+
+    grid_map::Matrix dataElevInpainted; // = rawMap_["elevation"]; // HACKED
+
+    //InpaintFilter<grid_map::GridMap> input;
+
+    //grid_map::GridMapCvProcessing proc;
+
+   // grid_map::BufferNormalizerFilter<grid_map::Matrix> buffNorm;
+
+    //grid_map::GridMapCvConverter conv;
+
+    if(!filterChain_.configure("grid_map_filters", nodeHandle_)){
+        std::cout << "Could not configure the filter chain!!" << std::endl;
+        return false;
+    }
+
+    std::cout << "Filter chain configured ? " << std::endl;
+
+    //GridMap inputMap = dataElev;
+
+    GridMap inpaintedMap;
+
+    if(!filterChain_.update(rawMap_, inpaintedMap)) return false;
+
+
+    std::cout << inpaintedMap.getLayers()[0] << std::endl << std::endl << std::endl;
+
+   // rawMap_.get("elevation_inpainted") = dataElevInpainted - dataElev;
+
+
+    // Publish map
+    grid_map_msgs::GridMap mapMessage;
+    GridMapRosConverter::toMessage(inpaintedMap, mapMessage);
+    //mapMessage.info.header.frame_id = "/odom"; //! HACKED!!
+
+    //GridMapRosConverter::fromMessage(mapMessage, rawMapCorrected)
+
+    elevationMapInpaintedPublisher_.publish(mapMessage);
+
+
+    //rawMap_.add("elevation_inpainted", dataElevInpainted);
+
+    //inpaintFilter.update(dataElev, dataElevInpainted);
+
+
+    // Here gaussian smoothing..
+
+
+}
+
+bool ElevationMap::terrainContinuityProcessing(){
+
+    // Gaussian smoothing and hole filling operations..
+
 }
 
 } /* namespace */
