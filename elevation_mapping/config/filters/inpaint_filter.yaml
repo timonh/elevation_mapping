@@ -1,26 +1,28 @@
 grid_map_filters:
 
-  - name: buffer_normalizer
-    type: gridMapFilters/BufferNormalizerFilter
-
-  # # Duplicate layer.
-  # - name: duplicate
-  #   type: gridMapFilters/DuplicationFilter
-  #   params:
-  #     input_layer: ...
-  #     output_layer: ...
-
-  # Delete color layer.
-  - name: delete_original_layers
-    type: gridMapFilters/DeletionFilter
-    params:
-      layers: [color] # List of layers.
-
   # Fill holes in the map with inpainting.
   - name: inpaint
     type: gridMapCv/InpaintFilter
     params:
       input_layer: elevation
       output_layer: elevation_inpainted
-      radius: 2
+      radius: 0.05
 
+ # # Reduce noise with a radial blurring filter.
+ # - name: mean_in_radius
+ #   type: gridMapFilters/MeanInRadiusFilter
+ #   params:
+ #     input_layer: elevation_inpainted
+ #     output_layer: elevation_smooth
+ #     radius: 2.0
+
+ # # Boxblur as an alternative to the inpaint and radial blurring filter above.
+ # - name: boxblur
+ #   type: gridMapFilters/SlidingWindowMathExpressionFilter
+ #   params:
+ #     input_layer: elevation
+ #     output_layer: elevation_smooth
+ #     expression: meanOfFinites(elevation)
+ #     compute_empty_cells: true
+ #     edge_handling: mean # options: inside, crop, empty, mean
+ #     window_size: 300 # optional

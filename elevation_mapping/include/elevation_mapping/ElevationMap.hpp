@@ -581,6 +581,7 @@ class ElevationMap
   std::vector<double> verticalDifferenceVector_;
 
   filters::FilterChain<grid_map::GridMap> filterChain_;
+  std::string filterChainParametersName_;
 
 };
 

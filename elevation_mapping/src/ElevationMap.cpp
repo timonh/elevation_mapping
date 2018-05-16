@@ -67,9 +67,9 @@ namespace elevation_mapping {
 ElevationMap::ElevationMap(ros::NodeHandle nodeHandle)
     : nodeHandle_(nodeHandle),
       rawMap_({"elevation", "variance", "horizontal_variance_x", "horizontal_variance_y", "horizontal_variance_xy",
-              "color", "time", "lowest_scan_point", "sensor_x_at_lowest_scan", "sensor_y_at_lowest_scan", "sensor_z_at_lowest_scan", "foot_tip_elevation", "support_surface", "elevation_inpainted"}),
+              "color", "time", "lowest_scan_point", "sensor_x_at_lowest_scan", "sensor_y_at_lowest_scan", "sensor_z_at_lowest_scan", "foot_tip_elevation", "support_surface", "elevation_inpainted", "elevation_smooth"}),
       fusedMap_({"elevation", "upper_bound", "lower_bound", "color"}),
-      supportMap_({"elevation", "elevation_inpainted"}), // New
+      supportMap_({"elevation", "elevation_inpainted", "elevation_smooth"}), // New
       hasUnderlyingMap_(false),
       visibilityCleanupDuration_(0.0),
       filterChain_("grid_map::GridMap") // New
@@ -77,7 +77,7 @@ ElevationMap::ElevationMap(ros::NodeHandle nodeHandle)
     // Timon added foot_tip_elevation layer
   rawMap_.setBasicLayers({"elevation", "variance"});
   fusedMap_.setBasicLayers({"elevation", "upper_bound", "lower_bound"});
-  supportMap_.setBasicLayers({"elevation", "elevation_inpainted"}); // New
+  supportMap_.setBasicLayers({"elevation", "elevation_inpainted", "elevation_smooth"}); // New
 
 
 
@@ -114,6 +114,14 @@ ElevationMap::ElevationMap(ros::NodeHandle nodeHandle)
   nodeHandle_.param("kd", kd_, -0.07);
   nodeHandle_.param("weight_factor", weightingFactor_, 1.0);
   nodeHandle_.param("run_hind_leg_stance_detection", runHindLegStanceDetection_, true); // TODO: add to config file
+
+  // For filter chain.
+  nodeHandle_.param("filter_chain_parameter_name", filterChainParametersName_, std::string("/grid_map_filters"));
+  if(!filterChain_.configure(filterChainParametersName_, nodeHandle_)){
+      std::cout << "Could not configure the filter chain!!" << std::endl;
+      return;
+  }
+
   bool use_bag = true;
 
   // (New:) Foot tip position Subscriber for Foot tip - Elevation comparison
@@ -227,7 +235,12 @@ bool ElevationMap::add(const pcl::PointCloud<pcl::PointXYZRGB>::Ptr pointCloud, 
     auto& footTipElevation = rawMap_.at("foot_tip_elevation", index); // New
     auto& supportSurface = rawMap_.at("support_surface", index); // New
     auto& elevationInpainted = rawMap_.at("elevation_inpainted", index); // New
-    auto& elevationInpaintedSupport = supportMap_.at("elevation", index); // New
+    auto& elevationSmooth = rawMap_.at("elevation_smooth", index); // New
+    auto& elevationSupport = supportMap_.at("elevation", index); // New
+    auto& elevationInpaintedSupport = supportMap_.at("elevation_inpainted", index); // New
+    auto& elevationSmoothSupport = supportMap_.at("elevation_smooth", index); // New
+
+
 
     const float& pointVariance = pointCloudVariances(i);
     const float scanTimeSinceInitialization = (timestamp - initialTime_).toSec();
@@ -244,7 +257,10 @@ bool ElevationMap::add(const pcl::PointCloud<pcl::PointXYZRGB>::Ptr pointCloud, 
       footTipElevation = 0.0; // New
       supportSurface = point.z;
       elevationInpainted = point.z;
+      elevationSmooth = point.z;
+      elevationSupport = point.z;
       elevationInpaintedSupport = point.z;
+      elevationSmoothSupport = point.z;
 
       continue;
     }
@@ -2433,14 +2449,28 @@ bool ElevationMap::penetrationDepthContinuityProcessing(){
 
     //grid_map::GridMapCvConverter conv;
 
-    if(!filterChain_.configure("grid_map_filters", nodeHandle_)){
-        std::cout << "Could not configure the filter chain!!" << std::endl;
-        return false;
-    }
-
-    std::cout << "Filter chain configured ? " << std::endl;
-
     //GridMap inputMap = dataElev;
+    
+
+   // std::cout << "data Elev Size ---------: " << dataElev.rows() << "         " <<
+   //              dataElev.cols() << std::endl;
+
+
+
+   // std::cout << "Some value: " << dataElev(22,22) << std::endl;
+
+    // Testing for inpainting..
+//    for (unsigned int i = 0; i < 199; ++i){
+//        for (unsigned int j = 0; j < 199; ++j){
+//            Index temp(i,j);
+//            if (isnan(rawMap_.at("elevation", temp))) rawMap_.at("elevation", temp) = 1.0;
+//            else std::cout << "was not nan!!!" << std::endl;
+//        }
+//    }
+    // End Testing..
+
+
+    std::cout << "filterchainstring: " << filterChainParametersName_ << std::endl;
 
     GridMap inpaintedMap;
 
@@ -2448,6 +2478,7 @@ bool ElevationMap::penetrationDepthContinuityProcessing(){
 
 
     std::cout << inpaintedMap.getLayers()[0] << std::endl << std::endl << std::endl;
+    std::cout << inpaintedMap.getLayers()[2] << std::endl;
 
    // rawMap_.get("elevation_inpainted") = dataElevInpainted - dataElev;
 
