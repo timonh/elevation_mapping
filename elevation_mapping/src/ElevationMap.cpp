@@ -2478,7 +2478,7 @@ bool ElevationMap::penetrationDepthContinuityProcessing(){
 
     std::cout << "filterchainstring: " << filterChainParametersName_ << std::endl;
 
-    GridMap inpaintedMap;
+    GridMap outMap1;
 
    // Length len(4.0, 4.0);
    // Position pos(3.0, 0.0); // Hacking to test influence..
@@ -2526,24 +2526,28 @@ bool ElevationMap::penetrationDepthContinuityProcessing(){
     //std::cout << "Jow// \n";
     //if(!filterChain_.update(rawMap_, inpaintedMap)) return false;  // Check this stuff..
 
-    filterChain_.update(rawMap_, inpaintedMap);
+    filterChain_.update(rawMap_, outMap1);
     // Check the layers of the first map..
 
-    std::cout << "Layer 0: " << inpaintedMap.getLayers()[0] << " Layer 1: " << inpaintedMap.getLayers()[1] << std::endl;
-    std::cout << "No. of layers: " << inpaintedMap.getLayers().size() << std::endl;
-    std::cout << "Last Layer: " << inpaintedMap.getLayers()[inpaintedMap.getLayers().size() - 1] << std::endl;
+   // std::cout << "Layer 0: " << inpaintedMap.getLayers()[0] << " Layer 1: " << inpaintedMap.getLayers()[1] << std::endl;
+   // std::cout << "No. of layers: " << inpaintedMap.getLayers().size() << std::endl;
+   // std::cout << "Last Layer: " << inpaintedMap.getLayers()[inpaintedMap.getLayers().size() - 1] << std::endl;
 
-    rawMap_["support_surface"] = rawMap_["elevation"] - inpaintedMap["vegetation_height_smooth"];
-    //rawMap_["vegetation_height_smooth"] = inpaintedMap["vegetation_height_smooth"];
+    //rawMap_["vegetation_height_smooth"] = outMap1["vegetation_height_smooth"];
+    rawMap_["support_surface"] = rawMap_["elevation"] - outMap1["vegetation_height_smooth"];
+
 
 
   //  inpaintedMap.get("vegetation_height_smooth"]);
 
-    std::cout << "Be nonzero some time please: " <<  inpaintedMap["vegetation_height_smooth"](100,100) << std::endl;
+    GridMap outMap2;
 
-    if(!filterChain2_.update(rawMap_, inpaintedMap)) return false;  // Check this stuff..
+    if(!filterChain2_.update(rawMap_, outMap2)) return false;  // Check this stuff..
 
-    rawMap_["support_surface_smooth"] = inpaintedMap["support_surface_smooth"];
+
+    // Display the smoothed vegetation height.
+    outMap2["vegetation_height_smooth"] = outMap1["vegetation_height_smooth"];
+    //rawMap_["support_surface_smooth"] = outMap2["support_surface_smooth"];
 
   //  rawMap_["elevation_inpainted"] = inpaintedMap["elevation_inpainted"];
   //  rawMap_["elevation_smooth"] = inpaintedMap["elevation_smooth"];
@@ -2583,7 +2587,7 @@ bool ElevationMap::penetrationDepthContinuityProcessing(){
 
     // Publish map
     grid_map_msgs::GridMap mapMessage;
-    GridMapRosConverter::toMessage(inpaintedMap, mapMessage);
+    GridMapRosConverter::toMessage(outMap2, mapMessage);
     //mapMessage.info.header.frame_id = "/odom"; //! HACKED!!
 
     //GridMapRosConverter::fromMessage(mapMessage, rawMapCorrected)
