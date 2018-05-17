@@ -67,12 +67,15 @@ namespace elevation_mapping {
 ElevationMap::ElevationMap(ros::NodeHandle nodeHandle)
     : nodeHandle_(nodeHandle),
       rawMap_({"elevation", "variance", "horizontal_variance_x", "horizontal_variance_y", "horizontal_variance_xy",
-              "color", "time", "lowest_scan_point", "sensor_x_at_lowest_scan", "sensor_y_at_lowest_scan", "sensor_z_at_lowest_scan", "foot_tip_elevation", "support_surface", "elevation_inpainted", "elevation_smooth"}),
+              "color", "time", "lowest_scan_point", "sensor_x_at_lowest_scan", "sensor_y_at_lowest_scan",
+              "sensor_z_at_lowest_scan", "foot_tip_elevation", "support_surface", "elevation_inpainted", "elevation_smooth", "vegetation_height", "vegetation_height_smooth",
+              "support_surface", "support_surface_smooth"}),
       fusedMap_({"elevation", "upper_bound", "lower_bound", "color"}),
       supportMap_({"elevation", "elevation_inpainted", "elevation_smooth"}), // New
       hasUnderlyingMap_(false),
       visibilityCleanupDuration_(0.0),
-      filterChain_("grid_map::GridMap") // New
+      filterChain_("grid_map::GridMap"), // New
+      filterChain2_("grid_map::GridMap")
 {
     // Timon added foot_tip_elevation layer
   rawMap_.setBasicLayers({"elevation", "variance"});
@@ -87,17 +90,8 @@ ElevationMap::ElevationMap(ros::NodeHandle nodeHandle)
   // TEST:
   elevationMapCorrectedPublisher_ = nodeHandle_.advertise<grid_map_msgs::GridMap>("elevation_map_drift_adjusted", 1);
   elevationMapSupportPublisher_ = nodeHandle_.advertise<grid_map_msgs::GridMap>("support_elevation", 1);
-  elevationMapInpaintedPublisher_ = nodeHandle_.advertise<grid_map_msgs::GridMap>("elevation_inpainted", 1);
+  elevationMapInpaintedPublisher_ = nodeHandle_.advertise<grid_map_msgs::GridMap>("support_surface", 1);
   // END TEST
-
-  // testing
-  //rawMap_.setBasicLayers({"foot_tip_elevation"});
-  //rawMap_.add("foot_tip_elevation", 0);
-
-  // For clean start of the foot_tip_elevation layer. As it is used in the end of the first spin..
-  //rawMap_["foot_tip_elevation"].setConstant(0.0);
-  //"variance"
-  // testing
 
   elevationMapRawPublisher_ = nodeHandle_.advertise<grid_map_msgs::GridMap>("elevation_map_raw", 1);
   elevationMapFusedPublisher_ = nodeHandle_.advertise<grid_map_msgs::GridMap>("elevation_map", 1);
@@ -116,8 +110,13 @@ ElevationMap::ElevationMap(ros::NodeHandle nodeHandle)
   nodeHandle_.param("run_hind_leg_stance_detection", runHindLegStanceDetection_, true); // TODO: add to config file
 
   // For filter chain.
-  nodeHandle_.param("filter_chain_parameter_name", filterChainParametersName_, std::string("/grid_map_filters"));
-  if(!filterChain_.configure(filterChainParametersName_, nodeHandle_)){
+  nodeHandle_.param("filter_chain_parameter_name", filterChainParametersName_, std::string("/grid_map_filter_chain_one"));
+  if(!filterChain_.configure("/grid_map_filter_chain_one", nodeHandle_)){
+      std::cout << "Could not configure the filter chain!!" << std::endl;
+      return;
+  }
+  if(!filterChain2_.configure("/grid_map_filter_chain_two", nodeHandle_)){
+      std::cout << "INBETWEEN Prob" << std::endl;
       std::cout << "Could not configure the filter chain!!" << std::endl;
       return;
   }
@@ -233,13 +232,15 @@ bool ElevationMap::add(const pcl::PointCloud<pcl::PointXYZRGB>::Ptr pointCloud, 
     auto& sensorZatLowestScan = rawMap_.at("sensor_z_at_lowest_scan", index);
 
     auto& footTipElevation = rawMap_.at("foot_tip_elevation", index); // New
-    auto& supportSurface = rawMap_.at("support_surface", index); // New
     auto& elevationInpainted = rawMap_.at("elevation_inpainted", index); // New
     auto& elevationSmooth = rawMap_.at("elevation_smooth", index); // New
     auto& elevationSupport = supportMap_.at("elevation", index); // New
     auto& elevationInpaintedSupport = supportMap_.at("elevation_inpainted", index); // New
     auto& elevationSmoothSupport = supportMap_.at("elevation_smooth", index); // New
-
+    auto& vegetationHeight = rawMap_.at("vegetation_height", index); // New
+    auto& vegetationHeightSmooth = rawMap_.at("vegetation_height_smooth", index); // New
+    auto& supportSurface = rawMap_.at("support_surface", index); // New
+    auto& supportSurfaceSmooth = rawMap_.at("support_surface_smooth", index); // New
 
 
     const float& pointVariance = pointCloudVariances(i);
@@ -255,12 +256,15 @@ bool ElevationMap::add(const pcl::PointCloud<pcl::PointXYZRGB>::Ptr pointCloud, 
       colorVectorToValue(point.getRGBVector3i(), color);
 
       footTipElevation = 0.0; // New
-      supportSurface = point.z;
       elevationInpainted = point.z;
       elevationSmooth = point.z;
       elevationSupport = point.z;
       elevationInpaintedSupport = point.z;
       elevationSmoothSupport = point.z;
+      supportSurface = point.z;
+      supportSurfaceSmooth = point.z;
+      vegetationHeight = 0.0;
+      vegetationHeightSmooth = point.z;
 
       continue;
     }
@@ -2432,14 +2436,16 @@ bool ElevationMap::penetrationDepthContinuityProcessing(){
     grid_map::Matrix& dataFoot = rawMap_["foot_tip_elevation"];
 
     // initialization of dataSupp.
-    if (supportSurfaceInitializationTrigger_ == false){
-        dataSupp = dataElev;
-        supportSurfaceInitializationTrigger_ = true;
-    }
+    //if (supportSurfaceInitializationTrigger_ == false){
+    //    dataSupp = dataElev;
+    //    supportSurfaceInitializationTrigger_ = true;
+    //}
 
-    rawMap_.add("vegetation_height", dataElev - dataSupp);
 
-    grid_map::Matrix dataElevInpainted; // = rawMap_["elevation"]; // HACKED
+
+
+
+    //grid_map::Matrix dataElevInpainted; // = rawMap_["elevation"]; // HACKED
 
     //InpaintFilter<grid_map::GridMap> input;
 
@@ -2474,11 +2480,103 @@ bool ElevationMap::penetrationDepthContinuityProcessing(){
 
     GridMap inpaintedMap;
 
-    if(!filterChain_.update(rawMap_, inpaintedMap)) return false;
+   // Length len(4.0, 4.0);
+   // Position pos(3.0, 0.0); // Hacking to test influence..
+
+   // inpaintedMap.setGeometry(len, 0.02, pos);
 
 
-    std::cout << inpaintedMap.getLayers()[0] << std::endl << std::endl << std::endl;
-    std::cout << inpaintedMap.getLayers()[2] << std::endl;
+
+
+   // rawMap_.g
+    // Logics: vegetation height -> vegetation height smoothed -> support surf -> support surf smoothed..
+
+
+
+
+
+
+    //inpaintedMap.setStartIndex(rawMap_.getStartIndex()); // Tests..
+
+   // Position rawMapStartIndexPosition;
+   // rawMap_.getPosition(rawMap_.getStartIndex(), rawMapStartIndexPosition);
+
+   // inpaintedMap.move(rawMapStartIndexPosition);
+
+   // rawMap_.getP
+
+//    inpaintedMap.setGeometry(); // Todo..
+
+
+
+    //inpaintedMap = rawMap_;  // Hacked, trying to solve the index issue..
+
+   // inpaintedMap.setGeometry(rawMap_.g);
+
+    //inpaintedMap = rawMap_; // Testing ..
+
+    //inpaintedMap.setStartIndex(rawMap_.getStartIndex());
+
+   // inpaintedMap.move(rawMap_.getPosition());
+
+
+    rawMap_["vegetation_height"] = rawMap_["elevation"] - rawMap_["support_surface_smooth"];
+
+
+    //std::cout << "Jow// \n";
+    //if(!filterChain_.update(rawMap_, inpaintedMap)) return false;  // Check this stuff..
+
+    filterChain_.update(rawMap_, inpaintedMap);
+    // Check the layers of the first map..
+
+    std::cout << "Layer 0: " << inpaintedMap.getLayers()[0] << " Layer 1: " << inpaintedMap.getLayers()[1] << std::endl;
+    std::cout << "No. of layers: " << inpaintedMap.getLayers().size() << std::endl;
+    std::cout << "Last Layer: " << inpaintedMap.getLayers()[inpaintedMap.getLayers().size() - 1] << std::endl;
+
+    rawMap_["support_surface"] = rawMap_["elevation"] - inpaintedMap["vegetation_height_smooth"];
+    //rawMap_["vegetation_height_smooth"] = inpaintedMap["vegetation_height_smooth"];
+
+
+  //  inpaintedMap.get("vegetation_height_smooth"]);
+
+    std::cout << "Be nonzero some time please: " <<  inpaintedMap["vegetation_height_smooth"](100,100) << std::endl;
+
+    if(!filterChain2_.update(rawMap_, inpaintedMap)) return false;  // Check this stuff..
+
+    rawMap_["support_surface_smooth"] = inpaintedMap["support_surface_smooth"];
+
+  //  rawMap_["elevation_inpainted"] = inpaintedMap["elevation_inpainted"];
+  //  rawMap_["elevation_smooth"] = inpaintedMap["elevation_smooth"];
+
+  //  Eigen::Vector3f meanStance= getMeanStance();
+
+  //  Position posCheck(meanStance(0), meanStance(1));
+
+  //  Index indRaw;
+  //  Index indInp;
+
+  //  rawMap_.getIndex(posCheck,indRaw);
+  //  inpaintedMap.getIndex(posCheck,indInp);
+
+  //  std::cout << "Ind rawMap_: " << indRaw(0) << " " << indRaw(1) << std::endl;
+  //  std::cout << "Ind rawMap_: " << indInp(0) << " " << indInp(1) << std::endl;
+
+
+    // inpaintedMap.move(rawMap_.getPosition());
+
+    //grid_map::Matrix& dataElev2 = rawMap_.get("elevation");
+    //grid_map::Matrix dataElevSmoothedInpainted;
+
+    //if(!filterChain2_.update(dataElev2, dataElevSmoothedInpainted));
+
+    //inpaintedMap["elevation_smooth"] = dataElevSmoothedInpainted;
+
+
+    // TODO: discriminate filled in
+
+
+   // std::cout << inpaintedMap.getLayers()[0] << std::endl << std::endl << std::endl;
+  //  std::cout << inpaintedMap.getLayers()[2] << std::endl;
 
    // rawMap_.get("elevation_inpainted") = dataElevInpainted - dataElev;
 
@@ -2491,6 +2589,7 @@ bool ElevationMap::penetrationDepthContinuityProcessing(){
     //GridMapRosConverter::fromMessage(mapMessage, rawMapCorrected)
 
     elevationMapInpaintedPublisher_.publish(mapMessage);
+
 
 
     //rawMap_.add("elevation_inpainted", dataElevInpainted);

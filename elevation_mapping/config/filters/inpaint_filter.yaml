@@ -1,12 +1,12 @@
-grid_map_filters:
+grid_map_filter_chain_one:
 
-  # Fill holes in the map with inpainting.
-  - name: inpaint
-    type: gridMapCv/InpaintFilter
-    params:
-      input_layer: elevation
-      output_layer: elevation_inpainted
-      radius: 0.05
+#  # Fill holes in the map with inpainting.
+ # - name: inpaint
+ #   type: gridMapCv/InpaintFilter
+ #   params:
+ #     input_layer: elevation
+ #     output_layer: elevation_inpainted
+ #     radius: 0.05
 
  # # Reduce noise with a radial blurring filter.
  # - name: mean_in_radius
@@ -14,7 +14,7 @@ grid_map_filters:
  #   params:
  #     input_layer: elevation_inpainted
  #     output_layer: elevation_smooth
- #     radius: 2.0
+ #     radius: 0.06
 
  # # Boxblur as an alternative to the inpaint and radial blurring filter above.
  # - name: boxblur
@@ -24,5 +24,27 @@ grid_map_filters:
  #     output_layer: elevation_smooth
  #     expression: meanOfFinites(elevation)
  #     compute_empty_cells: true
- #     edge_handling: mean # options: inside, crop, empty, mean
+ #     edge_handling: empty # options: inside, crop, empty, mean
  #     window_size: 300 # optional
+
+
+ # Actual Chain from here:
+
+ # # Reduce noise with a radial blurring filter.
+  - name: mean_in_radius
+    type: gridMapFilters/MeanInRadiusFilter
+    params:
+      input_layer: vegetation_height
+      output_layer: vegetation_height_smooth
+      radius: 0.01
+
+
+grid_map_filter_chain_two:
+
+ # # Reduce noise with a radial blurring filter.
+  - name: mean_in_radius2
+    type: gridMapFilters/MeanInRadiusFilter
+    params:
+      input_layer: support_surface
+      output_layer: support_surface_smooth
+      radius: 0.05
