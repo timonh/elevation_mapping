@@ -1213,7 +1213,7 @@ bool ElevationMap::publishAveragedFootTipPositionMarkers(bool hind)
     int numberOfConsideredFootTips = 4;
 
     //! HACKED AWAY, no foot tip layer updates now!!
-    updateFootTipBasedElevationMapLayer(numberOfConsideredFootTips);
+    //updateFootTipBasedElevationMapLayer(numberOfConsideredFootTips);
 
     return true;
 }
@@ -2431,6 +2431,10 @@ bool ElevationMap::penetrationDepthContinuityProcessing(){
     grid_map::Matrix& dataSupp = rawMap_["support_surface"];
     grid_map::Matrix& dataElev = rawMap_["elevation"];
     grid_map::Matrix& dataFoot = rawMap_["foot_tip_elevation"];
+    grid_map::Matrix& dataVegHeight = rawMap_["vegetation_height"];
+    grid_map::Matrix& dataSupSurf = rawMap_["support_surface"];
+    grid_map::Matrix& dataSupSurfSmooth = rawMap_["support_surface_smooth"];
+
 
     // initialization of dataSupp.
     //if (supportSurfaceInitializationTrigger_ == false){
@@ -2453,7 +2457,7 @@ bool ElevationMap::penetrationDepthContinuityProcessing(){
     //grid_map::GridMapCvConverter conv;
 
     //GridMap inputMap = dataElev;
-    
+
 
    // std::cout << "data Elev Size ---------: " << dataElev.rows() << "         " <<
    //              dataElev.cols() << std::endl;
@@ -2517,11 +2521,13 @@ bool ElevationMap::penetrationDepthContinuityProcessing(){
    // inpaintedMap.move(rawMap_.getPosition());
 
 
-    rawMap_["vegetation_height"] = rawMap_["elevation"] - rawMap_["support_surface_smooth"];
+    dataVegHeight = dataElev - dataSupSurfSmooth;
 
 
     //std::cout << "Jow// \n";
     //if(!filterChain_.update(rawMap_, inpaintedMap)) return false;  // Check this stuff..
+
+    rawMap_["vegetation_height"] = dataVegHeight;
 
     filterChain_.update(rawMap_, outMap1);
     // Check the layers of the first map..
@@ -2531,10 +2537,15 @@ bool ElevationMap::penetrationDepthContinuityProcessing(){
    // std::cout << "Last Layer: " << inpaintedMap.getLayers()[inpaintedMap.getLayers().size() - 1] << std::endl;
 
     //rawMap_["vegetation_height_smooth"] = outMap1["vegetation_height_smooth"];
-    rawMap_["support_surface"] = rawMap_["elevation"] - outMap1["vegetation_height_smooth"];
+
+
+    grid_map::Matrix& dataVegHeightSmooth = outMap1["vegetation_height_smooth"];
+    dataSupSurf = dataElev - dataVegHeightSmooth;
+    //rawMap_["support_surface"] = rawMap_["elevation"] - outMap1["vegetation_height_smooth"];
 
 
 
+    rawMap_["support_surface"] = dataSupSurf;
   //  inpaintedMap.get("vegetation_height_smooth"]);
 
     GridMap outMap2;
@@ -2543,10 +2554,12 @@ bool ElevationMap::penetrationDepthContinuityProcessing(){
 
 
     // Display the smoothed vegetation height.
-    outMap2["vegetation_height_smooth"] = outMap1["vegetation_height_smooth"];
+    outMap2["vegetation_height_smooth"] = dataVegHeightSmooth;
+
 
 
     // Simple foot tip embedding (soon transfer to function..)
+    double radius = 0.12; // Maximum search radius for spiralling search in order to find the closest map element in case if nan is present..
     Position3 footTipLeft = getFrontLeftFootTipPosition();
     Position3 footTipRight = getFrontRightFootTipPosition();
     Position leftTipHorizontal(footTipLeft(0), footTipLeft(1));
@@ -2556,11 +2569,15 @@ bool ElevationMap::penetrationDepthContinuityProcessing(){
         if (!isnan(outMap2.atPosition("support_surface_smooth", leftTipHorizontal))){
             verticalDiffLeft = footTipLeft(2) - outMap2.atPosition("support_surface_smooth", leftTipHorizontal);
         }
-        else verticalDiffLeft = 0.0;
+        //else verticalDiffLeft = getClosestMapValueUsingSpiralIterator(outMap2, leftTipHorizontal, radius); // New experiment..
+        verticalDiffLeft = 0.0;
         if (!isnan(outMap2.atPosition("support_surface_smooth", rightTipHorizontal))){
             verticalDiffRight = footTipRight(2) - outMap2.atPosition("support_surface_smooth", rightTipHorizontal);
         }
-        else verticalDiffRight = 0.0; // TODO: check what to do in such a case.. (search a small circular radius)
+        //else verticalDiffRight = 0.0; // TODO: check what to do in such a case.. (search a small circular radius)
+        // Idea: check circular grid map iterator for first entry.. Spiral!!!!
+        //else verticalDiffRight = getClosestMapValueUsingSpiralIterator(outMap2, rightTipHorizontal, radius); // New Experiment..
+        else verticalDiffRight = 0.0;
     }
     else verticalDiffRight = verticalDiffLeft = 0.0;
 
@@ -2570,8 +2587,10 @@ bool ElevationMap::penetrationDepthContinuityProcessing(){
 
     outMap2.add("additional_layer");
     outMap2["additional_layer"].setConstant(meanDiffEmbedding);
+    grid_map::Matrix& dataOutputSupSurfSmooth = outMap2["support_surface_smooth"];
+    grid_map::Matrix& dataOutputMapAdd = outMap2["additional_layer"];
 
-    outMap2["support_surface_smooth"] = outMap2["additional_layer"] + outMap2["support_surface_smooth"];
+    outMap2["support_surface_smooth"] = dataOutputMapAdd + dataOutputSupSurfSmooth;
 
     //footTipEmbeddingSimple();
 
@@ -2666,6 +2685,18 @@ Position3 ElevationMap::getFrontLeftFootTipPosition(){
 Position3 ElevationMap::getFrontRightFootTipPosition(){
     Position3 tipPos(frontRightFootTip_(0), frontRightFootTip_(1), frontRightFootTip_(2));
     return tipPos;
+}
+
+double ElevationMap::getClosestMapValueUsingSpiralIterator(grid_map::GridMap& rawMapReference, Position footTip, double radius){
+    for (grid_map::SpiralIterator iterator(rawMapReference, footTip, radius);
+              !iterator.isPastEnd(); ++iterator) {
+        Index index(*iterator);
+        if (!isnan(rawMapReference.at("support_surface_smooth", index))){
+            std::cout << "Found an isnan not ---------------------------------------------------------------------------------------" << std::endl;
+            return rawMapReference.at("support_surface_smooth", index);
+        }
+    }
+    return 0.0;
 }
 
 
