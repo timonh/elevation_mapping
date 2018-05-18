@@ -36,7 +36,7 @@ grid_map_filter_chain_one:
     params:
       input_layer: vegetation_height
       output_layer: vegetation_height_smooth
-      radius: 0.04
+      radius: 0.02
 
 
 grid_map_filter_chain_two:
@@ -47,4 +47,4 @@ grid_map_filter_chain_two:
     params:
       input_layer: support_surface
       output_layer: support_surface_smooth
-      radius: 0.05
+      radius: 0.1

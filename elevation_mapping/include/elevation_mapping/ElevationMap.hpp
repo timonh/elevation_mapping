@@ -418,6 +418,14 @@ class ElevationMap
   //! TODO: Description:
   bool terrainContinuityProcessing();
 
+  //! TODO: Description:
+  bool footTipEmbeddingSimple();
+
+  //! TODO: Description:
+  grid_map::Position3 getFrontLeftFootTipPosition();
+
+  //! TODO: Description:
+  grid_map::Position3 getFrontRightFootTipPosition();
 
 
   //! ROS nodehandle.
@@ -583,6 +591,9 @@ class ElevationMap
   filters::FilterChain<grid_map::GridMap> filterChain_;
   filters::FilterChain<grid_map::GridMap> filterChain2_;
   std::string filterChainParametersName_;
+
+  // storage of front left foottip position for simple foot tip embedding.
+  Eigen::Vector3f frontLeftFootTip_, frontRightFootTip_;
 
 };
 

@@ -1021,8 +1021,6 @@ bool ElevationMap::templateMatchingForStanceDetection(std::string tip, std::vect
             stateVector.end()[-11]+stateVector.end()[-12]+ stateVector.end()[-13]+
             stateVector.end()[-14]+stateVector.end()[-15] >=1){
 
-        std::cout << "LLLLLLLLLLLLLLLLLLLLLLLLLL: " << tip << std::endl;
-
         if(tip == "left" && isInStanceLeft_){
             if(!processStance("left")) return false;
             isInStanceLeft_ = 0;
@@ -1038,14 +1036,8 @@ bool ElevationMap::templateMatchingForStanceDetection(std::string tip, std::vect
             isInStanceRight_ = 0;
             processStanceTriggerRight_.clear();
         }
-        std::cout << "CHECK THE RIGHT HIND BOOL MUST BE ONE: " << isInStanceRightHind_ << std::endl;
         if(tip == "righthind" && isInStanceRightHind_){
-            std::cout << "succi" << std::endl;
-            if(!processStance("righthind")){
-                std::cout << " -> this is the success!!" << std::endl;
-                return false;
-                std::cout << " -> this is the success!!!!!!!" << std::endl;
-            }
+            if(!processStance("righthind")) return false;
             isInStanceRightHind_ = 0;
             processStanceTriggerRightHind_.clear();
         }
@@ -1150,6 +1142,11 @@ bool ElevationMap::getAverageFootTipPositions(std::string tip)
         }
         meanStance_ = totalStance / float(stance.size());
     }
+
+    // Save the front mean tip positions for simple foot tip embedding into high grass detection
+    if (tip == "left") frontLeftFootTip_ = meanStance_;
+    if (tip == "right") frontRightFootTip_ = meanStance_;
+
 
     return true;
 }
@@ -2547,6 +2544,38 @@ bool ElevationMap::penetrationDepthContinuityProcessing(){
 
     // Display the smoothed vegetation height.
     outMap2["vegetation_height_smooth"] = outMap1["vegetation_height_smooth"];
+
+
+    // Simple foot tip embedding (soon transfer to function..)
+    Position3 footTipLeft = getFrontLeftFootTipPosition();
+    Position3 footTipRight = getFrontRightFootTipPosition();
+    Position leftTipHorizontal(footTipLeft(0), footTipLeft(1));
+    Position rightTipHorizontal(footTipRight(0), footTipRight(1));
+    double verticalDiffLeft, verticalDiffRight;
+    if(outMap2.isInside(leftTipHorizontal) && outMap2.isInside(rightTipHorizontal)){
+        if (!isnan(outMap2.atPosition("support_surface_smooth", leftTipHorizontal))){
+            verticalDiffLeft = footTipLeft(2) - outMap2.atPosition("support_surface_smooth", leftTipHorizontal);
+        }
+        else verticalDiffLeft = 0.0;
+        if (!isnan(outMap2.atPosition("support_surface_smooth", rightTipHorizontal))){
+            verticalDiffRight = footTipRight(2) - outMap2.atPosition("support_surface_smooth", rightTipHorizontal);
+        }
+        else verticalDiffRight = 0.0; // TODO: check what to do in such a case.. (search a small circular radius)
+    }
+    else verticalDiffRight = verticalDiffLeft = 0.0;
+
+    double meanDiffEmbedding = (verticalDiffLeft + verticalDiffRight) / 2;
+
+    std::cout << "Mean Diff Embedding: " << meanDiffEmbedding << std::endl;
+
+    outMap2.add("additional_layer");
+    outMap2["additional_layer"].setConstant(meanDiffEmbedding);
+
+    outMap2["support_surface_smooth"] = outMap2["additional_layer"] + outMap2["support_surface_smooth"];
+
+    //footTipEmbeddingSimple();
+
+
     //rawMap_["support_surface_smooth"] = outMap2["support_surface_smooth"];
 
   //  rawMap_["elevation_inpainted"] = inpaintedMap["elevation_inpainted"];
@@ -2611,5 +2640,34 @@ bool ElevationMap::terrainContinuityProcessing(){
     // Gaussian smoothing and hole filling operations..
 
 }
+
+//bool ElevationMAp::comparisonFootTipLayer(){
+//    Position center(0.0, -0.15);
+//     double radius = 0.4;
+//
+//      for (grid_map::CircleIterator iterator(map_, center, radius);
+//          !iterator.isPastEnd(); ++iterator) {
+//        map_.at("type", *iterator) = 1.0;
+//        publish();
+//        ros::Duration duration(0.02);
+//        duration.sleep();
+//      }
+//}
+
+bool ElevationMap::footTipEmbeddingSimple(){
+
+}
+
+Position3 ElevationMap::getFrontLeftFootTipPosition(){
+    Position3 tipPos(frontLeftFootTip_(0), frontLeftFootTip_(1), frontLeftFootTip_(2));
+    return tipPos;
+}
+
+Position3 ElevationMap::getFrontRightFootTipPosition(){
+    Position3 tipPos(frontRightFootTip_(0), frontRightFootTip_(1), frontRightFootTip_(2));
+    return tipPos;
+}
+
+
 
 } /* namespace */
