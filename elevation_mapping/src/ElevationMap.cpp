@@ -69,7 +69,7 @@ ElevationMap::ElevationMap(ros::NodeHandle nodeHandle)
       rawMap_({"elevation", "variance", "horizontal_variance_x", "horizontal_variance_y", "horizontal_variance_xy",
               "color", "time", "lowest_scan_point", "sensor_x_at_lowest_scan", "sensor_y_at_lowest_scan",
               "sensor_z_at_lowest_scan", "foot_tip_elevation", "support_surface", "elevation_inpainted", "elevation_smooth", "vegetation_height", "vegetation_height_smooth",
-              "support_surface", "support_surface_smooth"}),
+              "support_surface", "support_surface_smooth", "support_surface_smooth_inpainted"}),
       fusedMap_({"elevation", "upper_bound", "lower_bound", "color"}),
       supportMap_({"elevation", "elevation_inpainted", "elevation_smooth"}), // New
       hasUnderlyingMap_(false),
@@ -2559,7 +2559,7 @@ bool ElevationMap::penetrationDepthContinuityProcessing(){
 
 
     // Simple foot tip embedding (soon transfer to function..)
-    double radius = 0.12; // Maximum search radius for spiralling search in order to find the closest map element in case if nan is present..
+    double radius = 0.1; // Maximum search radius for spiralling search in order to find the closest map element in case if nan is present..
     Position3 footTipLeft = getFrontLeftFootTipPosition();
     Position3 footTipRight = getFrontRightFootTipPosition();
     Position leftTipHorizontal(footTipLeft(0), footTipLeft(1));
@@ -2569,19 +2569,19 @@ bool ElevationMap::penetrationDepthContinuityProcessing(){
         if (!isnan(outMap2.atPosition("support_surface_smooth", leftTipHorizontal))){
             verticalDiffLeft = footTipLeft(2) - outMap2.atPosition("support_surface_smooth", leftTipHorizontal);
         }
-        //else verticalDiffLeft = getClosestMapValueUsingSpiralIterator(outMap2, leftTipHorizontal, radius); // New experiment..
-        verticalDiffLeft = 0.0;
+        else verticalDiffLeft = getClosestMapValueUsingSpiralIterator(outMap2, leftTipHorizontal, radius, footTipLeft(2)); // New experiment.. Wrong, not difference yet!!!
+       // else verticalDiffLeft = 0.0;
         if (!isnan(outMap2.atPosition("support_surface_smooth", rightTipHorizontal))){
             verticalDiffRight = footTipRight(2) - outMap2.atPosition("support_surface_smooth", rightTipHorizontal);
         }
         //else verticalDiffRight = 0.0; // TODO: check what to do in such a case.. (search a small circular radius)
         // Idea: check circular grid map iterator for first entry.. Spiral!!!!
-        //else verticalDiffRight = getClosestMapValueUsingSpiralIterator(outMap2, rightTipHorizontal, radius); // New Experiment..
-        else verticalDiffRight = 0.0;
+        else verticalDiffRight = getClosestMapValueUsingSpiralIterator(outMap2, rightTipHorizontal, radius, footTipRight(2)); // New Experiment..
+        //else verticalDiffRight = 0.0;
     }
     else verticalDiffRight = verticalDiffLeft = 0.0;
 
-    double meanDiffEmbedding = (verticalDiffLeft + verticalDiffRight) / 2;
+    double meanDiffEmbedding = (verticalDiffLeft + verticalDiffRight) / 2.0;
 
     std::cout << "Mean Diff Embedding: " << meanDiffEmbedding << std::endl;
 
@@ -2687,15 +2687,27 @@ Position3 ElevationMap::getFrontRightFootTipPosition(){
     return tipPos;
 }
 
-double ElevationMap::getClosestMapValueUsingSpiralIterator(grid_map::GridMap& rawMapReference, Position footTip, double radius){
-    for (grid_map::SpiralIterator iterator(rawMapReference, footTip, radius);
-              !iterator.isPastEnd(); ++iterator) {
+double ElevationMap::getClosestMapValueUsingSpiralIterator(grid_map::GridMap& MapReference, Position footTip, double radius, double tipHeight){
+    int counter = 0;
+    for (grid_map::SpiralIterator iterator(MapReference, footTip, radius);
+         !iterator.isPastEnd(); ++iterator) {   // Hacked to is inside..
         Index index(*iterator);
-        if (!isnan(rawMapReference.at("support_surface_smooth", index))){
+        std::cout << "Index 0: " << index(0) << " index 1: " << index(1) << std::endl;
+        Position pos;
+        MapReference.getPosition(index, pos);
+        std::cout << "Check.." << std::endl;
+        //if (MapReference.isValid(index)) std::cout << "It is valid" << std::endl;
+        //else std::cout << "It is not valid" << std::endl;
+        if (MapReference.isInside(pos) && !isnan(MapReference.at("support_surface_smooth", index)) && MapReference.isValid(index)){
             std::cout << "Found an isnan not ---------------------------------------------------------------------------------------" << std::endl;
-            return rawMapReference.at("support_surface_smooth", index);
+            return tipHeight - MapReference.at("support_surface_smooth", index); // && MapReference.isValid(index)
         }
+        std::cout << "got here" << std::endl;
+        counter++;
+        if (counter > 14) break;
     }
+    std::cout << " \n \n \n \n \n " << std::endl;
+    std::cout << "BEEN HERE< !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!" << std::endl;
     return 0.0;
 }
 

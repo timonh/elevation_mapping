@@ -36,7 +36,7 @@ grid_map_filter_chain_one:
     params:
       input_layer: vegetation_height
       output_layer: vegetation_height_smooth
-      radius: 0.03
+      radius: 0.01
 
 
 grid_map_filter_chain_two:
@@ -48,3 +48,11 @@ grid_map_filter_chain_two:
       input_layer: support_surface
       output_layer: support_surface_smooth
       radius: 0.03
+
+#  # Fill holes in the map with inpainting.
+  - name: inpaint
+    type: gridMapCv/InpaintFilter
+    params:
+      input_layer: support_surface_smooth
+      output_layer: support_surface_smooth_inpainted
+      radius: 0.01

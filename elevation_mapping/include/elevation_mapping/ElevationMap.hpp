@@ -428,7 +428,7 @@ class ElevationMap
   grid_map::Position3 getFrontRightFootTipPosition();
 
   //! TODO: Description:
-  double getClosestMapValueUsingSpiralIterator(grid_map::GridMap& rawMapReference, grid_map::Position footTip, double radius);
+  double getClosestMapValueUsingSpiralIterator(grid_map::GridMap& MapReference, grid_map::Position footTip, double radius, double tipHeight);
 
 
 
