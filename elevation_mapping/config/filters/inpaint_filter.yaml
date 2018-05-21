@@ -55,4 +55,4 @@ grid_map_filter_chain_two:
     params:
       input_layer: support_surface_smooth
       output_layer: support_surface_smooth_inpainted
-      radius: 0.01
+      radius: 0.03

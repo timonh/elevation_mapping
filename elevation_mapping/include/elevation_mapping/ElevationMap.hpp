@@ -430,8 +430,10 @@ class ElevationMap
   //! TODO: Description:
   double getClosestMapValueUsingSpiralIterator(grid_map::GridMap& MapReference, grid_map::Position footTip, double radius, double tipHeight);
 
+  //! The Elevation map is an upper bound to the support surface
+  bool supportSurfaceUpperBounding(grid_map::GridMap& upperBoundMap, grid_map::GridMap& supportSurfaceMap);
 
-
+  bool gaussianProcessModeling();
 
 
 

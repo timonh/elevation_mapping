@@ -2594,6 +2594,7 @@ bool ElevationMap::penetrationDepthContinuityProcessing(){
 
     //footTipEmbeddingSimple();
 
+    supportSurfaceUpperBounding(rawMap_, outMap2);
 
     //rawMap_["support_surface_smooth"] = outMap2["support_surface_smooth"];
 
@@ -2704,13 +2705,25 @@ double ElevationMap::getClosestMapValueUsingSpiralIterator(grid_map::GridMap& Ma
         }
         std::cout << "got here" << std::endl;
         counter++;
-        if (counter > 14) break;
+        if (counter > 28) break;
     }
     std::cout << " \n \n \n \n \n " << std::endl;
     std::cout << "BEEN HERE< !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!" << std::endl;
     return 0.0;
 }
 
+bool ElevationMap::supportSurfaceUpperBounding(GridMap& upperBoundMap, GridMap& supportSurfaceMap){
 
+    Matrix& dataUpper = upperBoundMap["elevation"];
+    Matrix& dataSup = supportSurfaceMap["support_surface_smooth"];
+
+    supportSurfaceMap["support_surface_smooth"] = dataUpper.cwiseMin(dataSup);
+
+    return true;
+}
+
+bool ElevationMap::gaussianProcessModeling(){
+
+}
 
 } /* namespace */
