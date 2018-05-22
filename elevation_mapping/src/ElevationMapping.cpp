@@ -296,10 +296,6 @@ void ElevationMapping::pointCloudCallback(
     return;
   }
 
-  // Debug
- // std::cout << "Spat Var::: " << spatialVariances << std::endl;
-  // End Debug
-
   // Add point cloud to elevation map.
   if (!map_.add(pointCloudProcessed, measurementVariances, spatialVariances, lastPointCloudUpdateTime_, Eigen::Affine3d(sensorProcessor_->transformationSensorToMap_))) {
     ROS_ERROR("Adding point cloud to elevation map failed.");
@@ -307,8 +303,6 @@ void ElevationMapping::pointCloudCallback(
     return;
   }
 
-  // DEBUG:
-  std::cout << "Elevation Mapping Checkpoint 0" << std::endl;
 
 
   // Publish elevation map.
@@ -318,30 +312,8 @@ void ElevationMapping::pointCloudCallback(
     map_.publishFusedElevationMap();
   }
 
-
-  // DEBUG:
-  std::cout << "Elevation Mapping Checkpoint" << std::endl;
-  // New ***********************************************************************************************
-  // Publish Variance PointCloud
-  //std::cout << "Here I am" << std::endl;
-  //std::cout << "Preliminary: " << spatialVariances[4] << std::endl;
-
-
-
-  // TODO: Check the way to transfer pointer..
-  //if (!map_.publishSpatialVariancePointCloud(spatialVariances)){
-  //   ROS_ERROR("Couldn't claculate spatial Variances");
-  //   return;
-  //}
-  // End New ********************************************************************************************
-
-
-
-
   resetMapUpdateTimer();
 
-  // DEBUG:
-  std::cout << "Elevation Mapping Checkpoint" << std::endl;
 }
 
 void ElevationMapping::mapUpdateTimerCallback(const ros::TimerEvent&)
@@ -366,9 +338,6 @@ void ElevationMapping::mapUpdateTimerCallback(const ros::TimerEvent&)
     map_.fuseAll();
     map_.publishFusedElevationMap();
   }
-
-  // DEBUG:
-  std::cout << "THE MAP UPDATE TIMER WAS THE LAST THING" << std::endl;
 
   resetMapUpdateTimer();
 }

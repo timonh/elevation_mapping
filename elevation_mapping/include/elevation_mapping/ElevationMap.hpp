@@ -433,7 +433,19 @@ class ElevationMap
   //! The Elevation map is an upper bound to the support surface
   bool supportSurfaceUpperBounding(grid_map::GridMap& upperBoundMap, grid_map::GridMap& supportSurfaceMap);
 
+  //!TODO: Description:
+  bool addSupportSurface(grid_map::Matrix& supSmooth, grid_map::Matrix& supAdded);
+
+  //!TODO: Description:
   bool gaussianProcessModeling();
+
+  //!TODO: Description:
+  bool setFootprint(const geometry_msgs::Transform& footprint);
+
+  //!TODO: Description:
+  geometry_msgs::Transform getFootprint();
+
+
 
 
 
@@ -603,6 +615,9 @@ class ElevationMap
 
   // storage of front left foottip position for simple foot tip embedding.
   Eigen::Vector3f frontLeftFootTip_, frontRightFootTip_;
+
+  // Footprint storage in class member:
+  geometry_msgs::Transform footprint_;
 
 };
 

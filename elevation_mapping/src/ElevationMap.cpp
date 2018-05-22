@@ -69,7 +69,7 @@ ElevationMap::ElevationMap(ros::NodeHandle nodeHandle)
       rawMap_({"elevation", "variance", "horizontal_variance_x", "horizontal_variance_y", "horizontal_variance_xy",
               "color", "time", "lowest_scan_point", "sensor_x_at_lowest_scan", "sensor_y_at_lowest_scan",
               "sensor_z_at_lowest_scan", "foot_tip_elevation", "support_surface", "elevation_inpainted", "elevation_smooth", "vegetation_height", "vegetation_height_smooth",
-              "support_surface", "support_surface_smooth", "support_surface_smooth_inpainted"}),
+              "support_surface", "support_surface_smooth"}),//, "support_surface_smooth_inpainted", "support_surface_added"}),
       fusedMap_({"elevation", "upper_bound", "lower_bound", "color"}),
       supportMap_({"elevation", "elevation_inpainted", "elevation_smooth"}), // New
       hasUnderlyingMap_(false),
@@ -241,6 +241,7 @@ bool ElevationMap::add(const pcl::PointCloud<pcl::PointXYZRGB>::Ptr pointCloud, 
     auto& vegetationHeightSmooth = rawMap_.at("vegetation_height_smooth", index); // New
     auto& supportSurface = rawMap_.at("support_surface", index); // New
     auto& supportSurfaceSmooth = rawMap_.at("support_surface_smooth", index); // New
+    //auto& supportSurfaceAdded = rawMap_.at("support_surface_added", index);
 
 
     const float& pointVariance = pointCloudVariances(i);
@@ -255,16 +256,19 @@ bool ElevationMap::add(const pcl::PointCloud<pcl::PointXYZRGB>::Ptr pointCloud, 
       horizontalVarianceXY = 0.0;
       colorVectorToValue(point.getRGBVector3i(), color);
 
-      footTipElevation = 0.0; // New
+
+      // TODO: to assign point.z to these may be not sound, as point.z comes from the pointcloud..
+      footTipElevation = 0.0;
       elevationInpainted = point.z;
       elevationSmooth = point.z;
       elevationSupport = point.z;
       elevationInpaintedSupport = point.z;
       elevationSmoothSupport = point.z;
-      supportSurface = point.z;
-      supportSurfaceSmooth = point.z;
+      supportSurface = 0.0;
+      supportSurfaceSmooth = 0.0; // Hacked, testing what happens to the support surface movements in high grass
       vegetationHeight = 0.0;
       vegetationHeightSmooth = point.z;
+      //supportSurfaceAdded = point.z;
 
       continue;
     }
@@ -309,7 +313,7 @@ bool ElevationMap::add(const pcl::PointCloud<pcl::PointXYZRGB>::Ptr pointCloud, 
   }
 
   // DEBUG
-  std::cout << "THATS WHERE I GOT BEFORE STOPPING!!1 \n";
+  //std::cout << "THATS WHERE I GOT BEFORE STOPPING!!1 \n";
 
   clean();
   rawMap_.setTimestamp(timestamp.toNSec()); // Point cloud stores time in microseconds.
@@ -318,7 +322,7 @@ bool ElevationMap::add(const pcl::PointCloud<pcl::PointXYZRGB>::Ptr pointCloud, 
   ROS_INFO("Raw map has been updated with a new point cloud in %f s.", duration.toSec());
 
   // DEBUG
-  std::cout << "THATS WHERE I GOT BEFORE STOPPING!!2 \n";
+  //std::cout << "THATS WHERE I GOT BEFORE STOPPING!!2 \n";
   return true;
 }
 
@@ -376,7 +380,7 @@ bool ElevationMap::fuseArea(const Eigen::Vector2d& position, const Eigen::Array2
   //! END TEST
 
   // DEBUG
-  std::cout << "THATS WHERE I GOT BEFORE STOPPING!! 3 \n";
+  //std::cout << "THATS WHERE I GOT BEFORE STOPPING!! 3 \n";
 
   getSubmapInformation(topLeftIndex, submapBufferSize, submapPosition, submapLength,
                        requestedIndexInSubmap, position, length, rawMap_.getLength(),
@@ -895,6 +899,10 @@ void ElevationMap::footTipStanceCallback(const quadruped_msgs::QuadrupedState& q
   }
 
 
+  // Get footprint position and orientation.
+  setFootprint(quadrupedState.frame_transforms[3].transform);
+
+
   // Check if walking forward or backwards. TODO!
   //(double)quadrupedState.twist.twist.linear.x;
 
@@ -902,6 +910,9 @@ void ElevationMap::footTipStanceCallback(const quadruped_msgs::QuadrupedState& q
   detectStancePhase();
   //detectStancePhase("right");
   frameCorrection();
+
+
+
 }
 
 bool ElevationMap::detectStancePhase()
@@ -989,14 +1000,14 @@ bool ElevationMap::templateMatchingForStanceDetection(std::string tip, std::vect
             stateVector.end()[-11]+stateVector.end()[-12]+ stateVector.end()[-13]+
             stateVector.end()[-14]+stateVector.end()[-15] <= 6){
         if(tip == "left" && !isInStanceLeft_){
-            std::cout << "Start of LEFT stance" << std::endl;
+           // std::cout << "Start of LEFT stance" << std::endl;
             isInStanceLeft_ = 1;
         }
         if(tip == "lefthind" && !isInStanceLeftHind_){
             isInStanceLeftHind_ = 1;
         }
         if(tip == "right" && !isInStanceRight_){
-            std::cout << "Start of Right stance" << std::endl;
+           // std::cout << "Start of Right stance" << std::endl;
             isInStanceRight_ = 1;
         }
         if(tip == "righthind" && !isInStanceRightHind_){
@@ -1047,7 +1058,7 @@ bool ElevationMap::templateMatchingForStanceDetection(std::string tip, std::vect
 
 bool ElevationMap::processStance(std::string tip)
 {
-    std::cout << "Processing: " << tip <<std::endl;
+    //std::cout << "Processing: " << tip <<std::endl;
 
     // The ordering here is crucial!
 
@@ -1155,8 +1166,8 @@ bool ElevationMap::publishAveragedFootTipPositionMarkers(bool hind)
 {
 
     // TESTING:
-    std::cout << "xTip: " << meanStance_(0) << std::endl;
-    std::cout << "yTip: " << meanStance_(0) << std::endl;
+   // std::cout << "xTip: " << meanStance_(0) << std::endl;
+   // std::cout << "yTip: " << meanStance_(0) << std::endl;
     // END TESTING
 
     // Positions for publisher.
@@ -1281,7 +1292,7 @@ bool ElevationMap::footTipElevationMapComparison(std::string tip)
 
         // New here, check what isInside does..
         if(rawMap_.isInside(tipPosition)) updateSupportSurfaceEstimation(); // NEW !!!!!
-
+        else std::cout << "FOOT TIP CONSIDERED NOT TO BE INSIDE!!!!! \n \n \n \n " << std::endl;
 
         // Make sure that the state is 1 and the foot tip is inside area covered by the elevation map.
         if(rawMap_.isInside(tipPosition) && !isnan(heightDifferenceFromComparison_)){ // HACKED FOR TESTS!!!
@@ -1295,7 +1306,7 @@ bool ElevationMap::footTipElevationMapComparison(std::string tip)
                 // Calculate difference.
                 verticalDifference = zTip - heightMapRaw;
                 double verticalDifferenceCorrected = zTip - heightMapRawElevationCorrected;
-                std::cout << "HeightDifference CLASSICAL:    " << verticalDifference << "        HeightDifference CORRECTED:    " << verticalDifferenceCorrected << std::endl;
+               // std::cout << "HeightDifference CLASSICAL:    " << verticalDifference << "        HeightDifference CORRECTED:    " << verticalDifferenceCorrected << std::endl;
 
                 // New Tuning piblisher.
 
@@ -1303,7 +1314,7 @@ bool ElevationMap::footTipElevationMapComparison(std::string tip)
 
                 // Wait some stances to get sorted at the beginning.
                 if(weightedDifferenceVector_.size() >= 4) performanceAssessment_ += fabs(verticalDifferenceCorrected);
-                std::cout << "Cumulative Performance Value (summed up weighted differences): " << performanceAssessment_ << std::endl;
+                //std::cout << "Cumulative Performance Value (summed up weighted differences): " << performanceAssessment_ << std::endl;
 
 
                 //performance_assessment_msg_.second_measure = performanceAssessment_;
@@ -1318,10 +1329,10 @@ bool ElevationMap::footTipElevationMapComparison(std::string tip)
                 double lowerBoundFused = std::get<0>(boundTuple);
                 double elevationFused = std::get<1>(boundTuple);
                 double upperBoundFused = std::get<2>(boundTuple);
-                std::cout << "lower: " << lowerBoundFused << " elev: " << elevationFused << " upper: " << upperBoundFused << std::endl;
+               // std::cout << "lower: " << lowerBoundFused << " elev: " << elevationFused << " upper: " << upperBoundFused << std::endl;
                 weightedVerticalDifferenceIncrement = gaussianWeightedDifferenceIncrement(lowerBoundFused, elevationFused, upperBoundFused, verticalDifference);
 
-                std::cout << "weightedVerticalDifferenceIncrement " << weightedVerticalDifferenceIncrement << std::endl;
+               // std::cout << "weightedVerticalDifferenceIncrement " << weightedVerticalDifferenceIncrement << std::endl;
 
 
                 bool runPenetrationDepthVarianceEstimation = true;
@@ -1358,13 +1369,13 @@ bool ElevationMap::footTipElevationMapComparison(std::string tip)
                 // TODO: test validity of these:
 
                 // DEBUG
-                std::cout << "heightDiff befor weighted difference vector creation: " << heightDifferenceFromComparison_ <<
-                             " weightedVerticalDiffIncrement: " << weightedVerticalDifferenceIncrement << std::endl;
+              //  std::cout << "heightDiff befor weighted difference vector creation: " << heightDifferenceFromComparison_ <<
+              //               " weightedVerticalDiffIncrement: " << weightedVerticalDifferenceIncrement << std::endl;
 
                 // Store the vertical difference history in a vector for PID controlling.
                 weightedDifferenceVector_.push_back(heightDifferenceFromComparison_ + weightedVerticalDifferenceIncrement); // TODO: check viability
                 if(weightedDifferenceVector_.size() > 6) weightedDifferenceVector_.erase(weightedDifferenceVector_.begin());
-                std::cout << "Weighted Height Difference: " << weightedDifferenceVector_[0] << "\n";
+             //   std::cout << "Weighted Height Difference: " << weightedDifferenceVector_[0] << "\n";
 
                 // Longer weightedDifferenceVector for PID drift calculation
                 if(!isnan(heightDifferenceFromComparison_)) PIDWeightedDifferenceVector_.push_back(heightDifferenceFromComparison_); // Removed the vertical difference increment, TEST IT!
@@ -1379,28 +1390,21 @@ bool ElevationMap::footTipElevationMapComparison(std::string tip)
                 // PID height offset calculation.
                 double heightDiffPID = differenceCalculationUsingPID();
 
-                // DEBUG
-                std::cout << "heightDiffPID" << heightDiffPID << std::endl;
-
-
-
                 // Avoid Old Nans to be included. TEST!! // TODO: check where nans might come from to avoid them earlier
                 //if(!isnan(heightDiffPID))
 
-                // PID based drift estimation.
-                driftEstimationPID_ = driftCalculationUsingPID(tip);
-                std::cout << "Size of left tip stance: " << LFTipStance_.size() << "\n";
-                std::cout << "Size of right tip stance: " << RFTipStance_.size() << "\n";
+//                // PID based drift estimation.
+//                driftEstimationPID_ = driftCalculationUsingPID(tip);
 
 
-                if (isnan(driftEstimationPID_)){
-                    std::cout << "NULLED THE DRIFT FOR NAN REASONS!! \n";
-                    driftEstimationPID_ = 0.0;
-                }
+//                if (isnan(driftEstimationPID_)){
+//                    std::cout << "NULLED THE DRIFT FOR NAN REASONS!! \n";
+//                    driftEstimationPID_ = 0.0;
+//                }
 
-                double driftEstimationPIDadder = 0;
-                if (heightDiffPID != 0.0) driftEstimationPIDadder = driftEstimationPID_ * (heightDiffPID/fabs(heightDiffPID));
-                else driftEstimationPIDadder = driftEstimationPID_;
+//                double driftEstimationPIDadder = 0;
+//                if (heightDiffPID != 0.0) driftEstimationPIDadder = driftEstimationPID_ * (heightDiffPID/fabs(heightDiffPID));
+//                else driftEstimationPIDadder = driftEstimationPID_;
 
                 // TESTING, adjusted this, check consequences..  // HACKED ALSO IN IF ARGUMENT!!! // Hacked from minus to plus!!!!
                 if(applyFrameCorrection_ && !isnan(heightDiffPID)) heightDifferenceFromComparison_ = heightDiffPID;// + 0 * driftEstimationPIDadder;// - driftEstimationPIDadder;//  driftEstimationPID_; //! HACKED FOR TESTING< ABSOLUTELY TAKE OUT AGAIN!!!
@@ -1426,8 +1430,8 @@ bool ElevationMap::footTipElevationMapComparison(std::string tip)
                 double second_measure_factor = -10000.0;
                 //performance_assessment_msg_.second_measure = driftEstimationPID_ * weightedDifferenceVector_[5] * second_measure_factor;
 
-                std::cout << "weightedDifferenceVector!!: LAst element: " << weightedDifferenceVector_[5] << " Drift Est PID!!!:::::: " << (double)driftEstimationPID_ << std::endl;
-                std::cout << "heightDifferenceFromComparison::: " << heightDifferenceFromComparison_ << std::endl;
+             //   std::cout << "weightedDifferenceVector!!: LAst element: " << weightedDifferenceVector_[5] << " Drift Est PID!!!:::::: " << (double)driftEstimationPID_ << std::endl;
+             //   std::cout << "heightDifferenceFromComparison::: " << heightDifferenceFromComparison_ << std::endl;
 
                 // TODO: Add some low pass filtering: FUTURE: Low passing for Mode changing..
                 // Low pass filtering for robust high grass detection ****************************************************
@@ -1619,7 +1623,7 @@ float ElevationMap::differenceCalculationUsingPID()
         for (auto& n : weightedDifferenceVector_)
             totalDiff += n;
         double meanDiff = totalDiff / float(weightedDifferenceVector_.size());
-        std::cout << "MeanDiff: " << meanDiff << std::endl;
+  //      std::cout << "MeanDiff: " << meanDiff << std::endl;
         return kp * weightedDifferenceVector_[weightedDifferenceVector_.size()-1] + ki * meanDiff +
                 kd * (weightedDifferenceVector_[weightedDifferenceVector_.size()-1] -
                 weightedDifferenceVector_[weightedDifferenceVector_.size()-2]);
@@ -1638,7 +1642,7 @@ double ElevationMap::driftCalculationUsingPID(std::string tip){
     if (PIDWeightedDifferenceVector_.size() > 2) meanDifference = totalDifference / double(PIDWeightedDifferenceVector_.size() - 2.0);
     else{
         meanDifference = 0.0;
-        std::cout << "ATTENTIONATTENTION \n" << "******* \n" << "********* \n";
+    //    std::cout << "ATTENTIONATTENTION \n" << "******* \n" << "********* \n";
     }
     std::cout << "mean DRIFT PER STANCE USING PID !!! " << meanDifference << std::endl;
     if (PIDWeightedDifferenceVector_.size() < 10){ // HACKED
@@ -1658,7 +1662,7 @@ float ElevationMap::gaussianWeightedDifferenceIncrement(double lowerBound, doubl
     // New Stuff for testing!! ********************************************************************************************************
     //! For testing
     if(elevation + diff < lowerBound + 0.9 * (elevation - lowerBound)){
-        std::cout << "************************************* SOFT LOWER!! **************************!!!!!!!!!!!!!!!!!!!!" << std::endl;
+      //  std::cout << "************************************* SOFT LOWER!! **************************!!!!!!!!!!!!!!!!!!!!" << std::endl;
         grassDetectionHistory2_.push_back(1);
     }
     else{
@@ -1674,12 +1678,12 @@ float ElevationMap::gaussianWeightedDifferenceIncrement(double lowerBound, doubl
 
     // DEBugging:
     if (triggerSum > 3){
-        std::cout << "<<<<<<<<>>>>>>>>> \n" << "<<<<<<<<<<>>>>>>>> \n" << "<<<<<<<<<<>>>>>>>>> \n";
+      //  std::cout << "<<<<<<<<>>>>>>>>> \n" << "<<<<<<<<<<>>>>>>>> \n" << "<<<<<<<<<<>>>>>>>>> \n";
         highGrassMode_ = true; // Hacked!!!!
         applyFrameCorrection_ = false;
     }
     else{
-        std::cout << "!!!! \n" << "!!!! \n" << "!!!! \n";
+      //  std::cout << "!!!! \n" << "!!!! \n" << "!!!! \n";
         highGrassMode_ = false;
         applyFrameCorrection_ = true;
     }
@@ -1695,7 +1699,7 @@ float ElevationMap::gaussianWeightedDifferenceIncrement(double lowerBound, doubl
 
     // Write to file to visualize in Matlab.
 
-    writeFootTipStatisticsToFile(footTipVal, "/home/timon/FootTipStatistics.txt");
+    //writeFootTipStatisticsToFile(footTipVal, "/home/timon/FootTipStatistics.txt");
 
     // TODO: write the foot tip characterizing numbers to a file to histogram plot it in Matlab for discussion..
 
@@ -1715,7 +1719,7 @@ float ElevationMap::gaussianWeightedDifferenceIncrement(double lowerBound, doubl
         // For Coloration
         if(elevation + diff < lowerBound){
 
-            std::cout << "******************************************** LOWER ******************************" << std::endl;
+        //    std::cout << "******************************************** LOWER ******************************" << std::endl;
             footTipOutsideBounds_ = true;
         }
         else footTipOutsideBounds_ = false;
@@ -1738,8 +1742,8 @@ float ElevationMap::gaussianWeightedDifferenceIncrement(double lowerBound, doubl
 
 
 
-    std::cout << "WEIGHT: " << (1-weight) << " diff: " << diff << " elevation: " << elevation <<
-                 " lower: " << lowerBound << " upper: " << upperBound << std::endl;
+   // std::cout << "WEIGHT: " << (1-weight) << " diff: " << diff << " elevation: " << elevation <<
+   //              " lower: " << lowerBound << " upper: " << upperBound << std::endl;
     return (1.0 - weight) * diff;
 }
 
@@ -1750,7 +1754,7 @@ std::tuple<double, double> ElevationMap::differenceCalculationUsingKalmanFilter(
 
       //  measurement = newheightdiff - oldheightdiff
         double diffMeasurement = weightedDifferenceVector_[0] - estimatedKalmanDiff_;
-        std::cout << "WeightedDifferenceVector inside Kalman Filter: " << weightedDifferenceVector_[0] << std::endl;
+     //   std::cout << "WeightedDifferenceVector inside Kalman Filter: " << weightedDifferenceVector_[0] << std::endl;
         float R = 0.95;
         float Q = 0.05;
     //    // Prediction Step.
@@ -1762,7 +1766,7 @@ std::tuple<double, double> ElevationMap::differenceCalculationUsingKalmanFilter(
         measDiff = predDiff + K * diffMeasurement;
         PMeasDiff = PPredDiff - K * PPredDiff;
 
-        std::cout << "mean measKalmanDiff: " << measDiff << std::endl;
+     //   std::cout << "mean measKalmanDiff: " << measDiff << std::endl;
     }
     else{
         measDiff = estimatedKalmanDiffIncrement_;
@@ -1783,7 +1787,7 @@ bool ElevationMap::updateFootTipBasedElevationMapLayer(int numberOfConsideredFoo
 {
     // Get parameters used for the plane fit through foot tips.
     Eigen::Vector2f planeCoeffs = getFootTipPlaneFitCoeffcients();
-    std::cout << "These are the coeffs form the GETTER function: a->" << planeCoeffs(0) << " b->" << planeCoeffs(1) << std::endl;
+   // std::cout << "These are the coeffs form the GETTER function: a->" << planeCoeffs(0) << " b->" << planeCoeffs(1) << std::endl;
     Eigen::Vector3f meanOfAllFootTips = getMeanOfAllFootTips();
 
 
@@ -2013,8 +2017,8 @@ bool ElevationMap::proprioceptiveVariance(std::string tip){
     // TODO: think about what slope is adding to roughness estimate..
     // TODO: and other roughness assessment measures
 
-    std::cout << "varianceConsecutiveFootTipPositions::::::::::::::::::::::: " << varianceConsecutiveFootTipPositions << std::endl;
-    std::cout << "Mean::::::::::::::::::::::::::: " << mean << std::endl;
+  //  std::cout << "varianceConsecutiveFootTipPositions::::::::::::::::::::::: " << varianceConsecutiveFootTipPositions << std::endl;
+  //  std::cout << "Mean::::::::::::::::::::::::::: " << mean << std::endl;
     // TODO: Consider low pass filtering effect on roughness estimation!
 
     // Plane fitting variance:
@@ -2032,7 +2036,7 @@ bool ElevationMap::proprioceptiveVariance(std::string tip){
         rightHindTip = rightHindStanceVector_[rightHindStanceVector_.size()-1];
 
         double meanZelevation = (leftTip(2) + rightTip(2) + leftHindTip(2) + rightHindTip(2)) / 4.0;
-        std::cout << "meanzvaluefrom foottips: " << meanZelevation << std::endl;
+    //    std::cout << "meanzvaluefrom foottips: " << meanZelevation << std::endl;
 
         Eigen::Matrix2f leftMat;
         leftMat(0, 0) = pow(leftTip(0),2)+pow(rightTip(0),2) + pow(leftHindTip(0),2)+pow(rightHindTip(0),2);
@@ -2082,7 +2086,7 @@ bool ElevationMap::proprioceptiveVariance(std::string tip){
             // Calculate squared difference from plane:
             double variancePlaneFit = pow(p1.z - leftTip(2), 2) + pow(p2.z - rightTip(2), 2) +
                     pow(p3.z - leftHindTip(2), 2) + pow(p4.z - rightHindTip(2), 2);
-            std::cout << "variancePlaneFit: " << variancePlaneFit << std::endl;
+      //      std::cout << "variancePlaneFit: " << variancePlaneFit << std::endl;
 
             geometry_msgs::Twist varianceMsg;
             varianceMsg.linear.x = varianceConsecutiveFootTipPositions;
@@ -2106,7 +2110,6 @@ bool ElevationMap::proprioceptiveVariance(std::string tip){
 
 void ElevationMap::setFootTipPlaneFitCoefficients(Eigen::Vector2f& coeffs){
     footTipPlaneFitCoefficients_ = coeffs;
-    std::cout << "SET THE COEFFICIENTS!!!! "  << std::endl;
 }
 
 Eigen::Vector2f ElevationMap::getFootTipPlaneFitCoeffcients(){
@@ -2139,9 +2142,6 @@ bool ElevationMap::penetrationDepthVarianceEstimation(std::string tip, double ve
             pow(totalVerticalDifference / double(count), 2);
 
     setPenetrationDepthVariance(penetrationDepthVariance);
-
-    std::cout << std::endl << "HERE IS THE PEN VARIANCE!! " << penetrationDepthVariance << std::endl << std::endl;
-
     return true;
 }
 
@@ -2179,7 +2179,7 @@ bool ElevationMap::updateSupportSurfaceEstimation(){
 
     // TODO: Here get position of foot tips and get indeces and insert them as the starting indices.. Insert them as arguments into the functions..
 
-    std::cout << "Called the update function" << std::endl;
+  //  std::cout << "Called the update function" << std::endl;
 
     //penetrationDepthContinuityPropagation();
     //terrainContinuityPropagation();
@@ -2203,8 +2203,6 @@ bool ElevationMap::penetrationDepthContinuityPropagation(){
     double factorProp = 1.0 - penContinuity; // Multiplier for values of comparison cells
     double factorComp = penContinuity; // Multiplier for values of propagation product cell
 
-    std::cout << "Called the pendepth function" << std::endl;
-
     // TESTING:
     grid_map::Index startingIndex(196, 1);
     // ENS TESTS
@@ -2215,8 +2213,6 @@ bool ElevationMap::penetrationDepthContinuityPropagation(){
 
 bool ElevationMap::terrainContinuityPropagation(){
     double terrContinuity = 0.75;
-
-    std::cout << "What I am doing has some effect!! " << std::endl << std::endl;
 
     double factorProp = 1.0 - terrContinuity;
     double factorComp = terrContinuity;
@@ -2280,7 +2276,7 @@ bool ElevationMap::cellPropagation(double factorProp, double factorComp, grid_ma
             rawMap_.getIndex(posLatestLeft, indLeftTip);
             rawMap_.getIndex(posLatestRight, indRightTip);
 
-            std::cout << "Indices: Left(0): " << indLeftTip(0) << " Left(1): " << indLeftTip(1) << " right(0) " << indRightTip(0) << "right(1)" << indRightTip(1) << std::endl;
+         //   std::cout << "Indices: Left(0): " << indLeftTip(0) << " Left(1): " << indLeftTip(1) << " right(0) " << indRightTip(0) << "right(1)" << indRightTip(1) << std::endl;
 
             // Comparison in x direction..
             if (indLeftTip(0) <= indRightTip(0)) startingIndex(0) = indLeftTip(0);
@@ -2294,8 +2290,6 @@ bool ElevationMap::cellPropagation(double factorProp, double factorComp, grid_ma
                 dataSupp(indexInit(0), indexInit(1)) = 0.09 * dataFoot(indexInit(0), indexInit(1)) + 0.91 * dataSupp(indexInit(0), indexInit(1)); // Hacked here..
             }
         }
-
-        std::cout << "HERE I GOT TO!" << std::endl;
 
         double weight;
 
@@ -2476,9 +2470,6 @@ bool ElevationMap::penetrationDepthContinuityProcessing(){
 //    }
     // End Testing..
 
-
-    std::cout << "filterchainstring: " << filterChainParametersName_ << std::endl;
-
     GridMap outMap1;
 
    // Length len(4.0, 4.0);
@@ -2550,12 +2541,18 @@ bool ElevationMap::penetrationDepthContinuityProcessing(){
 
     GridMap outMap2;
 
-    if(!filterChain2_.update(rawMap_, outMap2)) return false;  // Check this stuff..
+    //std::cout << "Here I got to!!!! 0000" << std::endl;
+
+    filterChain2_.update(rawMap_, outMap2);  // Check this stuff..
+
+   // std::cout << "Here I got to!!!! " << std::endl;
+
 
 
     // Display the smoothed vegetation height.
     outMap2["vegetation_height_smooth"] = dataVegHeightSmooth;
 
+   // std::cout << "Here I got to!!!! 1212" << std::endl;
 
 
     // Simple foot tip embedding (soon transfer to function..)
@@ -2584,17 +2581,27 @@ bool ElevationMap::penetrationDepthContinuityProcessing(){
     double meanDiffEmbedding = (verticalDiffLeft + verticalDiffRight) / 2.0;
 
     std::cout << "Mean Diff Embedding: " << meanDiffEmbedding << std::endl;
+    std::cout << std::endl;
+    std::cout << std::endl;
+    std::cout << std::endl;
+    std::cout << "Mean Diff Embedding: " << meanDiffEmbedding << std::endl;
+    std::cout << std::endl;
+    std::cout << std::endl;
 
-    outMap2.add("additional_layer");
-    outMap2["additional_layer"].setConstant(meanDiffEmbedding);
-    grid_map::Matrix& dataOutputSupSurfSmooth = outMap2["support_surface_smooth"];
-    grid_map::Matrix& dataOutputMapAdd = outMap2["additional_layer"];
+    if (verticalDiffRight != 0.0 && verticalDiffLeft != 0.0){
+        outMap2.add("additional_layer");
+        outMap2["additional_layer"].setConstant(meanDiffEmbedding);
+        grid_map::Matrix& dataOutputSupSurfSmooth = outMap2["support_surface_smooth"];
+        grid_map::Matrix& dataOutputMapAdd = outMap2["additional_layer"];
 
-    outMap2["support_surface_smooth"] = dataOutputMapAdd + dataOutputSupSurfSmooth;
+        outMap2["support_surface_smooth"] = dataOutputMapAdd + dataOutputSupSurfSmooth;
 
+    }
     //footTipEmbeddingSimple();
 
     supportSurfaceUpperBounding(rawMap_, outMap2);
+
+    //addSupportSurface(outMap2["support_surface_smooth"], outMap2["support_surface_added"]);
 
     //rawMap_["support_surface_smooth"] = outMap2["support_surface_smooth"];
 
@@ -2693,22 +2700,23 @@ double ElevationMap::getClosestMapValueUsingSpiralIterator(grid_map::GridMap& Ma
     for (grid_map::SpiralIterator iterator(MapReference, footTip, radius);
          !iterator.isPastEnd(); ++iterator) {   // Hacked to is inside..
         Index index(*iterator);
-        std::cout << "Index 0: " << index(0) << " index 1: " << index(1) << std::endl;
+      //  std::cout << "Index 0: " << index(0) << " index 1: " << index(1) << std::endl;
         Position pos;
         MapReference.getPosition(index, pos);
-        std::cout << "Check.." << std::endl;
+      //  std::cout << "Check.." << std::endl;
         //if (MapReference.isValid(index)) std::cout << "It is valid" << std::endl;
         //else std::cout << "It is not valid" << std::endl;
         if (MapReference.isInside(pos) && !isnan(MapReference.at("support_surface_smooth", index)) && MapReference.isValid(index)){
-            std::cout << "Found an isnan not ---------------------------------------------------------------------------------------" << std::endl;
+       //     std::cout << "Found an isnan not ---------------------------------------------------------------------------------------" << std::endl;
+            std::cout << "RETURNED DIFFERENCE TO A CLOSE NEIGHBOR USING SPIRALLING!!!" << std::endl;
             return tipHeight - MapReference.at("support_surface_smooth", index); // && MapReference.isValid(index)
         }
-        std::cout << "got here" << std::endl;
+    //    std::cout << "got here" << std::endl;
         counter++;
         if (counter > 28) break;
     }
-    std::cout << " \n \n \n \n \n " << std::endl;
-    std::cout << "BEEN HERE< !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!" << std::endl;
+   // std::cout << " \n \n \n \n \n " << std::endl;
+   // std::cout << "BEEN HERE< !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!" << std::endl;
     return 0.0;
 }
 
@@ -2722,8 +2730,53 @@ bool ElevationMap::supportSurfaceUpperBounding(GridMap& upperBoundMap, GridMap& 
     return true;
 }
 
+bool ElevationMap::addSupportSurface(Matrix& supSmooth, Matrix& supAdded){
+
+
+    // Get sensible central position upfront the robot.
+
+    geometry_msgs::Transform footprint = getFootprint();
+
+//    std::cout << "FootPrint: " << footprint.translation.x << std::endl;
+//    std::cout << "FootPrint: " << footprint.translation.y << std::endl;
+//    std::cout << "FootPrint: " << footprint.translation.z << std::endl;
+
+//    geometry_msgs::Quaternion quat = footprint.rotation;
+//    geometry_msgs::
+
+//    tf::Matrix3x3 m(quat);
+
+//    tf::Vector3 trans({1.5,0.0,0.0});
+
+    // 1.5 m along positive x axis in space..
+
+    //Quaternion to rotation matrix..
+
+    // get central position in front of the robot and use circle iterator..
+    // Simple testing: 0.8 * support surface new + 0.2 * support surface old.
+
+    //supAdded = 0.5 * supAdded + 0.5 * supSmooth;
+    // TODO: get submap of adequate size in front of the robot and add it to the supportSurface Added ..
+
+    //rawMap_.getSubmap();
+
+
+
+
+}
+
 bool ElevationMap::gaussianProcessModeling(){
 
 }
+
+bool ElevationMap::setFootprint(const geometry_msgs::Transform& footprint){
+    footprint_ = footprint;
+    return true;
+}
+
+geometry_msgs::Transform ElevationMap::getFootprint(){
+    return footprint_;
+}
+
 
 } /* namespace */
