@@ -434,7 +434,7 @@ class ElevationMap
   bool supportSurfaceUpperBounding(grid_map::GridMap& upperBoundMap, grid_map::GridMap& supportSurfaceMap);
 
   //!TODO: Description:
-  bool addSupportSurface(grid_map::Matrix& supSmooth, grid_map::Matrix& supAdded);
+  bool addSupportSurface(grid_map::GridMap& mapSmooth);
 
   //!TODO: Description:
   bool gaussianProcessModeling();
@@ -591,6 +591,7 @@ class ElevationMap
   ros::Publisher elevationMapBoundPublisher_;
   ros::Publisher planeFitVisualizationPublisher_;
   ros::Publisher varianceTwistPublisher_;
+  ros::Publisher supportSurfaceAddingAreaPublisher_;
 
   //! Publication of Markers:
   visualization_msgs::Marker footContactMarkerList_;

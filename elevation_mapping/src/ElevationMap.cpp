@@ -69,7 +69,7 @@ ElevationMap::ElevationMap(ros::NodeHandle nodeHandle)
       rawMap_({"elevation", "variance", "horizontal_variance_x", "horizontal_variance_y", "horizontal_variance_xy",
               "color", "time", "lowest_scan_point", "sensor_x_at_lowest_scan", "sensor_y_at_lowest_scan",
               "sensor_z_at_lowest_scan", "foot_tip_elevation", "support_surface", "elevation_inpainted", "elevation_smooth", "vegetation_height", "vegetation_height_smooth",
-              "support_surface", "support_surface_smooth"}),//, "support_surface_smooth_inpainted", "support_surface_added"}),
+              "support_surface", "support_surface_smooth", "support_surface_added"}),//, "support_surface_smooth_inpainted", "support_surface_added"}),
       fusedMap_({"elevation", "upper_bound", "lower_bound", "color"}),
       supportMap_({"elevation", "elevation_inpainted", "elevation_smooth"}), // New
       hasUnderlyingMap_(false),
@@ -135,6 +135,7 @@ ElevationMap::ElevationMap(ros::NodeHandle nodeHandle)
   elevationMapBoundPublisher_ = nodeHandle_.advertise<visualization_msgs::Marker>("map_bound_markers_rviz", 1000);
   planeFitVisualizationPublisher_ = nodeHandle_.advertise<visualization_msgs::Marker>("plane_fit_visualization_marker_list", 1000);
   varianceTwistPublisher_ = nodeHandle_.advertise<geometry_msgs::Twist>("variances", 1000);
+  supportSurfaceAddingAreaPublisher_ = nodeHandle_.advertise<visualization_msgs::Marker>("adding_area", 1000);
   initializeFootTipMarkers();
 
   // NEW: Publish data, for parameter tuning and visualization
@@ -241,7 +242,7 @@ bool ElevationMap::add(const pcl::PointCloud<pcl::PointXYZRGB>::Ptr pointCloud, 
     auto& vegetationHeightSmooth = rawMap_.at("vegetation_height_smooth", index); // New
     auto& supportSurface = rawMap_.at("support_surface", index); // New
     auto& supportSurfaceSmooth = rawMap_.at("support_surface_smooth", index); // New
-    //auto& supportSurfaceAdded = rawMap_.at("support_surface_added", index);
+    auto& supportSurfaceAdded = rawMap_.at("support_surface_added", index);
 
 
     const float& pointVariance = pointCloudVariances(i);
@@ -264,11 +265,11 @@ bool ElevationMap::add(const pcl::PointCloud<pcl::PointXYZRGB>::Ptr pointCloud, 
       elevationSupport = point.z;
       elevationInpaintedSupport = point.z;
       elevationSmoothSupport = point.z;
-      supportSurface = 0.0;
-      supportSurfaceSmooth = 0.0; // Hacked, testing what happens to the support surface movements in high grass
-      vegetationHeight = 0.0;
+      supportSurface = point.z;
+      supportSurfaceSmooth = point.z; // Hacked, testing what happens to the support surface movements in high grass
+      vegetationHeight = point.z;
       vegetationHeightSmooth = point.z;
-      //supportSurfaceAdded = point.z;
+      supportSurfaceAdded = 0.0;
 
       continue;
     }
@@ -1221,7 +1222,7 @@ bool ElevationMap::publishAveragedFootTipPositionMarkers(bool hind)
 
     // Uses the footContactMarkerList_, therefore called here.
     // Updates the map layer, that purely relies on the last n foot tips.
-    int numberOfConsideredFootTips = 4;
+    //int numberOfConsideredFootTips = 4;
 
     //! HACKED AWAY, no foot tip layer updates now!!
     //updateFootTipBasedElevationMapLayer(numberOfConsideredFootTips);
@@ -1391,7 +1392,7 @@ bool ElevationMap::footTipElevationMapComparison(std::string tip)
                 double heightDiffPID = differenceCalculationUsingPID();
 
                 // Avoid Old Nans to be included. TEST!! // TODO: check where nans might come from to avoid them earlier
-                //if(!isnan(heightDiffPID))
+//                if(!isnan(heightDiffPID))
 
 //                // PID based drift estimation.
 //                driftEstimationPID_ = driftCalculationUsingPID(tip);
@@ -1455,7 +1456,7 @@ bool ElevationMap::footTipElevationMapComparison(std::string tip)
             }
             else{
                 //if(!isnan(driftEstimationPID_)) heightDifferenceFromComparison_ += driftEstimationPID_; // HACKED AWAY FOR TESTING!
-                std::cout << "heightDifferenceFromComparison_ was Incremented by estimated Drift because NAN was found: " << (double)driftEstimationPID_ << std::endl;
+                //std::cout << "heightDifferenceFromComparison_ was Incremented by estimated Drift because NAN was found: " << (double)driftEstimationPID_ << std::endl;
 
                 // TODO: consider to set the height difference to zero when walking out of the map!!
                 // Delete the weighted Difference Vector if walking outside of the known mapped area to avoid large corrections when reentering..
@@ -2193,6 +2194,7 @@ bool ElevationMap::updateSupportSurfaceEstimation(){
 
 
 
+
     // TODO: at some point initialize the first two elevation map layers, maybe heavy weight on foot tip only layer..
 }
 
@@ -2422,12 +2424,15 @@ double ElevationMap::getPenetrationDepthVariance(){
 
 bool ElevationMap::penetrationDepthContinuityProcessing(){
 
-    grid_map::Matrix& dataSupp = rawMap_["support_surface"];
-    grid_map::Matrix& dataElev = rawMap_["elevation"];
-    grid_map::Matrix& dataFoot = rawMap_["foot_tip_elevation"];
-    grid_map::Matrix& dataVegHeight = rawMap_["vegetation_height"];
-    grid_map::Matrix& dataSupSurf = rawMap_["support_surface"];
-    grid_map::Matrix& dataSupSurfSmooth = rawMap_["support_surface_smooth"];
+    // Mutex here for safe multithreading
+    //boost::recursive_mutex::scoped_lock scopedLock(rawMapMutex_);
+
+    //grid_map::Matrix& dataSupp = rawMap_["support_surface"];
+    //grid_map::Matrix& dataElev = rawMap_["elevation"];
+    //grid_map::Matrix& dataFoot = rawMap_["foot_tip_elevation"];
+    //grid_map::Matrix& dataVegHeight = rawMap_["vegetation_height"];
+    //grid_map::Matrix& dataSupSurf = rawMap_["support_surface"];
+    //grid_map::Matrix& dataSupSurfSmooth = rawMap_["support_surface_smooth"];
 
 
     // initialization of dataSupp.
@@ -2470,7 +2475,7 @@ bool ElevationMap::penetrationDepthContinuityProcessing(){
 //    }
     // End Testing..
 
-    GridMap outMap1;
+    //GridMap outMap1;
 
    // Length len(4.0, 4.0);
    // Position pos(3.0, 0.0); // Hacking to test influence..
@@ -2512,15 +2517,15 @@ bool ElevationMap::penetrationDepthContinuityProcessing(){
    // inpaintedMap.move(rawMap_.getPosition());
 
 
-    dataVegHeight = dataElev - dataSupSurfSmooth;
+    //dataVegHeight = dataElev - dataSupSurfSmooth;
 
 
     //std::cout << "Jow// \n";
     //if(!filterChain_.update(rawMap_, inpaintedMap)) return false;  // Check this stuff..
 
-    rawMap_["vegetation_height"] = dataVegHeight;
+    //rawMap_["vegetation_height"] = dataVegHeight;
 
-    filterChain_.update(rawMap_, outMap1);
+    //filterChain_.update(rawMap_, outMap1);
     // Check the layers of the first map..
 
    // std::cout << "Layer 0: " << inpaintedMap.getLayers()[0] << " Layer 1: " << inpaintedMap.getLayers()[1] << std::endl;
@@ -2530,13 +2535,13 @@ bool ElevationMap::penetrationDepthContinuityProcessing(){
     //rawMap_["vegetation_height_smooth"] = outMap1["vegetation_height_smooth"];
 
 
-    grid_map::Matrix& dataVegHeightSmooth = outMap1["vegetation_height_smooth"];
-    dataSupSurf = dataElev - dataVegHeightSmooth;
+    //grid_map::Matrix& dataVegHeightSmooth = rawMap_["vegetation_height_smooth"];
+    //dataSupSurf = dataElev - dataVegHeightSmooth;
     //rawMap_["support_surface"] = rawMap_["elevation"] - outMap1["vegetation_height_smooth"];
 
 
 
-    rawMap_["support_surface"] = dataSupSurf;
+    //rawMap_["support_surface"] = dataSupSurf;
   //  inpaintedMap.get("vegetation_height_smooth"]);
 
     GridMap outMap2;
@@ -2550,9 +2555,12 @@ bool ElevationMap::penetrationDepthContinuityProcessing(){
 
 
     // Display the smoothed vegetation height.
-    outMap2["vegetation_height_smooth"] = dataVegHeightSmooth;
+    //outMap2["vegetation_height_smooth"] = dataVegHeightSmooth;
 
    // std::cout << "Here I got to!!!! 1212" << std::endl;
+
+
+
 
 
     // Simple foot tip embedding (soon transfer to function..)
@@ -2564,12 +2572,14 @@ bool ElevationMap::penetrationDepthContinuityProcessing(){
     double verticalDiffLeft, verticalDiffRight;
     if(outMap2.isInside(leftTipHorizontal) && outMap2.isInside(rightTipHorizontal)){
         if (!isnan(outMap2.atPosition("support_surface_smooth", leftTipHorizontal))){
-            verticalDiffLeft = footTipLeft(2) - outMap2.atPosition("support_surface_smooth", leftTipHorizontal);
+            verticalDiffLeft = footTipLeft(2) - outMap2.atPosition("support_surface_smooth", leftTipHorizontal); // Hacked to rawMap_
+            std::cout << "Not spiralled!!, vertical diff left: " << verticalDiffLeft << std::endl;
         }
         else verticalDiffLeft = getClosestMapValueUsingSpiralIterator(outMap2, leftTipHorizontal, radius, footTipLeft(2)); // New experiment.. Wrong, not difference yet!!!
-       // else verticalDiffLeft = 0.0;
+        //else verticalDiffLeft = 0.0;
         if (!isnan(outMap2.atPosition("support_surface_smooth", rightTipHorizontal))){
-            verticalDiffRight = footTipRight(2) - outMap2.atPosition("support_surface_smooth", rightTipHorizontal);
+            verticalDiffRight = footTipRight(2) - outMap2.atPosition("support_surface_smooth", rightTipHorizontal); // Hacked to rawMap_
+            std::cout << "Not spiralled!!, vertical Diff right: " << verticalDiffRight << std::endl;
         }
         //else verticalDiffRight = 0.0; // TODO: check what to do in such a case.. (search a small circular radius)
         // Idea: check circular grid map iterator for first entry.. Spiral!!!!
@@ -2587,6 +2597,7 @@ bool ElevationMap::penetrationDepthContinuityProcessing(){
     std::cout << "Mean Diff Embedding: " << meanDiffEmbedding << std::endl;
     std::cout << std::endl;
     std::cout << std::endl;
+    std::cout << std::endl;
 
     if (verticalDiffRight != 0.0 && verticalDiffLeft != 0.0){
         outMap2.add("additional_layer");
@@ -2599,11 +2610,15 @@ bool ElevationMap::penetrationDepthContinuityProcessing(){
     }
     //footTipEmbeddingSimple();
 
+
     supportSurfaceUpperBounding(rawMap_, outMap2);
 
     //addSupportSurface(outMap2["support_surface_smooth"], outMap2["support_surface_added"]);
 
-    //rawMap_["support_surface_smooth"] = outMap2["support_surface_smooth"];
+
+
+    // TEST: logically this makes sense!!
+   // rawMap_["support_surface_smooth"] = outMap2["support_surface_smooth"];
 
   //  rawMap_["elevation_inpainted"] = inpaintedMap["elevation_inpainted"];
   //  rawMap_["elevation_smooth"] = inpaintedMap["elevation_smooth"];
@@ -2641,6 +2656,10 @@ bool ElevationMap::penetrationDepthContinuityProcessing(){
    // rawMap_.get("elevation_inpainted") = dataElevInpainted - dataElev;
 
 
+    addSupportSurface(outMap2);
+
+
+
     // Publish map
     grid_map_msgs::GridMap mapMessage;
     GridMapRosConverter::toMessage(outMap2, mapMessage);
@@ -2649,6 +2668,7 @@ bool ElevationMap::penetrationDepthContinuityProcessing(){
     //GridMapRosConverter::fromMessage(mapMessage, rawMapCorrected)
 
     elevationMapInpaintedPublisher_.publish(mapMessage);
+
 
 
 
@@ -2730,28 +2750,94 @@ bool ElevationMap::supportSurfaceUpperBounding(GridMap& upperBoundMap, GridMap& 
     return true;
 }
 
-bool ElevationMap::addSupportSurface(Matrix& supSmooth, Matrix& supAdded){
+bool ElevationMap::addSupportSurface(GridMap& mapSmooth){
 
 
     // Get sensible central position upfront the robot.
 
     geometry_msgs::Transform footprint = getFootprint();
 
-//    std::cout << "FootPrint: " << footprint.translation.x << std::endl;
-//    std::cout << "FootPrint: " << footprint.translation.y << std::endl;
-//    std::cout << "FootPrint: " << footprint.translation.z << std::endl;
+    std::cout << "FootPrint: " << footprint.translation.x << std::endl;
+    std::cout << "FootPrint: " << footprint.translation.y << std::endl;
+    std::cout << "FootPrint: " << footprint.translation.z << std::endl;
+    //std::cout << "FootPrint: " << footprint.rotation. << std::endl;
+    //std::cout << "FootPrint: " << footprint.translation.z << std::endl;
+    //std::cout << "FootPrint: " << footprint.translation.z << std::endl;
+    //std::cout << "FootPrint: " << footprint.translation.z << std::endl;
 
-//    geometry_msgs::Quaternion quat = footprint.rotation;
-//    geometry_msgs::
 
-//    tf::Matrix3x3 m(quat);
+    tf::Quaternion quat;
+    tf::quaternionMsgToTF(footprint.rotation, quat);
 
-//    tf::Vector3 trans({1.5,0.0,0.0});
+    tf::Vector3 footprintTrans;
 
-    // 1.5 m along positive x axis in space..
+    tf::vector3MsgToTF(footprint.translation, footprintTrans);
 
-    //Quaternion to rotation matrix..
+    tf::Matrix3x3 m(quat);
 
+    tf::Vector3 trans({1.1,0.0,0.0});
+    tf::Vector3 front({2.0,0.0,0.0});
+    tf::Vector3 hind({0.2,0.0,0.0});
+    tf::Vector3 right({1.1,0.9,0.0});
+    tf::Vector3 left({1.1,-0.9,0.0});
+
+    tf::Vector3 centerPoint = footprintTrans + m * trans;
+
+    tf::Vector3 frontPoint = footprintTrans + m * front;
+    tf::Vector3 hindPoint = footprintTrans + m * hind;
+    tf::Vector3 rightPoint = footprintTrans + m * right;
+    tf::Vector3 leftPoint = footprintTrans + m * left;
+
+    std::cout << "CenterPoint: " << centerPoint[0] << std::endl;
+    std::cout << "CenterPoint: " << centerPoint[1] << std::endl;
+    std::cout << "CenterPoint: " << centerPoint[2] << std::endl;
+
+
+    // Color and shape definition of markers for foot tip ground contact visualization.
+    visualization_msgs::Marker addingAreaMarkerList;
+    addingAreaMarkerList.header.frame_id = "odom";
+    addingAreaMarkerList.header.stamp = ros::Time();
+    addingAreaMarkerList.ns = "elevation_mapping";
+    addingAreaMarkerList.id = 0;
+    addingAreaMarkerList.type = visualization_msgs::Marker::SPHERE_LIST;
+    addingAreaMarkerList.action = visualization_msgs::Marker::ADD;
+    addingAreaMarkerList.pose.orientation.x = 0.0;
+    addingAreaMarkerList.pose.orientation.y = 0.0;
+    addingAreaMarkerList.pose.orientation.z = 0.0;
+    addingAreaMarkerList.pose.orientation.w = 1.0;
+    addingAreaMarkerList.scale.x = 0.1;
+    addingAreaMarkerList.scale.y = 0.1;
+    addingAreaMarkerList.scale.z = 0.1;
+
+    addingAreaMarkerList.color.a = 1.0; // Don't forget to set the alpha!
+    addingAreaMarkerList.color.r = 1.0;
+    addingAreaMarkerList.color.g = 0.1;
+    addingAreaMarkerList.color.b = 0.1;
+
+    geometry_msgs::Point p;
+    p.x = centerPoint[0];
+    p.y = centerPoint[1];
+    p.z = centerPoint[2];
+    addingAreaMarkerList.points.push_back(p);
+    p.x = frontPoint[0];
+    p.y = frontPoint[1];
+    p.z = frontPoint[2];
+    addingAreaMarkerList.points.push_back(p);
+    p.x = hindPoint[0];
+    p.y = hindPoint[1];
+    p.z = hindPoint[2];
+    addingAreaMarkerList.points.push_back(p);
+    p.x = rightPoint[0];
+    p.y = rightPoint[1];
+    p.z = rightPoint[2];
+    addingAreaMarkerList.points.push_back(p);
+    p.x = leftPoint[0];
+    p.y = leftPoint[1];
+    p.z = leftPoint[2];
+    addingAreaMarkerList.points.push_back(p);
+
+
+    supportSurfaceAddingAreaPublisher_.publish(addingAreaMarkerList);
     // get central position in front of the robot and use circle iterator..
     // Simple testing: 0.8 * support surface new + 0.2 * support surface old.
 
@@ -2760,7 +2846,15 @@ bool ElevationMap::addSupportSurface(Matrix& supSmooth, Matrix& supAdded){
 
     //rawMap_.getSubmap();
 
+    Position center(centerPoint[0], centerPoint[1]);
+    double radius = 0.9;
 
+    // Circle Iterator!!!
+    for (CircleIterator iterator(mapSmooth, center, radius); !iterator.isPastEnd(); ++iterator) {
+        const Index index(*iterator);
+        rawMap_.at("support_surface_added", index) = 0.35 * rawMap_.at("support_surface_added", index) + 0.65 * mapSmooth.at("support_surface_smooth", index);
+        //cout << "The value at index " << index.transpose() << " is " << data(index(0), index(1)) << endl;
+    }
 
 
 }
