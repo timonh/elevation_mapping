@@ -269,7 +269,7 @@ bool ElevationMap::add(const pcl::PointCloud<pcl::PointXYZRGB>::Ptr pointCloud, 
       supportSurfaceSmooth = point.z; // Hacked, testing what happens to the support surface movements in high grass
       vegetationHeight = point.z;
       vegetationHeightSmooth = point.z;
-      supportSurfaceAdded = 0.0;
+      supportSurfaceAdded = point.z;
 
       continue;
     }
@@ -2780,6 +2780,7 @@ bool ElevationMap::addSupportSurface(GridMap& mapSmooth){
     tf::Vector3 hind({0.2,0.0,0.0});
     tf::Vector3 right({1.1,0.9,0.0});
     tf::Vector3 left({1.1,-0.9,0.0});
+    tf::Vector3 weightingReference({0.5, 0.0, 0.0});
 
     tf::Vector3 centerPoint = footprintTrans + m * trans;
 
@@ -2787,6 +2788,7 @@ bool ElevationMap::addSupportSurface(GridMap& mapSmooth){
     tf::Vector3 hindPoint = footprintTrans + m * hind;
     tf::Vector3 rightPoint = footprintTrans + m * right;
     tf::Vector3 leftPoint = footprintTrans + m * left;
+    tf::Vector3 weightingReferencePoint = footprintTrans + m * weightingReference;
 
     std::cout << "CenterPoint: " << centerPoint[0] << std::endl;
     std::cout << "CenterPoint: " << centerPoint[1] << std::endl;
@@ -2852,11 +2854,13 @@ bool ElevationMap::addSupportSurface(GridMap& mapSmooth){
     // Circle Iterator!!!
     for (CircleIterator iterator(mapSmooth, center, radius); !iterator.isPastEnd(); ++iterator) {
         const Index index(*iterator);
-        rawMap_.at("support_surface_added", index) = 0.35 * rawMap_.at("support_surface_added", index) + 0.65 * mapSmooth.at("support_surface_smooth", index);
+        Position pos;
+        rawMap_.getPosition(index, pos);
+        double distanceToHind = sqrt(pow(pos(0) - weightingReferencePoint[0],2) + pow(pos(1) - weightingReferencePoint[1],2));
+        double weight = 0.8 - 0.6 * distanceToHind / 1.8;
+        rawMap_.at("support_surface_added", index) = (1-weight) * rawMap_.at("support_surface_added", index) + weight * mapSmooth.at("support_surface_smooth", index);
         //cout << "The value at index " << index.transpose() << " is " << data(index(0), index(1)) << endl;
     }
-
-
 }
 
 bool ElevationMap::gaussianProcessModeling(){
