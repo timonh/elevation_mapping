@@ -71,7 +71,7 @@ ElevationMap::ElevationMap(ros::NodeHandle nodeHandle)
               "sensor_z_at_lowest_scan", "foot_tip_elevation", "support_surface", "elevation_inpainted", "elevation_smooth", "vegetation_height", "vegetation_height_smooth",
               "support_surface", "support_surface_smooth", "support_surface_added"}),//, "support_surface_smooth_inpainted", "support_surface_added"}),
       fusedMap_({"elevation", "upper_bound", "lower_bound", "color"}),
-      supportMap_({"elevation", "elevation_inpainted", "elevation_smooth"}), // New
+      supportMap_({"elevation", "variance"}), // New
       hasUnderlyingMap_(false),
       visibilityCleanupDuration_(0.0),
       filterChain_("grid_map::GridMap"), // New
@@ -89,7 +89,7 @@ ElevationMap::ElevationMap(ros::NodeHandle nodeHandle)
 
   // TEST:
   elevationMapCorrectedPublisher_ = nodeHandle_.advertise<grid_map_msgs::GridMap>("elevation_map_drift_adjusted", 1);
-  elevationMapSupportPublisher_ = nodeHandle_.advertise<grid_map_msgs::GridMap>("support_elevation", 1);
+  elevationMapSupportPublisher_ = nodeHandle_.advertise<grid_map_msgs::GridMap>("support_added", 1);
   elevationMapInpaintedPublisher_ = nodeHandle_.advertise<grid_map_msgs::GridMap>("support_surface", 1);
   // END TEST
 
@@ -269,10 +269,15 @@ bool ElevationMap::add(const pcl::PointCloud<pcl::PointXYZRGB>::Ptr pointCloud, 
       supportSurfaceSmooth = point.z; // Hacked, testing what happens to the support surface movements in high grass
      // vegetationHeight = point.z;
      // vegetationHeightSmooth = point.z;
-      supportSurfaceAdded = point.z;  // Test Hacked, what happens if it is not initialized like that..
-
+      supportSurfaceAdded = point.z;  // Test Hacked, what happens if it is not initialized like that..  
       continue;
     }
+
+    //if (!supportMap_.isValid(index)) {
+    //    supportMapElevation =
+    //    supportMapVariance =
+    //}
+
 
     // Deal with multiple heights in one cell.
     const double mahalanobisDistance = fabs(point.z - elevation) / sqrt(variance);
@@ -670,6 +675,10 @@ void ElevationMap::move(const Eigen::Vector2d& position)
     ROS_DEBUG("Elevation map has been moved to position (%f, %f).", rawMap_.getPosition().x(), rawMap_.getPosition().y());
     if (hasUnderlyingMap_) rawMap_.addDataFrom(underlyingMap_, false, false, true);
   }
+
+  // New Test by Timon:
+  supportMap_.move(position, newRegions);
+
 }
 
 bool ElevationMap::publishRawElevationMap()
@@ -2832,17 +2841,42 @@ bool ElevationMap::addSupportSurface(GridMap& mapSmooth){
     // Circle Iterator!!!
     for (CircleIterator iterator(mapSmooth, center, radius); !iterator.isPastEnd(); ++iterator) {
         const Index index(*iterator);
-        Position pos;
-        rawMap_.getPosition(index, pos);
-        double distanceToHind = sqrt(pow(pos(0) - weightingReferencePoint[0],2) + pow(pos(1) - weightingReferencePoint[1],2));
-        double weight = 0.8 - 0.6 * distanceToHind / 1.8;
-        rawMap_.at("support_surface_added", index) = (1-weight) * rawMap_.at("support_surface_added", index) + weight * mapSmooth.at("support_surface_smooth", index);
+
+        auto& supportMapElevation = supportMap_.at("elevation", index);
+        auto& supportMapVariance = supportMap_.at("variance", index);
+        auto& rawMapElevation = rawMap_.at("elevation", index);
+        auto& mapSupSurfaceSmooth = mapSmooth.at("support_surface_smooth", index);
+
+
+        if (!supportMap_.isValid(index)) {
+            supportMapElevation = rawMapElevation;
+            supportMapVariance = 0.0;
+        }
+        else{
+            Position pos;
+            rawMap_.getPosition(index, pos);
+            double distanceToHind = sqrt(pow(pos(0) - weightingReferencePoint[0],2) + pow(pos(1) - weightingReferencePoint[1],2));
+            double weight = 0.8 - 0.6 * distanceToHind / 1.8;
+            rawMap_.at("support_surface_added", index) = (1-weight) * rawMap_.at("support_surface_added", index) + weight * mapSmooth.at("support_surface_smooth", index);
+
+            supportMapElevation = (1-weight) * supportMapElevation + weight * mapSupSurfaceSmooth;
+
+            // Naive approach to variance calculation:
+            supportMapVariance = (1 - weight) * supportMapVariance + weight * pow((mapSupSurfaceSmooth - supportMapElevation), 2);
+
+        }
 
         //if (varLayer(ind) <= 0.0) varLayer =
         // TODO: Variance: variance = oldVariance * (1-weight) + weight * (supSmooth - suppsurfadded)^2
         // TODO: new supportMap_ featuring the two layers called elevation and variance..
 
     }
+
+    // Publish map
+    grid_map_msgs::GridMap mapMessage;
+    GridMapRosConverter::toMessage(supportMap_, mapMessage);
+    mapMessage.info.header.frame_id = "odom";
+    elevationMapSupportPublisher_.publish(mapMessage);
 }
 
 bool ElevationMap::gaussianProcessModeling(){
