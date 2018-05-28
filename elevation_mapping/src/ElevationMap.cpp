@@ -80,7 +80,7 @@ ElevationMap::ElevationMap(ros::NodeHandle nodeHandle)
     // Timon added foot_tip_elevation layer
   rawMap_.setBasicLayers({"elevation", "variance"});
   fusedMap_.setBasicLayers({"elevation", "upper_bound", "lower_bound"});
-  supportMap_.setBasicLayers({"elevation", "elevation_inpainted", "elevation_smooth"}); // New
+  supportMap_.setBasicLayers({"elevation", "variance"}); // New
 
 
 
@@ -233,14 +233,14 @@ bool ElevationMap::add(const pcl::PointCloud<pcl::PointXYZRGB>::Ptr pointCloud, 
     auto& sensorZatLowestScan = rawMap_.at("sensor_z_at_lowest_scan", index);
 
     auto& footTipElevation = rawMap_.at("foot_tip_elevation", index); // New
-    auto& elevationInpainted = rawMap_.at("elevation_inpainted", index); // New
-    auto& elevationSmooth = rawMap_.at("elevation_smooth", index); // New
-    auto& elevationSupport = supportMap_.at("elevation", index); // New
-    auto& elevationInpaintedSupport = supportMap_.at("elevation_inpainted", index); // New
-    auto& elevationSmoothSupport = supportMap_.at("elevation_smooth", index); // New
-    auto& vegetationHeight = rawMap_.at("vegetation_height", index); // New
-    auto& vegetationHeightSmooth = rawMap_.at("vegetation_height_smooth", index); // New
-    auto& supportSurface = rawMap_.at("support_surface", index); // New
+   // auto& elevationInpainted = rawMap_.at("elevation_inpainted", index); // New
+   // auto& elevationSmooth = rawMap_.at("elevation_smooth", index); // New
+   // auto& elevationSupport = supportMap_.at("elevation", index); // New
+   // auto& elevationInpaintedSupport = supportMap_.at("elevation_inpainted", index); // New
+   // auto& elevationSmoothSupport = supportMap_.at("elevation_smooth", index); // New
+   // auto& vegetationHeight = rawMap_.at("vegetation_height", index); // New
+   // auto& vegetationHeightSmooth = rawMap_.at("vegetation_height_smooth", index); // New
+   // auto& supportSurface = rawMap_.at("support_surface", index); // New
     auto& supportSurfaceSmooth = rawMap_.at("support_surface_smooth", index); // New
     auto& supportSurfaceAdded = rawMap_.at("support_surface_added", index);
 
@@ -260,16 +260,16 @@ bool ElevationMap::add(const pcl::PointCloud<pcl::PointXYZRGB>::Ptr pointCloud, 
 
       // TODO: to assign point.z to these may be not sound, as point.z comes from the pointcloud..
       footTipElevation = 0.0;
-      elevationInpainted = point.z;
-      elevationSmooth = point.z;
-      elevationSupport = point.z;
-      elevationInpaintedSupport = point.z;
-      elevationSmoothSupport = point.z;
-      supportSurface = point.z;
+     // elevationInpainted = point.z;
+     // elevationSmooth = point.z;
+     // elevationSupport = point.z;
+     // elevationInpaintedSupport = point.z;
+     // elevationSmoothSupport = point.z;
+     // supportSurface = point.z;
       supportSurfaceSmooth = point.z; // Hacked, testing what happens to the support surface movements in high grass
-      vegetationHeight = point.z;
-      vegetationHeightSmooth = point.z;
-      supportSurfaceAdded = point.z;
+     // vegetationHeight = point.z;
+     // vegetationHeightSmooth = point.z;
+      supportSurfaceAdded = point.z;  // Test Hacked, what happens if it is not initialized like that..
 
       continue;
     }
@@ -2590,14 +2590,14 @@ bool ElevationMap::penetrationDepthContinuityProcessing(){
 
     double meanDiffEmbedding = (verticalDiffLeft + verticalDiffRight) / 2.0;
 
-    std::cout << "Mean Diff Embedding: " << meanDiffEmbedding << std::endl;
-    std::cout << std::endl;
-    std::cout << std::endl;
-    std::cout << std::endl;
-    std::cout << "Mean Diff Embedding: " << meanDiffEmbedding << std::endl;
-    std::cout << std::endl;
-    std::cout << std::endl;
-    std::cout << std::endl;
+//    std::cout << "Mean Diff Embedding: " << meanDiffEmbedding << std::endl;
+//    std::cout << std::endl;
+//    std::cout << std::endl;
+//    std::cout << std::endl;
+//    std::cout << "Mean Diff Embedding: " << meanDiffEmbedding << std::endl;
+//    std::cout << std::endl;
+//    std::cout << std::endl;
+//    std::cout << std::endl;
 
     if (verticalDiffRight != 0.0 && verticalDiffLeft != 0.0){
         outMap2.add("additional_layer");
@@ -2754,17 +2754,7 @@ bool ElevationMap::addSupportSurface(GridMap& mapSmooth){
 
 
     // Get sensible central position upfront the robot.
-
     geometry_msgs::Transform footprint = getFootprint();
-
-    std::cout << "FootPrint: " << footprint.translation.x << std::endl;
-    std::cout << "FootPrint: " << footprint.translation.y << std::endl;
-    std::cout << "FootPrint: " << footprint.translation.z << std::endl;
-    //std::cout << "FootPrint: " << footprint.rotation. << std::endl;
-    //std::cout << "FootPrint: " << footprint.translation.z << std::endl;
-    //std::cout << "FootPrint: " << footprint.translation.z << std::endl;
-    //std::cout << "FootPrint: " << footprint.translation.z << std::endl;
-
 
     tf::Quaternion quat;
     tf::quaternionMsgToTF(footprint.rotation, quat);
@@ -2789,11 +2779,6 @@ bool ElevationMap::addSupportSurface(GridMap& mapSmooth){
     tf::Vector3 rightPoint = footprintTrans + m * right;
     tf::Vector3 leftPoint = footprintTrans + m * left;
     tf::Vector3 weightingReferencePoint = footprintTrans + m * weightingReference;
-
-    std::cout << "CenterPoint: " << centerPoint[0] << std::endl;
-    std::cout << "CenterPoint: " << centerPoint[1] << std::endl;
-    std::cout << "CenterPoint: " << centerPoint[2] << std::endl;
-
 
     // Color and shape definition of markers for foot tip ground contact visualization.
     visualization_msgs::Marker addingAreaMarkerList;
@@ -2840,13 +2825,6 @@ bool ElevationMap::addSupportSurface(GridMap& mapSmooth){
 
 
     supportSurfaceAddingAreaPublisher_.publish(addingAreaMarkerList);
-    // get central position in front of the robot and use circle iterator..
-    // Simple testing: 0.8 * support surface new + 0.2 * support surface old.
-
-    //supAdded = 0.5 * supAdded + 0.5 * supSmooth;
-    // TODO: get submap of adequate size in front of the robot and add it to the supportSurface Added ..
-
-    //rawMap_.getSubmap();
 
     Position center(centerPoint[0], centerPoint[1]);
     double radius = 0.9;
@@ -2859,7 +2837,11 @@ bool ElevationMap::addSupportSurface(GridMap& mapSmooth){
         double distanceToHind = sqrt(pow(pos(0) - weightingReferencePoint[0],2) + pow(pos(1) - weightingReferencePoint[1],2));
         double weight = 0.8 - 0.6 * distanceToHind / 1.8;
         rawMap_.at("support_surface_added", index) = (1-weight) * rawMap_.at("support_surface_added", index) + weight * mapSmooth.at("support_surface_smooth", index);
-        //cout << "The value at index " << index.transpose() << " is " << data(index(0), index(1)) << endl;
+
+        //if (varLayer(ind) <= 0.0) varLayer =
+        // TODO: Variance: variance = oldVariance * (1-weight) + weight * (supSmooth - suppsurfadded)^2
+        // TODO: new supportMap_ featuring the two layers called elevation and variance..
+
     }
 }
 

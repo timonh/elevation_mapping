@@ -82,7 +82,7 @@ bool SensorProcessorBase::process(
 	if (!computeVariances(pointCloudSensorFrame, robotPoseCovariance, variances)) return false;
 
         // New: compute spacial variance *******************************************************************************************
-    if (!computeSpatialVariances(pointCloudMapFrame, spatialVariances)) return false;
+    //if (!computeSpatialVariances(pointCloudMapFrame, spatialVariances)) return false;  // Hacked away to assess influence on performance!!
         // End New *****************************************************************************************************************
 
     //std::cout << "spatialVariances size: " << spatialVariances << std::endl;

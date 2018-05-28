@@ -47,7 +47,7 @@ grid_map_filter_chain_two:
     params:
       input_layer: elevation
       output_layer: support_surface_smooth
-      radius: 0.07
+      radius: 0.06
 
 grid_map_filter_chain_three:
 
