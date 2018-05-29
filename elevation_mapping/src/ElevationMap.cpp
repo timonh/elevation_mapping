@@ -2836,6 +2836,8 @@ bool ElevationMap::addSupportSurface(GridMap& mapSmooth){
     supportSurfaceAddingAreaPublisher_.publish(addingAreaMarkerList);
 
     Position center(centerPoint[0], centerPoint[1]);
+    // TODO: try out using the foot tip as center point.. -> no mean difference calculation, but just difference to map..
+
     double radius = 0.9;
 
     // Circle Iterator!!!
@@ -2849,7 +2851,7 @@ bool ElevationMap::addSupportSurface(GridMap& mapSmooth){
 
 
         if (!supportMap_.isValid(index)) {
-            supportMapElevation = rawMapElevation;
+            supportMapElevation = mapSupSurfaceSmooth; // HAcked for testing..
             supportMapVariance = 0.0;
         }
         else{
@@ -2859,17 +2861,17 @@ bool ElevationMap::addSupportSurface(GridMap& mapSmooth){
             double weight = 0.8 - 0.6 * distanceToHind / 1.8;
             rawMap_.at("support_surface_added", index) = (1-weight) * rawMap_.at("support_surface_added", index) + weight * mapSmooth.at("support_surface_smooth", index);
 
-            supportMapElevation = (1-weight) * supportMapElevation + weight * mapSupSurfaceSmooth;
+
 
             // Naive approach to variance calculation:
             supportMapVariance = (1 - weight) * supportMapVariance + weight * pow((mapSupSurfaceSmooth - supportMapElevation), 2);
 
-        }
+            supportMapElevation = (1-weight) * supportMapElevation + weight * mapSupSurfaceSmooth;
 
-        //if (varLayer(ind) <= 0.0) varLayer =
+        }
+        // if (varLayer(ind) <= 0.0) varLayer =
         // TODO: Variance: variance = oldVariance * (1-weight) + weight * (supSmooth - suppsurfadded)^2
         // TODO: new supportMap_ featuring the two layers called elevation and variance..
-
     }
 
     // Publish map
