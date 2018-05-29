@@ -371,7 +371,7 @@ class ElevationMap
   bool writeDataFileForParameterLearning();
 
   //! TODO: Description:
-  bool updateSupportSurfaceEstimation();
+  bool updateSupportSurfaceEstimation(std::string tip);
 
   //! TODO: Description:
   bool penetrationDepthContinuityPropagation();
@@ -413,7 +413,7 @@ class ElevationMap
   double getPenetrationDepthVariance();
 
   //! TODO: Description:
-  bool penetrationDepthContinuityProcessing();
+  bool penetrationDepthContinuityProcessing(std::string tip);
 
   //! TODO: Description:
   bool terrainContinuityProcessing();
@@ -434,7 +434,7 @@ class ElevationMap
   bool supportSurfaceUpperBounding(grid_map::GridMap& upperBoundMap, grid_map::GridMap& supportSurfaceMap);
 
   //!TODO: Description:
-  bool addSupportSurface(grid_map::GridMap& mapSmooth);
+  bool addSupportSurface(grid_map::GridMap& mapSmooth, grid_map::Position leftTipHor, grid_map::Position rightTipHor, std::string tip);
 
   //!TODO: Description:
   bool gaussianProcessModeling();

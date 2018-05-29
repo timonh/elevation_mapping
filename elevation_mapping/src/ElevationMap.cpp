@@ -242,7 +242,7 @@ bool ElevationMap::add(const pcl::PointCloud<pcl::PointXYZRGB>::Ptr pointCloud, 
    // auto& vegetationHeightSmooth = rawMap_.at("vegetation_height_smooth", index); // New
    // auto& supportSurface = rawMap_.at("support_surface", index); // New
     auto& supportSurfaceSmooth = rawMap_.at("support_surface_smooth", index); // New
-    auto& supportSurfaceAdded = rawMap_.at("support_surface_added", index);
+   // auto& supportSurfaceAdded = rawMap_.at("support_surface_added", index);
 
 
     const float& pointVariance = pointCloudVariances(i);
@@ -269,7 +269,7 @@ bool ElevationMap::add(const pcl::PointCloud<pcl::PointXYZRGB>::Ptr pointCloud, 
       supportSurfaceSmooth = point.z; // Hacked, testing what happens to the support surface movements in high grass
      // vegetationHeight = point.z;
      // vegetationHeightSmooth = point.z;
-      supportSurfaceAdded = point.z;  // Test Hacked, what happens if it is not initialized like that..  
+   //   supportSurfaceAdded = point.z;  // Test Hacked, what happens if it is not initialized like that..
       continue;
     }
 
@@ -1301,7 +1301,7 @@ bool ElevationMap::footTipElevationMapComparison(std::string tip)
         Position tipPosition(xTip, yTip);
 
         // New here, check what isInside does..
-        if(rawMap_.isInside(tipPosition)) updateSupportSurfaceEstimation(); // NEW !!!!!
+        if(rawMap_.isInside(tipPosition)) updateSupportSurfaceEstimation(tip); // NEW !!!!!
         else std::cout << "FOOT TIP CONSIDERED NOT TO BE INSIDE!!!!! \n \n \n \n " << std::endl;
 
         // Make sure that the state is 1 and the foot tip is inside area covered by the elevation map.
@@ -2180,7 +2180,7 @@ bool ElevationMap::writeDataFileForParameterLearning(){
 
 // High Grass Functions from here:
 
-bool ElevationMap::updateSupportSurfaceEstimation(){
+bool ElevationMap::updateSupportSurfaceEstimation(std::string tip){
 
     // Here all the functions are called and weighting is set..
 
@@ -2195,7 +2195,7 @@ bool ElevationMap::updateSupportSurfaceEstimation(){
     //terrainContinuityPropagation();
 
 
-    penetrationDepthContinuityProcessing();
+    penetrationDepthContinuityProcessing(tip);
     terrainContinuityProcessing();
 
 
@@ -2431,7 +2431,7 @@ double ElevationMap::getPenetrationDepthVariance(){
     return penetrationDepthVariance_;
 }
 
-bool ElevationMap::penetrationDepthContinuityProcessing(){
+bool ElevationMap::penetrationDepthContinuityProcessing(std::string tip){
 
     // Mutex here for safe multithreading
     //boost::recursive_mutex::scoped_lock scopedLock(rawMapMutex_);
@@ -2610,7 +2610,9 @@ bool ElevationMap::penetrationDepthContinuityProcessing(){
 
     if (verticalDiffRight != 0.0 && verticalDiffLeft != 0.0){
         outMap2.add("additional_layer");
-        outMap2["additional_layer"].setConstant(meanDiffEmbedding);
+        if (tip == "left") outMap2["additional_layer"].setConstant(verticalDiffLeft);
+        else if (tip == "right") outMap2["additional_layer"].setConstant(verticalDiffRight);
+        //outMap2["additional_layer"].setConstant(meanDiffEmbedding);
         grid_map::Matrix& dataOutputSupSurfSmooth = outMap2["support_surface_smooth"];
         grid_map::Matrix& dataOutputMapAdd = outMap2["additional_layer"];
 
@@ -2665,18 +2667,18 @@ bool ElevationMap::penetrationDepthContinuityProcessing(){
    // rawMap_.get("elevation_inpainted") = dataElevInpainted - dataElev;
 
 
-    addSupportSurface(outMap2);
+    addSupportSurface(outMap2, leftTipHorizontal, rightTipHorizontal, tip);
 
 
 
     // Publish map
-    grid_map_msgs::GridMap mapMessage;
-    GridMapRosConverter::toMessage(outMap2, mapMessage);
+    //grid_map_msgs::GridMap mapMessage;
+    //GridMapRosConverter::toMessage(outMap2, mapMessage);
     //mapMessage.info.header.frame_id = "/odom"; //! HACKED!!
 
     //GridMapRosConverter::fromMessage(mapMessage, rawMapCorrected)
 
-    elevationMapInpaintedPublisher_.publish(mapMessage);
+    //elevationMapInpaintedPublisher_.publish(mapMessage);
 
 
 
@@ -2759,7 +2761,7 @@ bool ElevationMap::supportSurfaceUpperBounding(GridMap& upperBoundMap, GridMap& 
     return true;
 }
 
-bool ElevationMap::addSupportSurface(GridMap& mapSmooth){
+bool ElevationMap::addSupportSurface(GridMap& mapSmooth, grid_map::Position leftTipHor, grid_map::Position rightTipHor, std::string tip){
 
 
     // Get sensible central position upfront the robot.
@@ -2780,6 +2782,7 @@ bool ElevationMap::addSupportSurface(GridMap& mapSmooth){
     tf::Vector3 right({1.1,0.9,0.0});
     tf::Vector3 left({1.1,-0.9,0.0});
     tf::Vector3 weightingReference({0.5, 0.0, 0.0});
+    tf::Vector3 centerTranslation({0.65, 0.0, 0.0});
 
     tf::Vector3 centerPoint = footprintTrans + m * trans;
 
@@ -2788,6 +2791,9 @@ bool ElevationMap::addSupportSurface(GridMap& mapSmooth){
     tf::Vector3 rightPoint = footprintTrans + m * right;
     tf::Vector3 leftPoint = footprintTrans + m * left;
     tf::Vector3 weightingReferencePoint = footprintTrans + m * weightingReference;
+    tf::Vector3 weightingReferenceTranslation = m * weightingReference; // Translation to the weighting reference.. (for each foot tip)
+
+    tf::Vector3 centerTranslationTransformed = m * centerTranslation;
 
     // Color and shape definition of markers for foot tip ground contact visualization.
     visualization_msgs::Marker addingAreaMarkerList;
@@ -2833,9 +2839,24 @@ bool ElevationMap::addSupportSurface(GridMap& mapSmooth){
     addingAreaMarkerList.points.push_back(p);
 
 
-    supportSurfaceAddingAreaPublisher_.publish(addingAreaMarkerList);
+    //supportSurfaceAddingAreaPublisher_.publish(addingAreaMarkerList);
 
-    Position center(centerPoint[0], centerPoint[1]);
+    //Position center(centerPoint[0], centerPoint[1]);
+
+    Position center;
+    if (tip == "left"){
+        weightingReferencePoint[0] = leftTipHor(0);
+        weightingReferencePoint[1] = rightTipHor(1);
+        center(0) = leftTipHor(0);// + centerTranslationTransformed[0];
+        center(1) = leftTipHor(1);// + centerTranslationTransformed[1];
+    }
+    else if (tip == "right"){
+        weightingReferencePoint[0] = rightTipHor(0);
+        weightingReferencePoint[1] = rightTipHor(1);
+        center(0) = rightTipHor(0);// + centerTranslationTransformed[0];
+        center(1) = rightTipHor(1);// + centerTranslationTransformed[1];
+    }
+
     // TODO: try out using the foot tip as center point.. -> no mean difference calculation, but just difference to map..
 
     double radius = 0.9;
@@ -2857,14 +2878,14 @@ bool ElevationMap::addSupportSurface(GridMap& mapSmooth){
         else{
             Position pos;
             rawMap_.getPosition(index, pos);
-            double distanceToHind = sqrt(pow(pos(0) - weightingReferencePoint[0],2) + pow(pos(1) - weightingReferencePoint[1],2));
-            double weight = 0.8 - 0.6 * distanceToHind / 1.8;
-            rawMap_.at("support_surface_added", index) = (1-weight) * rawMap_.at("support_surface_added", index) + weight * mapSmooth.at("support_surface_smooth", index);
+            double distanceToRef = sqrt(pow(pos(0) - weightingReferencePoint[0],2) + pow(pos(1) - weightingReferencePoint[1],2));
+            double weight = (0.8 - 0.8 * distanceToRef / radius);
+            //rawMap_.at("support_surface_added", index) = (1-weight) * rawMap_.at("support_surface_added", index) + weight * mapSmooth.at("support_surface_smooth", index);
 
 
 
             // Naive approach to variance calculation:
-            supportMapVariance = (1 - weight) * supportMapVariance + weight * pow((mapSupSurfaceSmooth - supportMapElevation), 2);
+            supportMapVariance = 0.5 * supportMapVariance + 0.5 * pow((mapSupSurfaceSmooth - supportMapElevation), 2);
 
             supportMapElevation = (1-weight) * supportMapElevation + weight * mapSupSurfaceSmooth;
 
