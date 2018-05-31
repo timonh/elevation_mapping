@@ -26,6 +26,7 @@
   <depend>eigen_conversions</depend>
   <depend>boost</depend>
   <depend>eigen</depend>
+  <depend>gaussian_process_regression</depend>
 
   <!-- Added by Timon for mg generation -->
   <!-- <build_depend>message_generation</build_depend>

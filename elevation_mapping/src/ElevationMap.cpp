@@ -33,6 +33,9 @@
 // TEST
 #include <any_msgs/State.h>
 
+// GP Regression
+#include <gaussian_process_regression/gaussian_process_regression.h>
+
 // Math
 #include <math.h>
 
@@ -678,6 +681,7 @@ void ElevationMap::move(const Eigen::Vector2d& position)
 
   // New Test by Timon:
   supportMap_.move(position, newRegions);
+
 
 }
 
@@ -2202,6 +2206,7 @@ bool ElevationMap::updateSupportSurfaceEstimation(std::string tip){
     footTipBasedElevationMapIncorporation();
 
 
+    gaussianProcessSmoothing(tip);
 
 
     // TODO: at some point initialize the first two elevation map layers, maybe heavy weight on foot tip only layer..
@@ -2859,7 +2864,7 @@ bool ElevationMap::addSupportSurface(GridMap& mapSmooth, grid_map::Position left
 
     // TODO: try out using the foot tip as center point.. -> no mean difference calculation, but just difference to map..
 
-    double radius = 0.9;
+    double radius = 0.75;
 
     // Circle Iterator!!!
     for (CircleIterator iterator(mapSmooth, center, radius); !iterator.isPastEnd(); ++iterator) {
@@ -2873,7 +2878,7 @@ bool ElevationMap::addSupportSurface(GridMap& mapSmooth, grid_map::Position left
 
         if (!supportMap_.isValid(index)) {
             supportMapElevation = mapSupSurfaceSmooth; // HAcked for testing..
-            supportMapVariance = 0.0;
+            supportMapVariance = 0.0; // Hacked -> trust less those layers that are new
         }
         else{
             Position pos;
@@ -2881,8 +2886,6 @@ bool ElevationMap::addSupportSurface(GridMap& mapSmooth, grid_map::Position left
             double distanceToRef = sqrt(pow(pos(0) - weightingReferencePoint[0],2) + pow(pos(1) - weightingReferencePoint[1],2));
             double weight = (0.8 - 0.8 * distanceToRef / radius);
             //rawMap_.at("support_surface_added", index) = (1-weight) * rawMap_.at("support_surface_added", index) + weight * mapSmooth.at("support_surface_smooth", index);
-
-
 
             // Naive approach to variance calculation:
             supportMapVariance = 0.5 * supportMapVariance + 0.5 * pow((mapSupSurfaceSmooth - supportMapElevation), 2);
@@ -2915,5 +2918,106 @@ geometry_msgs::Transform ElevationMap::getFootprint(){
     return footprint_;
 }
 
+
+bool ElevationMap::gaussianProcessSmoothing(std::string tip){
+
+    std::cout << "Called the function gps" << std::endl;
+
+    // TODO: these params into config file.
+    double tileResolution = 0.05;
+    double tileSize = 0.12;
+    double sideLengthAddingPatch = 1.5;
+    setSmoothingTiles(tileResolution, tileSize, sideLengthAddingPatch, tip);
+
+    return true;
+}
+
+bool ElevationMap::setSmoothingTiles(double tileResolution, double tileSize, double sideLengthAddingPatch, std::string tip){
+
+    // Todo: set tile resolution and tile size as config file params
+    if (2.0 * tileResolution > tileSize) { // TODO: make this double, as using circle iterator
+        std::cout << "tile size for gaussian process model tiling must be higher than twice the tile Resolution" << std::endl;
+        return false;
+    }
+
+    int inputDim = 2;
+    int outputDim = 1;
+    GaussianProcessRegression<float> myGPR(inputDim, outputDim);
+
+    if (leftStanceVector_.size() > 0 && rightStanceVector_.size() > 0){
+        std::cout << "Called the function" << std::endl;
+
+        // Visualization in Rviz.
+        visualization_msgs::Marker tileMarkerList;
+        tileMarkerList.header.frame_id = "odom";
+        tileMarkerList.header.stamp = ros::Time();
+        tileMarkerList.ns = "elevation_mapping";
+        tileMarkerList.id = 0;
+        tileMarkerList.type = visualization_msgs::Marker::SPHERE_LIST;
+        tileMarkerList.action = visualization_msgs::Marker::ADD;
+        tileMarkerList.pose.orientation.x = 0.0;
+        tileMarkerList.pose.orientation.y = 0.0;
+        tileMarkerList.pose.orientation.z = 0.0;
+        tileMarkerList.pose.orientation.w = 1.0;
+        tileMarkerList.scale.x = 0.1;
+        tileMarkerList.scale.y = 0.1;
+        tileMarkerList.scale.z = 0.1;
+
+        tileMarkerList.color.a = 1.0; // Don't forget to set the alpha!
+        tileMarkerList.color.r = 1.0;
+        tileMarkerList.color.g = 0.1;
+        tileMarkerList.color.b = 0.1;
+
+        std::cout << "HERE 0" << std::endl;
+
+
+        std::cout << "HERE: tip: " << tip << std::endl;
+
+        Eigen::Vector3f tipLeftVec = getLatestLeftStance();
+        Eigen::Vector3f tipRightVec = getLatestRightStance();
+        Position tipLeft(tipLeftVec(0), tipLeftVec(1));
+        Position tipRight(tipRightVec(0), tipRightVec(1));
+        int noOfTilesPerHalfSide = floor((sideLengthAddingPatch / 2.0) / tileResolution);
+
+        std::cout << "HERE 1" << std::endl;
+
+        for (int i = -noOfTilesPerHalfSide; i <= noOfTilesPerHalfSide; ++i){
+            for (int j = -noOfTilesPerHalfSide; j <= noOfTilesPerHalfSide; ++j){
+                if (sqrt(pow(i * tileResolution,2) + pow(j * tileResolution,2)) < (sideLengthAddingPatch - 0.15) / 2.0 ){
+                    Position posTile;
+                    if (tip == "left"){
+                        posTile(0) = tipLeft(0) + i * tileResolution;
+                        posTile(1) = tipLeft(1) + j * tileResolution;
+                    }
+                    if (tip == "right"){
+                        posTile(0) = tipRight(0) + i * tileResolution;
+                        posTile(1) = tipRight(1) + j * tileResolution;
+                    }
+
+
+                    // Visualization:
+
+                    geometry_msgs::Point p;
+                    p.x = posTile(0);
+                    p.y = posTile(1);
+                    p.z = 0.0;
+                    tileMarkerList.points.push_back(p);
+                    supportSurfaceAddingAreaPublisher_.publish(tileMarkerList);
+
+                    // Position -> Index
+
+
+
+                    //for .. Iterator
+                }
+            }
+        }
+        // Use submap Iterator to collect data..
+    //    for all tile centers
+    //    position -> index
+    //            for sbumap iterator
+    }
+    return true;
+}
 
 } /* namespace */

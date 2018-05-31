@@ -445,7 +445,11 @@ class ElevationMap
   //!TODO: Description:
   geometry_msgs::Transform getFootprint();
 
+  //! TODO: Description:
+  bool gaussianProcessSmoothing(std::string tip);
 
+  //! TODO: Description:
+  bool setSmoothingTiles(double tileResolution, double tileSize, double sideLengthAddingPatch, std::string tip);
 
 
 

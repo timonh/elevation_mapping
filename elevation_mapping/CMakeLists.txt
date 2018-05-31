@@ -21,6 +21,7 @@ find_package(catkin REQUIRED COMPONENTS
   eigen_conversions
   kindr
   kindr_ros
+  gaussian_process_regression
 )
 
 # Added for debugging
@@ -81,6 +82,7 @@ catkin_package(
     eigen_conversions
     kindr
     kindr_ros
+    gaussian_process_regression
   DEPENDS
     Boost
 )
