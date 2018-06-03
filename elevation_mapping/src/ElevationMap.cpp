@@ -74,7 +74,7 @@ ElevationMap::ElevationMap(ros::NodeHandle nodeHandle)
               "sensor_z_at_lowest_scan", "foot_tip_elevation", "support_surface", "elevation_inpainted", "elevation_smooth", "vegetation_height", "vegetation_height_smooth",
               "support_surface", "support_surface_smooth", "support_surface_added"}),//, "support_surface_smooth_inpainted", "support_surface_added"}),
       fusedMap_({"elevation", "upper_bound", "lower_bound", "color"}),
-      supportMap_({"elevation", "variance"}), // New
+      supportMap_({"elevation", "variance", "elevation_gp"}), // New
       hasUnderlyingMap_(false),
       visibilityCleanupDuration_(0.0),
       filterChain_("grid_map::GridMap"), // New
@@ -83,7 +83,7 @@ ElevationMap::ElevationMap(ros::NodeHandle nodeHandle)
     // Timon added foot_tip_elevation layer
   rawMap_.setBasicLayers({"elevation", "variance"});
   fusedMap_.setBasicLayers({"elevation", "upper_bound", "lower_bound"});
-  supportMap_.setBasicLayers({"elevation", "variance"}); // New
+  supportMap_.setBasicLayers({"elevation", "variance", "elevation_gp"}); // New
 
 
 
@@ -2203,7 +2203,7 @@ bool ElevationMap::updateSupportSurfaceEstimation(std::string tip){
     terrainContinuityProcessing();
 
 
-    footTipBasedElevationMapIncorporation();
+    //footTipBasedElevationMapIncorporation();
 
 
     gaussianProcessSmoothing(tip);
@@ -2872,7 +2872,7 @@ bool ElevationMap::addSupportSurface(GridMap& mapSmooth, grid_map::Position left
 
         auto& supportMapElevation = supportMap_.at("elevation", index);
         auto& supportMapVariance = supportMap_.at("variance", index);
-        auto& rawMapElevation = rawMap_.at("elevation", index);
+        //auto& rawMapElevation = rawMap_.at("elevation", index);
         auto& mapSupSurfaceSmooth = mapSmooth.at("support_surface_smooth", index);
 
 
@@ -2940,11 +2940,28 @@ bool ElevationMap::setSmoothingTiles(double tileResolution, double tileSize, dou
         return false;
     }
 
-    int inputDim = 2;
-    int outputDim = 1;
-    GaussianProcessRegression<float> myGPR(inputDim, outputDim);
+
 
     if (leftStanceVector_.size() > 0 && rightStanceVector_.size() > 0){
+
+        // TEST
+
+        //auto& supportMapElevationGP = supportMap_.at()
+        //auto& supportMapElevation = supportMap_.at("elevation", index);
+        //auto& supportMapVariance = supportMap_.at("variance", index);
+        //auto& rawMapElevation = rawMap_.at("elevation", index);
+        //auto& mapSupSurfaceSmooth = mapSmooth.at("support_surface_smooth", index);
+
+
+        //if (!supportMap_.isValid(index)) {
+        //    supportMapElevation = mapSupSurfaceSmooth; // HAcked for testing..
+        //    supportMapVariance = 0.0; // Hacked -> trust less those layers that are new
+        //}
+        //else{..
+
+
+        // End TEST
+
         std::cout << "Called the function" << std::endl;
 
         // Visualization in Rviz.
@@ -2984,7 +3001,17 @@ bool ElevationMap::setSmoothingTiles(double tileResolution, double tileSize, dou
         for (int i = -noOfTilesPerHalfSide; i <= noOfTilesPerHalfSide; ++i){
             for (int j = -noOfTilesPerHalfSide; j <= noOfTilesPerHalfSide; ++j){
                 if (sqrt(pow(i * tileResolution,2) + pow(j * tileResolution,2)) < (sideLengthAddingPatch - 0.15) / 2.0 ){
-                    Position posTile;
+
+
+                    // MOVED here to test it:
+
+                    int inputDim = 2;
+                    int outputDim = 1;
+                    GaussianProcessRegression<float> myGPR(inputDim, outputDim);
+                    myGPR.SetHyperParams(0.3, 0.1, 0.1);
+
+
+                    Eigen::Vector2f posTile;
                     if (tip == "left"){
                         posTile(0) = tipLeft(0) + i * tileResolution;
                         posTile(1) = tipLeft(1) + j * tileResolution;
@@ -2993,7 +3020,74 @@ bool ElevationMap::setSmoothingTiles(double tileResolution, double tileSize, dou
                         posTile(0) = tipRight(0) + i * tileResolution;
                         posTile(1) = tipRight(1) + j * tileResolution;
                     }
+                    Position posTilePosition(posTile(0), posTile(1));
 
+                    //Eigen::VectorXf trainingElevation = rawMap_.atPosition("elevation", posTile);
+
+                    for (CircleIterator iterator(rawMap_, posTilePosition, tileSize/2.0); !iterator.isPastEnd(); ++iterator) {
+                        const Index index(*iterator);
+                        // Loop Here for adding data..
+                        Eigen::VectorXf trainInput(inputDim);
+                        Eigen::VectorXf trainOutput(outputDim);
+                        trainInput = posTile;
+                        trainOutput(0) = rawMap_.at("elevation", index);
+                        //std::cout << type(rawMap_.atPosition("elevation", posTilePosition)) << std::endl;
+
+                        if (!isnan(trainOutput(0)))
+
+                        myGPR.AddTrainingData(trainInput, trainOutput);
+
+                    }
+
+                    //myGPR.PrepareRegression(false); // Testing..
+
+
+
+                    // Loop here to get test output
+                    for (CircleIterator iterator(rawMap_, posTilePosition, tileSize/2.0); !iterator.isPastEnd(); ++iterator) { // HAcked to raw map for testing..
+                        const Index index(*iterator);
+
+
+                        auto& supportMapElevationGP = supportMap_.at("elevation_gp", index);
+                        //auto& supportMapElevation = supportMap_.at("elevation", index);
+                        //auto& supportMapVariance = supportMap_.at("variance", index);
+                        //auto& rawMapElevation = rawMap_.at("elevation", index);
+                        //auto& mapSupSurfaceSmooth = mapSmooth.at("support_surface_smooth", index);
+
+
+                       // if (!supportMap_.isValid(index)) {
+                            //supportMapElevationGP = 0.0;
+                        //    supportMapElevation = mapSupSurfaceSmooth; // HAcked for testing..
+                        //    supportMapVariance = 0.0; // Hacked -> trust less those layers that are new
+                       // }
+                      //  else{
+
+
+
+                        // Todo, consider hole filling for better hole filling
+                        Eigen::VectorXf testInput(inputDim);
+                        Eigen::VectorXf testOutput(outputDim);
+                        Position inputPosition;
+                        supportMap_.getPosition(index, inputPosition);
+
+                        testInput(0) = inputPosition(0);
+                        testInput(1) = inputPosition(1);
+
+                        supportMapElevationGP = myGPR.DoRegression(testInput)(0);
+                            //supportMap_.at("elevation_gp", index) = myGPR.DoRegression(testInput)(0);
+                            //std::cout << "Value: " << supportMap_.at("elevation_gp", index) << std::endl;
+                       // }
+
+                    }
+                    // Debug:
+                //    Eigen::VectorXf testInput(inputDim);
+                //    testInput(0) = posTilePosition(0);
+                //    testInput(1) = posTilePosition(1);
+                //    Eigen::VectorXf testOutput(outputDim);
+                //    testOutput(0) =  myGPR.DoRegression(testInput)(0);
+                    //if (!isnan(testOutput(0))) supportMap_.atPosition("elevation_gp", posTilePosition) = testOutput(0);
+                    //supportMap_.atPosition("elevation_gp", posTilePosition) = myGPR.DoRegression(testInput)(0);
+                    // End Debug
 
                     // Visualization:
 
@@ -3004,12 +3098,15 @@ bool ElevationMap::setSmoothingTiles(double tileResolution, double tileSize, dou
                     tileMarkerList.points.push_back(p);
                     supportSurfaceAddingAreaPublisher_.publish(tileMarkerList);
 
+
+
                     // Position -> Index
 
 
 
                     //for .. Iterator
                 }
+
             }
         }
         // Use submap Iterator to collect data..
@@ -3017,6 +3114,13 @@ bool ElevationMap::setSmoothingTiles(double tileResolution, double tileSize, dou
     //    position -> index
     //            for sbumap iterator
     }
+
+    // Publish map
+    grid_map_msgs::GridMap mapMessage;
+    GridMapRosConverter::toMessage(supportMap_, mapMessage);
+    mapMessage.info.header.frame_id = "odom";
+    elevationMapSupportPublisher_.publish(mapMessage);
+
     return true;
 }
 
