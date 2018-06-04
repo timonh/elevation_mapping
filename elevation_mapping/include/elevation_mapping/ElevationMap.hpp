@@ -457,6 +457,8 @@ class ElevationMap
   //! TODO: Description:
   double getClosestMapValueUsingSpiralIteratorElevation(grid_map::GridMap& MapReference, grid_map::Position footTip, double radius, double tipHeight);
 
+  //! TODO: Description:
+  bool supportSurfaceUpperBoundingGP(grid_map::GridMap& upperBoundMap, grid_map::GridMap& supportSurfaceMap);
 
 
   //! ROS nodehandle.

@@ -3121,6 +3121,8 @@ bool ElevationMap::setSmoothingTiles(double tileResolution, double tileSize, dou
     //            for sbumap iterator
     }
 
+    supportSurfaceUpperBoundingGP(rawMap_, supportMap_);
+
     // Publish map
     grid_map_msgs::GridMap mapMessage;
     GridMapRosConverter::toMessage(supportMap_, mapMessage);
@@ -3174,6 +3176,16 @@ double ElevationMap::getClosestMapValueUsingSpiralIteratorElevation(grid_map::Gr
    // std::cout << " \n \n \n \n \n " << std::endl;
    // std::cout << "BEEN HERE< !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!" << std::endl;
     return 0.0;
+}
+
+bool ElevationMap::supportSurfaceUpperBoundingGP(GridMap& upperBoundMap, GridMap& supportSurfaceMap){
+
+    Matrix& dataUpper = upperBoundMap["elevation"];
+    Matrix& dataSup = supportSurfaceMap["elevation_gp"];
+
+    supportSurfaceMap["elevation_gp"] = dataUpper.cwiseMin(dataSup);
+
+    return true;
 }
 
 } /* namespace */
