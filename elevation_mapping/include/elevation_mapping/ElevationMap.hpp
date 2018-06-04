@@ -451,6 +451,12 @@ class ElevationMap
   //! TODO: Description:
   bool setSmoothingTiles(double tileResolution, double tileSize, double sideLengthAddingPatch, std::string tip);
 
+  //! TODO: Description:
+  double getFootTipElevationMapDifference(std::string tip);
+
+  //! TODO: Description:
+  double getClosestMapValueUsingSpiralIteratorElevation(grid_map::GridMap& MapReference, grid_map::Position footTip, double radius, double tipHeight);
+
 
 
   //! ROS nodehandle.
