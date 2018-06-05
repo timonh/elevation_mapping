@@ -74,7 +74,7 @@ ElevationMap::ElevationMap(ros::NodeHandle nodeHandle)
               "sensor_z_at_lowest_scan", "foot_tip_elevation", "support_surface", "elevation_inpainted", "elevation_smooth", "vegetation_height", "vegetation_height_smooth",
               "support_surface", "support_surface_smooth", "support_surface_added"}),//, "support_surface_smooth_inpainted", "support_surface_added"}),
       fusedMap_({"elevation", "upper_bound", "lower_bound", "color"}),
-      supportMap_({"elevation", "variance", "elevation_gp"}), // New
+      supportMap_({"elevation", "variance", "elevation_gp", "elevation_gp_added"}), // New
       hasUnderlyingMap_(false),
       visibilityCleanupDuration_(0.0),
       filterChain_("grid_map::GridMap"), // New
@@ -83,7 +83,7 @@ ElevationMap::ElevationMap(ros::NodeHandle nodeHandle)
     // Timon added foot_tip_elevation layer
   rawMap_.setBasicLayers({"elevation", "variance"});
   fusedMap_.setBasicLayers({"elevation", "upper_bound", "lower_bound"});
-  supportMap_.setBasicLayers({"elevation", "variance", "elevation_gp"}); // New
+  supportMap_.setBasicLayers({"elevation", "variance", "elevation_gp", "elevation_gp_added"}); // New
 
 
 
@@ -2879,7 +2879,9 @@ bool ElevationMap::addSupportSurface(GridMap& mapSmooth, grid_map::Position left
 
 
         if (!supportMap_.isValid(index)) {
+           // if (!isnan(mapSupSurfaceSmooth))
             supportMapElevation = mapSupSurfaceSmooth; // HAcked for testing..
+           // else supportMapElevation = 0.0; // Hacked to fill the holes in the elevation map..
             supportMapVariance = 0.0; // Hacked -> trust less those layers that are new
         }
         else{
@@ -2893,8 +2895,10 @@ bool ElevationMap::addSupportSurface(GridMap& mapSmooth, grid_map::Position left
             supportMapVariance = 0.5 * supportMapVariance + 0.5 * pow((mapSupSurfaceSmooth - supportMapElevation), 2);
 
             supportMapElevation = (1-weight) * supportMapElevation + weight * mapSupSurfaceSmooth;
+            //if (isnan(supportMapElevation)) supportMapElevation = 0.0; // Hacked for hole filling
 
         }
+
         // if (varLayer(ind) <= 0.0) varLayer =
         // TODO: Variance: variance = oldVariance * (1-weight) + weight * (supSmooth - suppsurfadded)^2
         // TODO: new supportMap_ featuring the two layers called elevation and variance..
@@ -2928,7 +2932,7 @@ bool ElevationMap::gaussianProcessSmoothing(std::string tip){
     // TODO: these params into config file.
     double tileResolution = 0.05;
     double tileSize = 0.12;
-    double sideLengthAddingPatch = 1.5;
+    double sideLengthAddingPatch = 1.3;
     setSmoothingTiles(tileResolution, tileSize, sideLengthAddingPatch, tip);
 
     return true;
@@ -2942,8 +2946,7 @@ bool ElevationMap::setSmoothingTiles(double tileResolution, double tileSize, dou
         return false;
     }
 
-    // Get the difference of the foot tip vs the elevation map to vertically translate the smoothened map..
-    double tipDifference = getFootTipElevationMapDifference(tip);
+
 
     if (leftStanceVector_.size() > 0 && rightStanceVector_.size() > 0){
 
@@ -2993,6 +2996,7 @@ bool ElevationMap::setSmoothingTiles(double tileResolution, double tileSize, dou
         Position tipLeft(tipLeftVec(0), tipLeftVec(1));
         Position tipRight(tipRightVec(0), tipRightVec(1));
         int noOfTilesPerHalfSide = floor((sideLengthAddingPatch / 2.0) / tileResolution);
+        double radius = (sideLengthAddingPatch - 0.15) / 2.0;
 
         Position footTip;
         if (tip == "left") footTip = tipLeft;
@@ -3000,7 +3004,7 @@ bool ElevationMap::setSmoothingTiles(double tileResolution, double tileSize, dou
 
         for (int i = -noOfTilesPerHalfSide; i <= noOfTilesPerHalfSide; ++i){
             for (int j = -noOfTilesPerHalfSide; j <= noOfTilesPerHalfSide; ++j){
-                if (sqrt(pow(i * tileResolution,2) + pow(j * tileResolution,2)) < (sideLengthAddingPatch - 0.15) / 2.0 ){
+                if (sqrt(pow(i * tileResolution,2) + pow(j * tileResolution,2)) < radius){
 
 
                     // MOVED here to test it:
@@ -3019,7 +3023,7 @@ bool ElevationMap::setSmoothingTiles(double tileResolution, double tileSize, dou
 
                     //Eigen::VectorXf trainingElevation = rawMap_.atPosition("elevation", posTile);
 
-                    for (CircleIterator iterator(rawMap_, posTilePosition, tileSize/2.0); !iterator.isPastEnd(); ++iterator) {
+                    for (CircleIterator iterator(supportMap_, posTilePosition, tileSize/2.0); !iterator.isPastEnd(); ++iterator) {
                         const Index index(*iterator);
                         // Loop Here for adding data..
                         Eigen::VectorXf trainInput(inputDim);
@@ -3043,8 +3047,9 @@ bool ElevationMap::setSmoothingTiles(double tileResolution, double tileSize, dou
                     if (myGPR.get_n_data() > 7){
 
                         // Loop here to get test output
-                        for (CircleIterator iterator(rawMap_, posTilePosition, tileSize/2.0); !iterator.isPastEnd(); ++iterator) { // HAcked to raw map for testing..
+                        for (CircleIterator iterator(supportMap_, posTilePosition, tileSize/2.0); !iterator.isPastEnd(); ++iterator) { // HAcked to raw map for testing..
                             const Index index(*iterator);
+
 
                             auto& supportMapElevationGP = supportMap_.at("elevation_gp", index);
 
@@ -3073,20 +3078,27 @@ bool ElevationMap::setSmoothingTiles(double tileResolution, double tileSize, dou
                             testInput(0) = inputPosition(0);
                             testInput(1) = inputPosition(1);
 
+                            // TODO: cleanly separate the weighting due to
+
                             // Calculate weight. (as function of distance from foot tip)
                             // inputPosition vs. foot tip / radius
-                            double radius = (sideLengthAddingPatch) / 2.0;
-                            double weight = 1 - sqrt(pow(inputPosition(0) - footTip(0), 2) + pow(inputPosition(1) - footTip(1), 2)) / radius;
-                            //std::cout << "weight: " << weight << std::endl;
+//                            double radius = (sideLengthAddingPatch - 0.2) / 2.0;
+//                            double weight = min(1.2 - (sqrt(pow(inputPosition(0) - footTip(0), 2) +
+//                                                     pow(inputPosition(1) - footTip(1), 2)) / radius), 1.0);
+                            //if (weight > 0.9) std::cout << "weight: " << weight << std::endl;
 
-                            // Low pass filter method if ther is already data. (TEST this!!)
-                            if (isnan(supportMap_.at("elevation_gp", index))){
-                                supportMapElevationGP = myGPR.DoRegression(testInput)(0) + tipDifference;
+                            //if (!isnan(tipDifference)){ // Only update if finite tipDifference is found
+                                // Low pass filter method if ther is already data. (TEST this!!)
+                                //if (isnan(supportMap_.at("elevation_gp", index))){
+                            if (!supportMap_.isValid(index)){
+                                supportMapElevationGP = myGPR.DoRegression(testInput)(0);
                             }
                             else {
-                                supportMapElevationGP = (1 - weight) *  supportMapElevationGP +
-                                        ((myGPR.DoRegression(testInput)(0) + tipDifference) * weight);
+                                supportMapElevationGP = 0.5 *  supportMapElevationGP +
+                                        (myGPR.DoRegression(testInput)(0)) * 0.5;
+                                //supportMapElevationGP = myGPR.DoRegression(testInput)(0) + tipDifference; // Hacked to test!
                             }
+                            //}
 
                            // if (supportMapElevationGP == 0.0) supportMap_.isValid(index) = false;
 
@@ -3115,6 +3127,37 @@ bool ElevationMap::setSmoothingTiles(double tileResolution, double tileSize, dou
                 }
             }
         }
+
+        // Get the difference of the foot tip vs the elevation map to vertically translate the smoothened map..
+        double tipDifference = getFootTipElevationMapDifference(tip);
+
+
+        //double radius = (sideLengthAddingPatch - 0.2) / 2.0;
+
+        for (CircleIterator iterator(supportMap_, footTip, radius); !iterator.isPastEnd(); ++iterator) { // HAcked to raw map for testing..
+            const Index index(*iterator);
+
+            Position addingPosition;
+            supportMap_.getPosition(index, addingPosition);
+
+            double weight = min(1.2 - (sqrt(pow(addingPosition(0) - footTip(0), 2) +
+                               pow(addingPosition(1) - footTip(1), 2)) / radius), 1.0);
+
+
+            auto& supportMapElevationGP = supportMap_.at("elevation_gp", index);
+            auto& supportMapElevationGPAdded = supportMap_.at("elevation_gp_added", index);
+
+            if (supportMap_.isValid(index)){
+                supportMapElevationGPAdded = (1 - weight) * supportMapElevationGPAdded + (supportMapElevationGP + tipDifference) * weight;
+            }
+            else{
+                supportMapElevationGPAdded = supportMapElevationGP + tipDifference;
+            }
+
+        }
+        // ->
+
+        // HEREHERE
         // Use submap Iterator to collect data..
     //    for all tile centers
     //    position -> index
@@ -3140,11 +3183,11 @@ double ElevationMap::getFootTipElevationMapDifference(std::string tip){
     if (tip == "right") footTip3 = getFrontRightFootTipPosition();
     Position footTipHorizontal(footTip3(0), footTip3(1));
     double verticalDifference;
-    if(rawMap_.isInside(footTipHorizontal)){
-        if (!isnan(rawMap_.atPosition("support_surface_smooth", footTipHorizontal))){
-            verticalDifference = footTip3(2) - rawMap_.atPosition("elevation", footTipHorizontal); // Hacked to rawMap_
+    if(supportMap_.isInside(footTipHorizontal)){
+        if (!isnan(supportMap_.atPosition("elevation_gp", footTipHorizontal))){
+            verticalDifference = footTip3(2) - supportMap_.atPosition("elevation_gp", footTipHorizontal); // Hacked to rawMap_
         }
-        else verticalDifference = getClosestMapValueUsingSpiralIteratorElevation(rawMap_, footTipHorizontal, radius, footTip3(2)); // New experiment.. Wrong, not difference yet!!!
+        else verticalDifference = getClosestMapValueUsingSpiralIteratorElevation(supportMap_, footTipHorizontal, radius, footTip3(2)); // New experiment.. Wrong, not difference yet!!!
     }
     else verticalDifference = 0.0;
 
@@ -3164,10 +3207,10 @@ double ElevationMap::getClosestMapValueUsingSpiralIteratorElevation(grid_map::Gr
       //  std::cout << "Check.." << std::endl;
         //if (MapReference.isValid(index)) std::cout << "It is valid" << std::endl;
         //else std::cout << "It is not valid" << std::endl;
-        if (MapReference.isInside(pos) && !isnan(MapReference.at("elevation", index)) && MapReference.isValid(index)){
+        if (MapReference.isInside(pos) && !isnan(MapReference.at("elevation_gp", index)) && MapReference.isValid(index)){
        //     std::cout << "Found an isnan not ---------------------------------------------------------------------------------------" << std::endl;
             std::cout << "RETURNED DIFFERENCE TO A CLOSE NEIGHBOR USING SPIRALLING!!!" << std::endl;
-            return tipHeight - MapReference.at("elevation", index); // && MapReference.isValid(index)
+            return tipHeight - MapReference.at("elevation_gp", index); // && MapReference.isValid(index)
         }
     //    std::cout << "got here" << std::endl;
         counter++;
@@ -3181,9 +3224,9 @@ double ElevationMap::getClosestMapValueUsingSpiralIteratorElevation(grid_map::Gr
 bool ElevationMap::supportSurfaceUpperBoundingGP(GridMap& upperBoundMap, GridMap& supportSurfaceMap){
 
     Matrix& dataUpper = upperBoundMap["elevation"];
-    Matrix& dataSup = supportSurfaceMap["elevation_gp"];
+    Matrix& dataSup = supportSurfaceMap["elevation_gp_added"];
 
-    supportSurfaceMap["elevation_gp"] = dataUpper.cwiseMin(dataSup);
+    supportSurfaceMap["elevation_gp_added"] = dataUpper.cwiseMin(dataSup);
 
     return true;
 }

@@ -473,6 +473,7 @@ class ElevationMap
   // New
   //! New grid map for support surface to increase the scope of definition, i.e. fill in holes.
   grid_map::GridMap supportMap_;
+  grid_map::GridMap supportMapGP_;
   // End New
 
   //! Visibility cleanup debug map.
