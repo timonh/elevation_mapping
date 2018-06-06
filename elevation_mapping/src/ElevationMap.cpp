@@ -2930,8 +2930,8 @@ bool ElevationMap::gaussianProcessSmoothing(std::string tip){
     std::cout << "Called the function gps" << std::endl;
 
     // TODO: these params into config file.
-    double tileResolution = 0.05;
-    double tileSize = 0.12;
+    double tileResolution = 0.1;
+    double tileSize = 0.24;
     double sideLengthAddingPatch = 1.3;
     setSmoothingTiles(tileResolution, tileSize, sideLengthAddingPatch, tip);
 
@@ -3012,7 +3012,7 @@ bool ElevationMap::setSmoothingTiles(double tileResolution, double tileSize, dou
                     int inputDim = 2;
                     int outputDim = 1;
                     GaussianProcessRegression<float> myGPR(inputDim, outputDim);
-                    myGPR.SetHyperParams(0.3, 0.1, 0.1);
+                    myGPR.SetHyperParams(0.5, 1.0, 1.0);
 
 
                     Eigen::Vector2f posTile;
@@ -3032,9 +3032,12 @@ bool ElevationMap::setSmoothingTiles(double tileResolution, double tileSize, dou
                         trainOutput(0) = rawMap_.at("elevation", index);
                         //std::cout << type(rawMap_.atPosition("elevation", posTilePosition)) << std::endl;
 
-                        if (!isnan(trainOutput(0)))
+                        //std::cout << "Train Output: " << trainOutput(0) << std::endl;
+                     //   if (fabs(trainOutput(0)) < 0.001) std::cout << "GGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG: " << trainOutput(0) << std::endl;
 
-                        myGPR.AddTrainingData(trainInput, trainOutput);
+                        if (!isnan(trainOutput(0)) && rawMap_.isValid(index)){
+                            myGPR.AddTrainingData(trainInput, trainOutput);
+                        }
 
                     }
 
@@ -3045,6 +3048,7 @@ bool ElevationMap::setSmoothingTiles(double tileResolution, double tileSize, dou
 
                     // Only perform regression if no. of Data is sufficiently high.
                     if (myGPR.get_n_data() > 7){
+
 
                         // Loop here to get test output
                         for (CircleIterator iterator(supportMap_, posTilePosition, tileSize/2.0); !iterator.isPastEnd(); ++iterator) { // HAcked to raw map for testing..
@@ -3090,12 +3094,18 @@ bool ElevationMap::setSmoothingTiles(double tileResolution, double tileSize, dou
                             //if (!isnan(tipDifference)){ // Only update if finite tipDifference is found
                                 // Low pass filter method if ther is already data. (TEST this!!)
                                 //if (isnan(supportMap_.at("elevation_gp", index))){
+
+
+                            float regressionOutput = myGPR.DoRegression(testInput)(0);
+
                             if (!supportMap_.isValid(index)){
-                                supportMapElevationGP = myGPR.DoRegression(testInput)(0);
+                                supportMapElevationGP = regressionOutput;
                             }
                             else {
+//                                if (supportMapElevationGP == 0.0) std::cout << "ATTENTION!! ZERO BIAS" << std::endl;
                                 supportMapElevationGP = 0.5 *  supportMapElevationGP +
-                                        (myGPR.DoRegression(testInput)(0)) * 0.5;
+                                        (regressionOutput) * 0.5;
+                                //supportMapElevationGP = regressionOutput; // Test!!
                                 //supportMapElevationGP = myGPR.DoRegression(testInput)(0) + tipDifference; // Hacked to test!
                             }
                             //}
@@ -3130,9 +3140,6 @@ bool ElevationMap::setSmoothingTiles(double tileResolution, double tileSize, dou
 
         // Get the difference of the foot tip vs the elevation map to vertically translate the smoothened map..
         double tipDifference = getFootTipElevationMapDifference(tip);
-
-
-        //double radius = (sideLengthAddingPatch - 0.2) / 2.0;
 
         for (CircleIterator iterator(supportMap_, footTip, radius); !iterator.isPastEnd(); ++iterator) { // HAcked to raw map for testing..
             const Index index(*iterator);
