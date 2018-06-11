@@ -452,13 +452,28 @@ class ElevationMap
   bool setSmoothingTiles(double tileResolution, double tileSize, double sideLengthAddingPatch, std::string tip);
 
   //! TODO: Description:
-  double getFootTipElevationMapDifference(std::string tip);
+  double getFootTipElevationMapDifferenceGP(std::string tip);
 
   //! TODO: Description:
   double getClosestMapValueUsingSpiralIteratorElevation(grid_map::GridMap& MapReference, grid_map::Position footTip, double radius, double tipHeight);
 
   //! TODO: Description:
   bool supportSurfaceUpperBoundingGP(grid_map::GridMap& upperBoundMap, grid_map::GridMap& supportSurfaceMap);
+
+  //! TODO: Description:
+  bool setTerrainVariance(double &terrainVariance);
+
+  //! TODO: Description:
+  double getTerrainVariance();
+
+  //! TODO: Description:
+  bool setSupportSurfaceUncertaintyEstimation(std::string tip);
+
+  //! TODO: Description:
+  double getSupportSurfaceUncertaintyEstimation();
+
+  //! TODO: Description:
+  bool footTipElevationMapLayerGP(std::string std);
 
 
   //! ROS nodehandle.
@@ -605,6 +620,7 @@ class ElevationMap
   ros::Publisher planeFitVisualizationPublisher_;
   ros::Publisher varianceTwistPublisher_;
   ros::Publisher supportSurfaceAddingAreaPublisher_;
+  ros::Publisher elevationMapGPPublisher_;
 
   //! Publication of Markers:
   visualization_msgs::Marker footContactMarkerList_;
@@ -632,6 +648,14 @@ class ElevationMap
 
   // Footprint storage in class member:
   geometry_msgs::Transform footprint_;
+
+  // Variance values.
+  double terrainVariance_;
+  double PenetrationDepthVariance_;
+  double supportSurfaceUncertaintyEstimation_;
+
+  // Foot tip position history for GP.
+  std::vector<grid_map::Position3> footTipHistoryGP_;
 
 };
 
