@@ -75,7 +75,7 @@ ElevationMap::ElevationMap(ros::NodeHandle nodeHandle)
               "support_surface", "support_surface_smooth", "support_surface_added"}),//, "support_surface_smooth_inpainted", "support_surface_added"}),
       fusedMap_({"elevation", "upper_bound", "lower_bound", "color"}),
       supportMap_({"elevation", "variance", "elevation_gp", "elevation_gp_added"}), // New
-      supportMapGP_({"elevation_gp", "variance_gp", "elevation_gp_added", "elevation_gp_tip"}), // New
+      supportMapGP_({"elevation_gp", "variance_gp", "elevation_gp_added", "elevation_gp_tip", "sinkage_depth_gp"}), // New
       hasUnderlyingMap_(false),
       visibilityCleanupDuration_(0.0),
       filterChain_("grid_map::GridMap"), // New
@@ -85,10 +85,7 @@ ElevationMap::ElevationMap(ros::NodeHandle nodeHandle)
   rawMap_.setBasicLayers({"elevation", "variance"});
   fusedMap_.setBasicLayers({"elevation", "upper_bound", "lower_bound"});
   supportMap_.setBasicLayers({"elevation", "variance", "elevation_gp", "elevation_gp_added"}); // New
-  supportMapGP_.setBasicLayers({"elevation_gp", "variance_gp", "elevation_gp_added", "elevation_gp_tip"}); // New
-
-
-
+  supportMapGP_.setBasicLayers({"elevation_gp", "variance_gp", "elevation_gp_added", "elevation_gp_tip", "sinkage_depth_gp"}); // New
 
   clear();
 
@@ -2962,6 +2959,11 @@ bool ElevationMap::setSmoothingTiles(double tileResolution, double tileSize, dou
 
     if (leftStanceVector_.size() > 0 && rightStanceVector_.size() > 0){
 
+
+
+        // Update sinkage depth Layer.
+        sinkageDepthMapLayerGP(tip);
+
         // TEST
 
         //auto& supportMapElevationGP = supportMap_.at()
@@ -3208,15 +3210,16 @@ bool ElevationMap::setSmoothingTiles(double tileResolution, double tileSize, dou
             auto& supportMapElevationGP = supportMapGP_.at("elevation_gp", index);
             auto& supportMapElevationGPAdded = supportMapGP_.at("elevation_gp_added", index);
             auto& supportMapVarianceGP = supportMapGP_.at("variance_gp", index);
+            auto& supportMapSinkageDepthGP = supportMapGP_.at("sinkage_depth_gp", index);
 
             if (supportMapGP_.isValid(index)){
-                supportMapElevationGPAdded = (1 - weight) * supportMapElevationGPAdded + (supportMapElevationGP + tipDifference) * weight;
+                supportMapElevationGPAdded = (1 - weight) * supportMapElevationGPAdded + (supportMapElevationGP - supportMapSinkageDepthGP) * weight; // Hacked to sinkage depth rather than tipDifference (and sign change!)
 
                 // Naive approach to variance calculation:
                 supportMapVarianceGP = 0.5 * supportMapVarianceGP + 0.5 * pow((supportMapElevationGPAdded - supportMapElevationGP), 2);
             }
             else{
-                supportMapElevationGPAdded = supportMapElevationGP + tipDifference;
+                supportMapElevationGPAdded = supportMapElevationGP - supportMapSinkageDepthGP; // Hacked to sinkage depth rather than tipDifference (and sign change!)
                 supportMapVarianceGP = 0.0;
             }
 
@@ -3232,6 +3235,7 @@ bool ElevationMap::setSmoothingTiles(double tileResolution, double tileSize, dou
 
 
     footTipElevationMapLayerGP(tip);
+
 
 
     supportSurfaceUpperBoundingGP(rawMap_, supportMapGP_);
@@ -3390,5 +3394,86 @@ bool ElevationMap::footTipElevationMapLayerGP(std::string tip){
     }
     return true;
 }
+
+bool ElevationMap::sinkageDepthMapLayerGP(std::string tip){
+
+    if (leftStanceVector_.size() > 0 && rightStanceVector_.size() > 0){
+        Eigen::Vector3f tipLeftVec = getLatestLeftStance();
+        Eigen::Vector3f tipRightVec = getLatestRightStance();
+        Position3 tipLeftPos3(tipLeftVec(0), tipLeftVec(1), tipLeftVec(2));
+        Position3 tipRightPos3(tipRightVec(0), tipRightVec(1), tipRightVec(2));
+        double radius = 1.7;
+        int inputDim = 2;
+        int outputDim = 1;
+        int maxSizeFootTipHistory = 30;
+
+        // Do history vector.
+        Position3 footTip;
+        if (tip == "left") footTip = tipLeftPos3;
+        if (tip == "right") footTip = tipRightPos3;
+
+        footTipHistoryGP_.push_back(footTip);
+        if (footTipHistoryGP_.size() > maxSizeFootTipHistory) footTipHistoryGP_.erase(footTipHistoryGP_.begin());
+
+        GaussianProcessRegression<float> footTipGPR(inputDim, outputDim);
+        footTipGPR.SetHyperParams(3.3, 0.1, 0.001);
+
+        for (unsigned int i = 0; i < footTipHistoryGP_.size(); ++i) {
+            double distance = sqrt(pow(footTipHistoryGP_[i](0) - footTip(0), 2) + pow(footTipHistoryGP_[i](1) - footTip(1), 2));
+            if (distance < radius) {
+                Eigen::VectorXf trainInput(inputDim);
+                Eigen::VectorXf trainOutput(outputDim);
+                Eigen::Vector2f inputPosition(footTipHistoryGP_[i](0), footTipHistoryGP_[i](1));
+                trainInput = inputPosition;
+                Position inputPositionPosition(footTipHistoryGP_[i](0), footTipHistoryGP_[i](1));
+
+                // Adjust this value:
+                trainOutput(0) = supportMapGP_.atPosition("elevation_gp", inputPositionPosition) - footTipHistoryGP_[i](2);
+
+                if (!isnan(trainOutput(0))){
+                    footTipGPR.AddTrainingData(trainInput, trainOutput);
+                }
+            }
+        }
+
+        Position center(footTip(0), footTip(1));
+
+        // for circle iterator -> do testing
+        for (CircleIterator iterator(supportMapGP_, center, radius); !iterator.isPastEnd(); ++iterator) {
+            const Index index(*iterator);
+
+            auto& supportMapElevationGPSinkage = supportMapGP_.at("sinkage_depth_gp", index);
+
+            Eigen::VectorXf testInput(inputDim);
+            Position inputPosition;
+            supportMapGP_.getPosition(index, inputPosition);
+
+            testInput(0) = inputPosition(0);
+            testInput(1) = inputPosition(1);
+
+
+
+            float regressionOutput = footTipGPR.DoRegression(testInput)(0);
+
+            // Set weight decreasing with radius.
+            double distance = sqrt(pow(inputPosition(0) - center(0), 2) + pow(inputPosition(1) - center(1), 2));
+            //std::cout << "Distance from center (penetration depth layer): " << distance << std::endl;
+            double weight = fmax((radius - distance)/radius, 0.0);
+            //std::cout << "Weights sinkage depth: " << weight << std::endl;
+            //if (fabs(regressionOutput) < 0.001) std::cout << "Zero output was generated!" << regressionOutput << std::endl;
+
+            if (!isnan(regressionOutput)){
+                if (isnan(supportMapElevationGPSinkage)){
+                    supportMapElevationGPSinkage = regressionOutput;
+                }
+                else {
+                    supportMapElevationGPSinkage = (1 - weight) *  supportMapElevationGPSinkage + regressionOutput * weight;
+                }
+            }
+        }
+    }
+    return true;
+}
+
 
 } /* namespace */
