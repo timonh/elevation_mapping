@@ -140,7 +140,7 @@ ElevationMap::ElevationMap(ros::NodeHandle nodeHandle)
   footContactPublisher_ = nodeHandle_.advertise<visualization_msgs::Marker>("mean_foot_contact_markers_rviz", 1000);
   elevationMapBoundPublisher_ = nodeHandle_.advertise<visualization_msgs::Marker>("map_bound_markers_rviz", 1000);
   planeFitVisualizationPublisher_ = nodeHandle_.advertise<visualization_msgs::Marker>("plane_fit_visualization_marker_list", 1000);
-  varianceTwistPublisher_ = nodeHandle_.advertise<geometry_msgs::Twist>("variances", 1000);
+  varianceTwistPublisher_ = nodeHandle_.advertise<geometry_msgs::TwistStamped>("variances", 1000);
   supportSurfaceAddingAreaPublisher_ = nodeHandle_.advertise<visualization_msgs::Marker>("adding_area", 1000);
   initializeFootTipMarkers();
 
@@ -2120,7 +2120,7 @@ bool ElevationMap::proprioceptiveVariance(std::string tip){
            // footTipPlaneFitVisualization_.action = visualization_msgs::Marker::;
 
             // TODO: Do visualize fitted Plane!!
-            varianceTwistPublisher_.publish(varianceMsg);
+            //varianceTwistPublisher_.publish(varianceMsg);
         }
 
     }
@@ -3010,6 +3010,28 @@ bool ElevationMap::setSmoothingTiles(double tileResolution, double tileSize, dou
         int noOfTilesPerHalfSide = floor((sideLengthAddingPatch / 2.0) / tileResolution);
         double radius = (sideLengthAddingPatch - 0.15) / 2.0;
 
+        // RQT message publisher.
+        geometry_msgs::TwistStamped adaptationMsg;
+
+        // Get uncertainty measures.
+        double terrainVariance = getTerrainVariance();
+        double supportSurfaceUncertaintyEstimation = getSupportSurfaceUncertaintyEstimation();
+
+        // Set lengthscale as function of terrain variance (assessed by foot tips only).
+        double factor = 120.0;
+        double lengthscale = fmax(5.0 - (terrainVariance * factor), 0.7);
+        // Set the weight of the adding procedure as a function of the support surface uncertainty (i.e. difference between foot tip and support surface)
+        double weightFactor = 0.0;
+        if (!isnan(supportSurfaceUncertaintyEstimation)) weightFactor = supportSurfaceUncertaintyEstimation * 8.0;
+
+        // Set message values.
+        adaptationMsg.header.stamp = ros::Time::now();
+        adaptationMsg.twist.linear.x = terrainVariance;
+        adaptationMsg.twist.linear.y = lengthscale;
+        adaptationMsg.twist.angular.x = supportSurfaceUncertaintyEstimation;
+        adaptationMsg.twist.angular.y = weightFactor;
+
+
         Position footTip;
         if (tip == "left") footTip = tipLeft;
         if (tip == "right") footTip = tipRight;
@@ -3018,23 +3040,10 @@ bool ElevationMap::setSmoothingTiles(double tileResolution, double tileSize, dou
             for (int j = -noOfTilesPerHalfSide; j <= noOfTilesPerHalfSide; ++j){
                 if (sqrt(pow(i * tileResolution,2) + pow(j * tileResolution,2)) < radius){
 
-
-                    // TODO: length scale as function of terrain continuity estimation
-                    double terrainVariance = getTerrainVariance();
-
-
-                    double factor = 120.0;
-                    double lengthscale = fmax(5.0 - (terrainVariance * factor), 0.7);
-
-                   // std::cout << "Lengthscale: " << lengthscale << " !!!!!!!!!!!!!!!!!!!!" << std::endl;
-
-                    // MOVED here to test it:
-
                     int inputDim = 2;
                     int outputDim = 1;
                     GaussianProcessRegression<float> myGPR(inputDim, outputDim);
                     myGPR.SetHyperParams(lengthscale, 0.1, 0.001);
-
 
                     Eigen::Vector2f posTile;
                     posTile(0) = footTip(0) + i * tileResolution;
@@ -3163,7 +3172,7 @@ bool ElevationMap::setSmoothingTiles(double tileResolution, double tileSize, dou
         double tipDifference = getFootTipElevationMapDifferenceGP(tip);
 
         double penetrationDepthVariance = getPenetrationDepthVariance();
-        double supportSurfaceUncertaintyEstimation = getSupportSurfaceUncertaintyEstimation();
+
 
 
         for (CircleIterator iterator(supportMapGP_, footTip, radius); !iterator.isPastEnd(); ++iterator) { // HAcked to raw map for testing..
@@ -3187,13 +3196,12 @@ bool ElevationMap::setSmoothingTiles(double tileResolution, double tileSize, dou
 
 
             // If not isnan (only relevant for the first few steps, when not beeing inside the map area)
-            double weightFactor = 0.0;
-            if (!isnan(supportSurfaceUncertaintyEstimation)) weightFactor = supportSurfaceUncertaintyEstimation * 0.5;
+
             // TODO  check the values of this!!
 
             //std::cout << "penetrationDepthVariance: " << penetrationDepthVariance << std::endl;
 
-            double weight = exp(-distanceFactor * weightFactor) * fmax(radius-distance, 0.0);
+            double weight = exp(-distanceFactor * weightFactor) * fmax((radius-distance)/radius, 0.0); // Division by radius added -> if distance = 0 -> weight = 1
             //std::cout << "weight: " << weight << std::endl;
 
 
@@ -3216,6 +3224,9 @@ bool ElevationMap::setSmoothingTiles(double tileResolution, double tileSize, dou
 
             // Think of sensible variance values..
         }
+
+        // Publish adaptation Parameters
+        varianceTwistPublisher_.publish(adaptationMsg);
     }
 
 
@@ -3224,6 +3235,9 @@ bool ElevationMap::setSmoothingTiles(double tileResolution, double tileSize, dou
 
 
     supportSurfaceUpperBoundingGP(rawMap_, supportMapGP_);
+
+
+
 
     // Publish map
     grid_map_msgs::GridMap mapMessageGP;
@@ -3361,7 +3375,7 @@ bool ElevationMap::footTipElevationMapLayerGP(std::string tip){
 
             float regressionOutput = footTipGPR.DoRegression(testInput)(0);
 
-            if (fabs(regressionOutput) < 0.001) std::cout << "Zero output was generated!" << regressionOutput << std::endl;
+            //if (fabs(regressionOutput) < 0.001) std::cout << "Zero output was generated!" << regressionOutput << std::endl;
 
             if (!isnan(regressionOutput)){
                 if (isnan(supportMapGP_.at("elevation_gp_tip", index))){
