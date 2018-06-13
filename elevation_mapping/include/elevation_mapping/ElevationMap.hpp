@@ -476,7 +476,7 @@ class ElevationMap
   bool footTipElevationMapLayerGP(std::string std);
 
   //! TODO: Description:
-  bool sinkageDepthMapLayerGP(std::string tip);
+  bool sinkageDepthMapLayerGP(std::string tip, double& tipDifference);
 
 
   //! ROS nodehandle.
