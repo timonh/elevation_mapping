@@ -3023,7 +3023,7 @@ bool ElevationMap::setSmoothingTiles(double tileResolution, double tileSize, dou
         double lengthscale = fmax(5.0 - (terrainVariance * factor), 0.7);
         // Set the weight of the adding procedure as a function of the support surface uncertainty (i.e. difference between foot tip and support surface)
         double weightFactor = 0.0;
-        if (!isnan(supportSurfaceUncertaintyEstimation)) weightFactor = supportSurfaceUncertaintyEstimation * 8.0;
+        if (!isnan(supportSurfaceUncertaintyEstimation)) weightFactor = supportSurfaceUncertaintyEstimation * 0.0001; // Hacked to practically nothing
 
         // Set message values.
         adaptationMsg.header.stamp = ros::Time::now();
@@ -3205,6 +3205,8 @@ bool ElevationMap::setSmoothingTiles(double tileResolution, double tileSize, dou
 
             //std::cout << "penetrationDepthVariance: " << penetrationDepthVariance << std::endl;
 
+
+            //double weight = fmax((radius-distance)/radius, 0.0);// Hacked
             double weight = exp(-distanceFactor * weightFactor) * fmax((radius-distance)/radius, 0.0); // Division by radius added -> if distance = 0 -> weight = 1
             //std::cout << "weight: " << weight << std::endl;
 
@@ -3405,7 +3407,7 @@ bool ElevationMap::sinkageDepthMapLayerGP(std::string tip, double& tipDifference
         Position3 tipLeftPos3(tipLeftVec(0), tipLeftVec(1), tipLeftVec(2));
         Position3 tipRightPos3(tipRightVec(0), tipRightVec(1), tipRightVec(2));
         double radius = 0.8;
-        double radius2 = 0.9;
+        double radius2 = 0.5; // TestHack!!
         int inputDim = 2;
         int outputDim = 1;
         int maxSizeFootTipHistory = 6;
@@ -3477,6 +3479,9 @@ bool ElevationMap::sinkageDepthMapLayerGP(std::string tip, double& tipDifference
             double distance = sqrt(pow(inputPosition(0) - center(0), 2) + pow(inputPosition(1) - center(1), 2));
             //std::cout << "Distance from center (penetration depth layer): " << distance << std::endl;
             double weight = fmax((radius - distance)/radius, 0.0) * exp(-distance * 0.001);
+
+            double weight2 = fmax((radius2 - distance)/radius2, 0.0);
+
             //std::cout << "Weights sinkage depth: " << weight << std::endl;
             //if (fabs(regressionOutput) < 0.001) std::cout << "Zero output was generated!" << regressionOutput << std::endl;
             geometry_msgs::Transform footprint = getFootprint();
@@ -3499,13 +3504,13 @@ bool ElevationMap::sinkageDepthMapLayerGP(std::string tip, double& tipDifference
             //if (scalarProduct > 0.0) std::cout << "Positive Scalar Product" << std::endl;
             //if (scalarProduct < 0.0) std::cout << "Negative Scalar Product" << std::endl;
 
-            if (scalarProduct < 0.0 && distance < 0.4) { // Hacked the dist check!!
+            if (scalarProduct < 0.0 && distance < radius2) { // Hacked the dist check!!
                 if (!isnan(regressionOutput)){
                     if (isnan(supportMapElevationGPSinkage)){
                         supportMapElevationGPSinkage = regressionOutput;
                     }
                     else {
-                        supportMapElevationGPSinkage = (1 - weight) *  supportMapElevationGPSinkage + regressionOutput * weight;
+                        supportMapElevationGPSinkage = (1 - weight2) *  supportMapElevationGPSinkage + regressionOutput * weight2;
                     }
                 }
             }
