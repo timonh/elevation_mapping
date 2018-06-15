@@ -53,6 +53,7 @@ ElevationMapping::ElevationMapping(ros::NodeHandle& nodeHandle)
     : nodeHandle_(nodeHandle),
       map_(nodeHandle),
       robotMotionMapUpdater_(nodeHandle),
+
       isContinouslyFusing_(false),
       ignoreRobotMotionUpdates_(false)
 {

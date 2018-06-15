@@ -260,6 +260,8 @@ class ElevationMapping
 
   //! Callback thread for raytracing cleanup.
   boost::thread visibilityCleanupThread_;
+
+  //!
 };
 
 } /* namespace */

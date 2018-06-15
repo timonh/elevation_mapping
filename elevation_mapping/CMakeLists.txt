@@ -113,6 +113,9 @@ add_library(${PROJECT_NAME}_library
   src/sensor_processors/LaserSensorProcessor.cpp
   src/sensor_processors/PerfectSensorProcessor.cpp
   src/HighGrassElevationMapping.cpp
+  src/StanceProcessor.cpp
+  src/DriftRefinement.cpp
+  src/SupportSurfaceEstimation.cpp
 )
 
 target_link_libraries(${PROJECT_NAME}_library

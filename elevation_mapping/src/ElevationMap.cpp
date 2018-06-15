@@ -1009,7 +1009,7 @@ bool ElevationMap::templateMatchingForStanceDetection(std::string tip, std::vect
     //std::cout << isInStanceLeftHind_ << std::endl;
 
 
-    // Recognition of the end of a stance phase of the front legs.
+    // Recognition of the start of a stance phase of the front legs.
     if(stateVector.size() >= 16 && stateVector.end()[-1]+stateVector.end()[-2]+
             stateVector.end()[-3]+stateVector.end()[-4]+stateVector.end()[-5]+
             stateVector.end()[-6]+stateVector.end()[-7]+stateVector.end()[-8] >= 6 &&
@@ -1040,7 +1040,7 @@ bool ElevationMap::templateMatchingForStanceDetection(std::string tip, std::vect
     //std::cout << "processStanceTrigger: clssic " << processStanceTriggerRight_.size() << std::endl;
 
 
-    // Recognition of the start of a stance phase of the front legs.
+    // Recognition of the end of a stance phase of the front legs.
     if(stateVector.size() >= 16 &&
             stateVector.end()[-1] + stateVector.end()[-2] + stateVector.end()[-3]+
             stateVector.end()[-4]+stateVector.end()[-5] + stateVector.end()[-6]+
