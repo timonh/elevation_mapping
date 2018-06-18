@@ -57,6 +57,8 @@ namespace elevation_mapping {
  */
 class ElevationMap
 {
+ friend class StanceProcessor;
+
  public:
 
   /*!
@@ -294,7 +296,11 @@ class ElevationMap
   //! TODO: Description!
   bool processStance(std::string tip);
 
+  //! TODO: Description!
   bool deleteLastEntriesOfStances(std::string tip);
+
+  //! TODO: Description:
+  bool deleteFirstEntriesOfStances(std::string tip);
 
   //! TODO: Description!
   bool getAverageFootTipPositions(std::string tip);
@@ -576,6 +582,7 @@ class ElevationMap
   bool driftAdjustment_;
   bool applyFrameCorrection_;
   bool runHindLegStanceDetection_;
+  std::string stanceDetectionMethod_;
 
   //! Bool to specify wheather in high grass or not:
   bool highGrassMode_;

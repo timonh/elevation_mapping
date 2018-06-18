@@ -60,6 +60,7 @@ namespace elevation_mapping {
 */
 class StanceProcessor
 {
+
 public:
 
  /*!
@@ -486,10 +487,10 @@ private:
  ros::NodeHandle nodeHandle_;
 
  //! Raw elevation map as grid map.
- grid_map::GridMap rawMap_;
+ //grid_map::GridMap rawMap_;
 
  //! Fused elevation map as grid map.
- grid_map::GridMap fusedMap_;
+ //grid_map::GridMap fusedMap_;
 
  // New
  //! New grid map for support surface to increase the scope of definition, i.e. fill in holes.

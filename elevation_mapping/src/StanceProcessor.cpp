@@ -77,8 +77,8 @@ StanceProcessor::StanceProcessor(ros::NodeHandle nodeHandle)
       //        "sensor_z_at_lowest_scan", "foot_tip_elevation", "support_surface", "elevation_inpainted", "elevation_smooth", "vegetation_height", "vegetation_height_smooth",
       //        "support_surface", "support_surface_smooth", "support_surface_added"}),//, "support_surface_smooth_inpainted", "support_surface_added"}),
       //fusedMap_({"elevation", "upper_bound", "lower_bound", "color"}),
-      supportMap_({"elevation", "variance", "elevation_gp", "elevation_gp_added"}), // New
-      supportMapGP_({"elevation_gp", "variance_gp", "elevation_gp_added", "elevation_gp_tip", "sinkage_depth_gp"}), // New
+      //supportMap_({"elevation", "variance", "elevation_gp", "elevation_gp_added"}), // New
+      //supportMapGP_({"elevation_gp", "variance_gp", "elevation_gp_added", "elevation_gp_tip", "sinkage_depth_gp"}), // New
       //hasUnderlyingMap_(false),
       //visibilityCleanupDuration_(0.0),
       filterChain_("grid_map::GridMap"), // New
@@ -87,14 +87,17 @@ StanceProcessor::StanceProcessor(ros::NodeHandle nodeHandle)
     // Timon added foot_tip_elevation layer
   //rawMap_.setBasicLayers({"elevation", "variance"});
   //fusedMap_.setBasicLayers({"elevation", "upper_bound", "lower_bound"});
-  supportMap_.setBasicLayers({"elevation", "variance", "elevation_gp", "elevation_gp_added"}); // New
-  supportMapGP_.setBasicLayers({"elevation_gp", "variance_gp", "elevation_gp_added", "elevation_gp_tip", "sinkage_depth_gp"}); // New
+  //supportMap_.setBasicLayers({"elevation", "variance", "elevation_gp", "elevation_gp_added"}); // New
+  //supportMapGP_.setBasicLayers({"elevation_gp", "variance_gp", "elevation_gp_added", "elevation_gp_tip", "sinkage_depth_gp"}); // New
 
   //! uncomment!!
   //clear();
 
+
+  std::cout << "called the stanceprocessor Constructor" << std::endl;
+
   // TEST:
-  //elevationMapCorrectedPublisher_ = nodeHandle_.advertise<grid_map_msgs::GridMap>("elevation_map_drift_adjusted", 1);
+  elevationMapCorrectedPublisher_ = nodeHandle_.advertise<grid_map_msgs::GridMap>("elevation_map_drift_adjusted", 1);
   elevationMapSupportPublisher_ = nodeHandle_.advertise<grid_map_msgs::GridMap>("support_added", 1);
   elevationMapInpaintedPublisher_ = nodeHandle_.advertise<grid_map_msgs::GridMap>("support_surface", 1);
   elevationMapGPPublisher_ = nodeHandle_.advertise<grid_map_msgs::GridMap>("support_surface_gp", 1);
@@ -116,29 +119,31 @@ StanceProcessor::StanceProcessor(ros::NodeHandle nodeHandle)
   nodeHandle_.param("weight_factor", weightingFactor_, 1.0);
   nodeHandle_.param("run_hind_leg_stance_detection", runHindLegStanceDetection_, true); // TODO: add to config file
 
-  // For filter chain.
-  nodeHandle_.param("filter_chain_parameter_name", filterChainParametersName_, std::string("/grid_map_filter_chain_one"));
-  if(!filterChain_.configure("/grid_map_filter_chain_one", nodeHandle_)){
-      std::cout << "Could not configure the filter chain!!" << std::endl;
-      return;
-  }
-  if(!filterChain2_.configure("/grid_map_filter_chain_two", nodeHandle_)){
-      std::cout << "INBETWEEN Prob" << std::endl;
-      std::cout << "Could not configure the filter chain!!" << std::endl;
-      return;
-  }
 
-  //bool use_bag = true;
+
+  // For filter chain.
+  //nodeHandle_.param("filter_chain_parameter_name", filterChainParametersName_, std::string("/grid_map_filter_chain_one"));
+  //if(!filterChain_.configure("/grid_map_filter_chain_one", nodeHandle_)){
+  //    std::cout << "Could not configure the filter chain!!" << std::endl;
+  //    return;
+  //}
+  //if(!filterChain2_.configure("/grid_map_filter_chain_two", nodeHandle_)){
+  //    std::cout << "INBETWEEN Prob" << std::endl;
+  //    std::cout << "Could not configure the filter chain!!" << std::endl;
+  //    return;
+  //}
+
+  bool use_bag = true;
 
   // (New:) Foot tip position Subscriber for Foot tip - Elevation comparison
   // TESTED BY CHANGING IF SCOPES..
 
 
   //! Uncomment:
-  //if(driftAdjustment_){
-  //    if(!use_bag) footTipStanceSubscriber_ = nodeHandle_.subscribe("/state_estimator/quadruped_state", 1, &SupportSurfaceEstimation::footTipStanceCallback, this);
-  //    else footTipStanceSubscriber_ = nodeHandle_.subscribe("/state_estimator/quadruped_state_remapped", 1, &SupportSurfaceEstimation::footTipStanceCallback, this);
-  //}
+  if(driftAdjustment_){
+      if(!use_bag) footTipStanceSubscriber_ = nodeHandle_.subscribe("/state_estimator/quadruped_state", 1, &StanceProcessor::footTipStanceCallback, this);
+      else footTipStanceSubscriber_ = nodeHandle_.subscribe("/state_estimator/quadruped_state_remapped", 1, &StanceProcessor::footTipStanceCallback, this);
+  }
 
   // NEW: publish foot tip markers
   footContactPublisher_ = nodeHandle_.advertise<visualization_msgs::Marker>("mean_foot_contact_markers_rviz", 1000);
@@ -153,7 +158,7 @@ StanceProcessor::StanceProcessor(ros::NodeHandle nodeHandle)
   //tuningPublisher1_ = nodeHandle_.advertise<elevation_mapping::PerformanceAssessment>("performance_assessment", 1000);
 
   // NEW: publish clored pointcloud visualizing the local pointcloud variance.
-  //coloredPointCloudPublisher_ = nodeHandle_.advertise<sensor_msgs::PointCloud2>("variance_pointcloud", 1);
+  coloredPointCloudPublisher_ = nodeHandle_.advertise<sensor_msgs::PointCloud2>("variance_pointcloud", 1);
 
   // Initializing some class variables.
   heightDifferenceFromComparison_ = 0.0;
@@ -177,7 +182,7 @@ StanceProcessor::StanceProcessor(ros::NodeHandle nodeHandle)
   supportSurfaceInitializationTrigger_ = false;
   // END NEW
 
-  initialTime_ = ros::Time::now();
+  //initialTime_ = ros::Time::now();
 }
 
 StanceProcessor::~StanceProcessor()
@@ -187,7 +192,7 @@ StanceProcessor::~StanceProcessor()
 void StanceProcessor::footTipStanceCallback(const quadruped_msgs::QuadrupedState& quadrupedState)
 {
 
-  //std::cout << "Calling Back still!!!" << std::endl;
+  //std::cout << "Calling Back still!!! STANCE PROCESSOR" << std::endl;
 
   //boost::recursive_mutex::scoped_lock scopedLockForFootTipStanceProcessor(footTipStanceProcessorMutex_);
   // Set class variables.
@@ -512,7 +517,7 @@ bool StanceProcessor::publishAveragedFootTipPositionMarkers(bool hind)
     // If outside the area, where comparison can be made (i.e. no elevation map value is found) set black color.
     // Set yellow if foot tip is outside the bounds of the fused map.
     Position coloringPosition(p.x, p.y);
-    if (isnan(rawMap_.atPosition("elevation", coloringPosition))){
+    if (isnan(map_.rawMap_.atPosition("elevation", coloringPosition))){
         c.g = 0;
         c.b = 0;
         c.r = 0;
@@ -612,10 +617,10 @@ bool StanceProcessor::footTipElevationMapComparison(std::string tip)
         //else std::cout << "FOOT TIP CONSIDERED NOT TO BE INSIDE!!!!! \n \n \n \n " << std::endl;
 
         // Make sure that the state is 1 and the foot tip is inside area covered by the elevation map.
-        if(rawMap_.isInside(tipPosition) && !isnan(heightDifferenceFromComparison_)){ // HACKED FOR TESTS!!!
-            float heightMapRaw = rawMap_.atPosition("elevation", tipPosition);
-            float varianceMapRaw = rawMap_.atPosition("variance", tipPosition);
-            float heightMapRawElevationCorrected = rawMap_.atPosition("elevation", tipPosition) + heightDifferenceFromComparison_; // Changed, since frame transformed grid map used.
+        if(map_.rawMap_.isInside(tipPosition) && !isnan(heightDifferenceFromComparison_)){ // HACKED FOR TESTS!!!
+            float heightMapRaw = map_.rawMap_.atPosition("elevation", tipPosition);
+            float varianceMapRaw = map_.rawMap_.atPosition("variance", tipPosition);
+            float heightMapRawElevationCorrected = map_.rawMap_.atPosition("elevation", tipPosition) + heightDifferenceFromComparison_; // Changed, since frame transformed grid map used.
 
             // Supress nans.
             if(!isnan(heightMapRaw)){
@@ -638,8 +643,8 @@ bool StanceProcessor::footTipElevationMapComparison(std::string tip)
 
                 // Use 3 standard deviations of the uncertainty ellipse of the foot tip positions as fusion area.
                 Eigen::Array2d ellipseAxes;
-                ellipseAxes[0] = ellipseAxes[1] = std::max(6 * sqrt(rawMap_.atPosition("horizontal_variance_x",tipPosition)),
-                                          6 * sqrt(rawMap_.atPosition("horizontal_variance_y",tipPosition)));
+                ellipseAxes[0] = ellipseAxes[1] = std::max(6 * sqrt(map_.rawMap_.atPosition("horizontal_variance_x",tipPosition)),
+                                          6 * sqrt(map_.rawMap_.atPosition("horizontal_variance_y",tipPosition)));
 
                 // Get lower and upper bound of the fused map.
                 auto boundTuple = getFusedCellBounds(tipPosition, ellipseAxes);
@@ -794,9 +799,13 @@ bool StanceProcessor::footTipElevationMapComparison(std::string tip)
     // Publish frame, offset by the height difference parameter.
     //frameCorrection();
 
+    std::cout << "foot tip comparison done .. " << std::endl;
+
+
+
     // Publish the elevation map with the new layer, at the frequency of the stances.
     grid_map_msgs::GridMap mapMessage;
-    GridMapRosConverter::toMessage(rawMap_, mapMessage);
+    GridMapRosConverter::toMessage(map_.rawMap_, mapMessage);
     mapMessage.info.header.frame_id = "odom_drift_adjusted"; //! HACKED!!
 
     //GridMapRosConverter::fromMessage(mapMessage, rawMapCorrected)
@@ -863,9 +872,9 @@ std::tuple<double, double, double> StanceProcessor::getFusedCellBounds(const Eig
     bool doFuseEachStep = true;
     if(!isnan(heightDifferenceFromComparison_) && doFuseEachStep){
         map_.fuseArea(position, length); // HAcked object..
-        elevationFused = fusedMap_.atPosition("elevation", position);
-        lowerFused = fusedMap_.atPosition("lower_bound", position);
-        upperFused = fusedMap_.atPosition("upper_bound", position);
+        elevationFused = map_.fusedMap_.atPosition("elevation", position);
+        lowerFused = map_.fusedMap_.atPosition("lower_bound", position);
+        upperFused = map_.fusedMap_.atPosition("upper_bound", position);
     }
     return std::make_tuple(lowerFused, elevationFused, upperFused);
 }
@@ -874,6 +883,9 @@ bool StanceProcessor::frameCorrection()
 {
     //boost::recursive_mutex::scoped_lock scopedLock(rawMapMutex_);
     //boost::recursive_mutex::scoped_lock scopedLockForFusedData(fusedMapMutex_);
+
+   // std::cout << "entered the frame correction" << std::endl;
+
 
     // Transform Broadcaster for the /odom_z_corrected frame.
     tf::Transform odomMapTransform;
@@ -888,7 +900,7 @@ bool StanceProcessor::frameCorrection()
     //std::cout << "TIMESTAMP PUBLISHED THE odom_drift_adjusted TRANSFORM!!: " << stamp << std::endl;
 
     mapCorrectedOdomTransformBroadcaster_.sendTransform(tf::StampedTransform(odomMapTransform,
-                                          ros::Time().fromNSec(rawMap_.getTimestamp()), "odom", "odom_drift_adjusted"));
+                                          ros::Time().fromNSec(map_.rawMap_.getTimestamp()), "odom", "odom_drift_adjusted"));
 
     return true;
 }

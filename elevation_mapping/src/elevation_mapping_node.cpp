@@ -10,12 +10,18 @@
 #include "elevation_mapping/ElevationMapping.hpp"
 #include "elevation_mapping/HighGrassElevationMapping.hpp"
 
+// New.
+#include "elevation_mapping/StanceProcessor.hpp"
+
 int main(int argc, char** argv)
 {
     {
     ros::init(argc, argv, "elevation_mapping");
     ros::NodeHandle nodeHandle("~");
     elevation_mapping::ElevationMapping elevationMap(nodeHandle);
+
+    //std::cout << "No instantiating instance of stance processor" << std::endl;
+    //elevation_mapping::StanceProcessor stanceProcessor(nodeHandle);
     //elevation_mapping::HighGrassElevationMapping highGrassElevationMap(nodeHandle);
 
     // Spin

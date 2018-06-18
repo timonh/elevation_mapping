@@ -12,6 +12,7 @@
 #include "elevation_mapping/ElevationMapFunctors.hpp"
 #include "elevation_mapping/WeightedEmpiricalCumulativeDistributionFunction.hpp"
 #include "elevation_mapping/HighGrassElevationMapping.hpp"
+#include "elevation_mapping/StanceProcessor.hpp"
 
 // Grid Map
 #include <grid_map_msgs/GridMap.h>
@@ -81,6 +82,10 @@ ElevationMap::ElevationMap(ros::NodeHandle nodeHandle)
       filterChain_("grid_map::GridMap"), // New
       filterChain2_("grid_map::GridMap")
 {
+
+  //StanceProcessor stanceProcessor(nodeHandle);
+
+
     // Timon added foot_tip_elevation layer
   rawMap_.setBasicLayers({"elevation", "variance"});
   fusedMap_.setBasicLayers({"elevation", "upper_bound", "lower_bound"});
@@ -104,6 +109,8 @@ ElevationMap::ElevationMap(ros::NodeHandle nodeHandle)
   visbilityCleanupMapPublisher_ = nodeHandle_.advertise<grid_map_msgs::GridMap>("visibility_cleanup_map", 1);
 
   // Launching parameters.
+
+  //! Commented as moved to StanceProcessor
   nodeHandle_.param("run_drift_adjustment", driftAdjustment_, true);
   nodeHandle_.param("apply_frame_correction", applyFrameCorrection_, true);
   nodeHandle_.param("kp", kp_, 0.24);
@@ -111,6 +118,10 @@ ElevationMap::ElevationMap(ros::NodeHandle nodeHandle)
   nodeHandle_.param("kd", kd_, -0.07);
   nodeHandle_.param("weight_factor", weightingFactor_, 1.0);
   nodeHandle_.param("run_hind_leg_stance_detection", runHindLegStanceDetection_, true); // TODO: add to config file
+  nodeHandle_.param("stance_detection_method", stanceDetectionMethod_, string("start"));
+
+  std::cout << "Stance Detection Method: : " << stanceDetectionMethod_ << std::endl;
+  //! End of commented section
 
   // For filter chain.
   nodeHandle_.param("filter_chain_parameter_name", filterChainParametersName_, std::string("/grid_map_filter_chain_one"));
@@ -128,11 +139,16 @@ ElevationMap::ElevationMap(ros::NodeHandle nodeHandle)
 
   // (New:) Foot tip position Subscriber for Foot tip - Elevation comparison
   // TESTED BY CHANGING IF SCOPES..
+
+  //! Commented as moved to Stance Processor
   if(driftAdjustment_){
       if(!use_bag) footTipStanceSubscriber_ = nodeHandle_.subscribe("/state_estimator/quadruped_state", 1, &ElevationMap::footTipStanceCallback, this);
       else footTipStanceSubscriber_ = nodeHandle_.subscribe("/state_estimator/quadruped_state_remapped", 1, &ElevationMap::footTipStanceCallback, this);
   }
+  //! end of commented section
 
+
+  //! Commented as moved to StanceProcessor
   // NEW: publish foot tip markers
   footContactPublisher_ = nodeHandle_.advertise<visualization_msgs::Marker>("mean_foot_contact_markers_rviz", 1000);
   elevationMapBoundPublisher_ = nodeHandle_.advertise<visualization_msgs::Marker>("map_bound_markers_rviz", 1000);
@@ -140,6 +156,7 @@ ElevationMap::ElevationMap(ros::NodeHandle nodeHandle)
   varianceTwistPublisher_ = nodeHandle_.advertise<geometry_msgs::TwistStamped>("variances", 1000);
   supportSurfaceAddingAreaPublisher_ = nodeHandle_.advertise<visualization_msgs::Marker>("adding_area", 1000);
   initializeFootTipMarkers();
+  //! end of commented section
 
   // NEW: Publish data, for parameter tuning and visualization
   //tuningPublisher1_ = nodeHandle_.advertise<elevation_mapping::PerformanceAssessment>("performance_assessment", 1000);
@@ -888,9 +905,6 @@ float ElevationMap::cumulativeDistributionFunction(float x, float mean, float st
 
 void ElevationMap::footTipStanceCallback(const quadruped_msgs::QuadrupedState& quadrupedState)
 {
-
-  //std::cout << "Calling Back still!!!" << std::endl;
-
   //boost::recursive_mutex::scoped_lock scopedLockForFootTipStanceProcessor(footTipStanceProcessorMutex_);
   // Set class variables.
   LFTipPosition_(0) = (double)quadrupedState.contacts[0].position.x;
@@ -901,7 +915,6 @@ void ElevationMap::footTipStanceCallback(const quadruped_msgs::QuadrupedState& q
   RFTipPosition_(2) = (double)quadrupedState.contacts[1].position.z;
   LFTipState_ = quadrupedState.contacts[0].state;
   RFTipState_ = quadrupedState.contacts[1].state;
-
 
   if(runHindLegStanceDetection_){
       // Add hind legs for proprioceptive variance estimation.
@@ -915,10 +928,8 @@ void ElevationMap::footTipStanceCallback(const quadruped_msgs::QuadrupedState& q
       RHTipState_ = quadrupedState.contacts[3].state;
   }
 
-
   // Get footprint position and orientation.
   setFootprint(quadrupedState.frame_transforms[3].transform);
-
 
   // Check if walking forward or backwards. TODO!
   //(double)quadrupedState.twist.twist.linear.x;
@@ -949,27 +960,30 @@ bool ElevationMap::detectStancePhase()
     processStanceTriggerRight_.push_back(RFTipState_);
 
     // Constrain the size of the state arrays.
-    if(processStanceTriggerLeft_.size() > 2000){
+    if (processStanceTriggerLeft_.size() > 2000) {
         processStanceTriggerLeft_.erase(processStanceTriggerLeft_.begin());
     }
-    if(processStanceTriggerRight_.size() > 2000){
+    if (processStanceTriggerRight_.size() > 2000) {
         processStanceTriggerRight_.erase(processStanceTriggerRight_.begin());
     }
 
     // Collect the foot tip position data (if foot tip in contact). (Prevent nans)
-    if(LFTipState_ && isInStanceLeft_){
+    if (LFTipState_ && isInStanceLeft_) {
         LFTipStance_.push_back(LFTipPosition_);
     }
-    if(RFTipState_ && isInStanceRight_){
+    // For start detection scheme.
+    else if (LFTipState_ && stanceDetectionMethod_ == "start") LFTipStance_.push_back(LFTipPosition_);
+    if (RFTipState_ && isInStanceRight_) {
         RFTipStance_.push_back(RFTipPosition_);
     }
+    else if (RFTipState_ && stanceDetectionMethod_ == "start") RFTipStance_.push_back(RFTipPosition_);
 
     // Stance Detection
     templateMatchingForStanceDetection("left", processStanceTriggerLeft_);
     templateMatchingForStanceDetection("right", processStanceTriggerRight_);
 
     // Here again for hind legs..
-    if (runHindLegStanceDetection_){
+    if (runHindLegStanceDetection_) {
 
 
         // Collect State Data for stance phase detection
@@ -977,26 +991,27 @@ bool ElevationMap::detectStancePhase()
         processStanceTriggerRightHind_.push_back(RHTipState_);
 
         // Constrain the size of the state arrays.
-        if(processStanceTriggerLeftHind_.size() > 2000){
+        if (processStanceTriggerLeftHind_.size() > 2000) {
             processStanceTriggerLeftHind_.erase(processStanceTriggerLeftHind_.begin());
         }
-        if(processStanceTriggerRightHind_.size() > 2000){
+        if (processStanceTriggerRightHind_.size() > 2000) {
             processStanceTriggerRightHind_.erase(processStanceTriggerRightHind_.begin());
         }
 
         // Collect the foot tip position data (if foot tip in contact). (Prevent nans)
-        if(LHTipState_ && isInStanceLeftHind_){
+        if (LHTipState_ && isInStanceLeftHind_) {
             LHTipStance_.push_back(LHTipPosition_);
         }
-        if(RHTipState_ && isInStanceRightHind_){
+        else if (LHTipState_ && stanceDetectionMethod_ == "start") LHTipStance_.push_back(LHTipPosition_);
+
+        if (RHTipState_ && isInStanceRightHind_) {
             RHTipStance_.push_back(RHTipPosition_);
         }
+        else if (RHTipState_ && stanceDetectionMethod_ == "start") RHTipStance_.push_back(RHTipPosition_);
 
         // Stance Detection
         templateMatchingForStanceDetection("lefthind", processStanceTriggerLeftHind_);
         templateMatchingForStanceDetection("righthind", processStanceTriggerRightHind_);
-
-
     }
 
     return true;
@@ -1019,16 +1034,20 @@ bool ElevationMap::templateMatchingForStanceDetection(std::string tip, std::vect
         if(tip == "left" && !isInStanceLeft_){
            // std::cout << "Start of LEFT stance" << std::endl;
             isInStanceLeft_ = 1;
+            if (stanceDetectionMethod_ == "start") if(!processStance(tip)) return false;
         }
         if(tip == "lefthind" && !isInStanceLeftHind_){
             isInStanceLeftHind_ = 1;
+            if (stanceDetectionMethod_ == "start") if(!processStance(tip)) return false;
         }
         if(tip == "right" && !isInStanceRight_){
            // std::cout << "Start of Right stance" << std::endl;
             isInStanceRight_ = 1;
+            if (stanceDetectionMethod_ == "start") if(!processStance(tip)) return false;
         }
         if(tip == "righthind" && !isInStanceRightHind_){
             isInStanceRightHind_ = 1;
+            if (stanceDetectionMethod_ == "start") if(!processStance(tip)) return false;
         }
     }
 
@@ -1050,22 +1069,22 @@ bool ElevationMap::templateMatchingForStanceDetection(std::string tip, std::vect
             stateVector.end()[-14]+stateVector.end()[-15] >=1){
 
         if(tip == "left" && isInStanceLeft_){
-            if(!processStance("left")) return false;
+            if (stanceDetectionMethod_ == "average") if(!processStance(tip)) return false;
             isInStanceLeft_ = 0;
             processStanceTriggerLeft_.clear();
         }
         if(tip == "lefthind" && isInStanceLeftHind_){
-            if(!processStance("lefthind")) return false;
+            if (stanceDetectionMethod_ == "average") if(!processStance(tip)) return false;
             isInStanceLeftHind_ = 0;
             processStanceTriggerLeftHind_.clear();
         }
         if(tip == "right" && isInStanceRight_){
-            if(!processStance("right")) return false;
+            if (stanceDetectionMethod_ == "average") if(!processStance(tip)) return false;
             isInStanceRight_ = 0;
             processStanceTriggerRight_.clear();
         }
         if(tip == "righthind" && isInStanceRightHind_){
-            if(!processStance("righthind")) return false;
+            if (stanceDetectionMethod_ == "average") if(!processStance(tip)) return false;
             isInStanceRightHind_ = 0;
             processStanceTriggerRightHind_.clear();
         }
@@ -1081,7 +1100,9 @@ bool ElevationMap::processStance(std::string tip)
 
     bool hind = false;
     // Delete the last 10 entries of the Foot Stance Position Vector, as these are used for transition detection
-    deleteLastEntriesOfStances(tip);
+    if (stanceDetectionMethod_ == "start") deleteFirstEntriesOfStances(tip);
+    if (stanceDetectionMethod_ == "average") deleteLastEntriesOfStances(tip);
+
     getAverageFootTipPositions(tip);
 
     bool runProprioceptiveRoughnessEstimation = true;
@@ -1107,6 +1128,13 @@ bool ElevationMap::processStance(std::string tip)
 
 bool ElevationMap::deleteLastEntriesOfStances(std::string tip)
 {
+
+    //! Debug output.
+    std::cout << "AVERAGE size of LFTipStance: " << LFTipStance_.size() << std::endl;
+    std::cout << "AVERAGE size of RFTipStance: " << RFTipStance_.size() << std::endl;
+    std::cout << "AVERAGE size of LHTipStance: " << LHTipStance_.size() << std::endl;
+    std::cout << "AVERAGE size of RHTipStance: " << RHTipStance_.size() << std::endl;
+
     // Delete the last entries of the stance, as these might be in the false state
     // (half the number of elements used in template matching are deleted)
     if (tip == "left" && LFTipStance_.size() < 8){
@@ -1139,6 +1167,72 @@ bool ElevationMap::deleteLastEntriesOfStances(std::string tip)
     }
     return true;
 }
+
+//! New
+bool ElevationMap::deleteFirstEntriesOfStances(std::string tip)
+{
+    // Delete the last entries of the stance, as these might be in the false state
+    // (half the number of elements used in template matching are deleted)
+
+    //! Debug output.
+    std::cout << "STERT size of LFTipStance: " << LFTipStance_.size() << std::endl;
+    std::cout << "START size of RFTipStance: " << RFTipStance_.size() << std::endl;
+    std::cout << "START size of LHTipStance: " << LHTipStance_.size() << std::endl;
+    std::cout << "START size of RHTipStance: " << RHTipStance_.size() << std::endl;
+
+    if (tip == "left" && LFTipStance_.size() < 3){
+        std::cout << "WARNING: LEFT STANCE PHASE HAS TOO LITTLE ENTRIES TO BE PROCESSED" << std::endl;
+    }
+    else if (tip == "right" && RFTipStance_.size() < 3){
+        std::cout << "WARNING: RIGHT STANCE PHASE HAS TOO LITTLE ENTRIES TO BE PROCESSED" << std::endl;
+    }
+    else if (tip == "lefthind" && LHTipStance_.size() < 3){
+        std::cout << "WARNING: LEFT HIND STANCE PHASE HAS TOO LITTLE ENTRIES TO BE PROCESSED" << std::endl;
+    }
+    else if (tip == "righthind" && RHTipStance_.size() < 3){
+        std::cout << "WARNING: RIGHT HIND STANCE PHASE HAS TOO LITTLE ENTRIES TO BE PROCESSED" << std::endl;
+    }
+    else{
+        for (unsigned int i = 0; i < (LFTipStance_.size() - 3); ++i){
+            if (tip == "left"){
+                std::vector<Eigen::Vector3f> newLFTipStance;
+                for (unsigned int j = 1; j <= 3; ++j) {
+                    newLFTipStance.push_back(LFTipStance_[LFTipStance_.size() - j]);     // Probably an additional -1 is needed
+                }
+                LFTipStance_.clear();
+                LFTipStance_ = newLFTipStance;
+                //LFTipStance_.erase(LFTipStance_.begin()); // pop_front (.erase(begin)) // TODO
+            }
+            if (tip == "right"){
+                std::vector<Eigen::Vector3f> newRFTipStance;
+                for (unsigned int j = 1; j <= 3; ++j) {
+                    newRFTipStance.push_back(RFTipStance_[RFTipStance_.size() - j]);     // Probably an additional -1 is needed
+                }
+                RFTipStance_.clear();
+                RFTipStance_ = newRFTipStance;
+            }
+            if (tip == "lefthind"){
+                std::vector<Eigen::Vector3f> newLHTipStance;
+                for (unsigned int j = 1; j <= 3; ++j) {
+                    newLHTipStance.push_back(LHTipStance_[LHTipStance_.size() - j]);     // Probably an additional -1 is needed
+                }
+                LHTipStance_.clear();
+                LHTipStance_ = newLHTipStance;
+            }
+            if (tip == "righthind"){
+                std::vector<Eigen::Vector3f> newRHTipStance;
+                for (unsigned int j = 1; j <= 3; ++j) {
+                    newRHTipStance.push_back(RHTipStance_[RHTipStance_.size() - j]);     // Probably an additional -1 is needed
+                }
+                RHTipStance_.clear();
+                RHTipStance_ = newRHTipStance;
+            }
+        }
+    }
+    return true;
+}
+
+//! End New
 
 bool ElevationMap::getAverageFootTipPositions(std::string tip)
 {
