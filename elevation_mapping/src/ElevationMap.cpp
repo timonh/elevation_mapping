@@ -3125,7 +3125,7 @@ bool ElevationMap::setSmoothingTiles(double tileResolution, double tileSize, dou
                     int inputDim = 2;
                     int outputDim = 1;
                     GaussianProcessRegression<float> myGPR(inputDim, outputDim);
-                    myGPR.SetHyperParams(lengthscale, 0.1, 0.001); // HAcked a factor *3
+                    myGPR.SetHyperParams(lengthscale * 3.0, 0.1, 0.001); // HAcked a factor *3
 
                     Eigen::Vector2f posTile;
                     posTile(0) = footTip(0) + i * tileResolution;
@@ -3292,7 +3292,17 @@ bool ElevationMap::setSmoothingTiles(double tileResolution, double tileSize, dou
 
             // TODO: try: 1 until 0.5 and straight slope to zero then..
 
-            double weight = exp(-distanceFactor * weightFactor) * fmax((radius-distance)/radius, 0.0); // Division by radius added -> if distance = 0 -> weight = 1
+            // double weight = exp(-distanceFactor * weightFactor) * fmax((radius-distance)/radius, 0.0); // Division by radius added -> if distance = 0 -> weight = 1
+
+
+            // New weighting scheme here:
+            double weight;
+            if (distance <= 0.2 * radius) weight = 1 - (distance / radius);
+            else if (distance >= 0.2 * radius && distance <= 0.8 * radius) weight = 0.8;
+            else weight = 0.8 - 0.8 * (distance - 0.8 * radius) / (0.2 * radius); // Testing here..
+            // End of new weighting scheme
+
+
             //std::cout << "weight: " << weight << std::endl;
 
 
@@ -3323,7 +3333,7 @@ bool ElevationMap::setSmoothingTiles(double tileResolution, double tileSize, dou
 
 
 
-    footTipElevationMapLayerGP(tip);
+    //footTipElevationMapLayerGP(tip);
 
 
 
@@ -3381,10 +3391,10 @@ bool ElevationMap::supportSurfaceUpperBoundingGP(GridMap& upperBoundMap, GridMap
 
     Matrix& dataUpper = upperBoundMap["elevation"];
     Matrix& dataSup = supportSurfaceMap["elevation_gp_added"];
-    Matrix& dataTip = supportSurfaceMap["elevation_gp_tip"];
+    //Matrix& dataTip = supportSurfaceMap["elevation_gp_tip"];
 
     dataSup = dataUpper.cwiseMin(dataSup);
-    dataTip = dataUpper.cwiseMin(dataTip); // Hacked for testing
+    //dataTip = dataUpper.cwiseMin(dataTip); // Hacked for testing
     return true;
 }
 
@@ -3644,7 +3654,7 @@ bool ElevationMap::sinkageDepthMapLayerGP(std::string tip, double& tipDifference
         Position3 tipLeftPos3(tipLeftVec(0), tipLeftVec(1), tipLeftVec(2));
         Position3 tipRightPos3(tipRightVec(0), tipRightVec(1), tipRightVec(2));
         double radius = 0.8;
-        double radius2 = 0.5; // TestHack!!
+        double radius2 = 0.8; // TestHack!!
         int inputDim = 2;
         int outputDim = 1;
         int maxSizeFootTipHistory = 6;
