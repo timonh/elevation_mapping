@@ -1129,12 +1129,6 @@ bool ElevationMap::processStance(std::string tip)
 bool ElevationMap::deleteLastEntriesOfStances(std::string tip)
 {
 
-    //! Debug output.
-    std::cout << "AVERAGE size of LFTipStance: " << LFTipStance_.size() << std::endl;
-    std::cout << "AVERAGE size of RFTipStance: " << RFTipStance_.size() << std::endl;
-    std::cout << "AVERAGE size of LHTipStance: " << LHTipStance_.size() << std::endl;
-    std::cout << "AVERAGE size of RHTipStance: " << RHTipStance_.size() << std::endl;
-
     // Delete the last entries of the stance, as these might be in the false state
     // (half the number of elements used in template matching are deleted)
     if (tip == "left" && LFTipStance_.size() < 8){
@@ -1171,14 +1165,7 @@ bool ElevationMap::deleteLastEntriesOfStances(std::string tip)
 //! New
 bool ElevationMap::deleteFirstEntriesOfStances(std::string tip)
 {
-    // Delete the last entries of the stance, as these might be in the false state
-    // (half the number of elements used in template matching are deleted)
-
-    //! Debug output.
-    std::cout << "STERT size of LFTipStance: " << LFTipStance_.size() << std::endl;
-    std::cout << "START size of RFTipStance: " << RFTipStance_.size() << std::endl;
-    std::cout << "START size of LHTipStance: " << LHTipStance_.size() << std::endl;
-    std::cout << "START size of RHTipStance: " << RHTipStance_.size() << std::endl;
+    // All stance entries are deleted except the last 3 ones are stored -> this gives start detection
 
     if (tip == "left" && LFTipStance_.size() < 3){
         std::cout << "WARNING: LEFT STANCE PHASE HAS TOO LITTLE ENTRIES TO BE PROCESSED" << std::endl;
@@ -3516,7 +3503,7 @@ bool ElevationMap::sinkageDepthMapLayerGP(std::string tip, double& tipDifference
         if (footTipHistoryGP_.size() > maxSizeFootTipHistory) footTipHistoryGP_.erase(footTipHistoryGP_.begin());
 
         GaussianProcessRegression<float> footTipGPR(inputDim, outputDim);
-        footTipGPR.SetHyperParams(2.0, 0.1, 0.001);
+        footTipGPR.SetHyperParams(4.0, 0.1, 0.001);
 
         for (unsigned int i = 0; i < footTipHistoryGP_.size(); ++i) {
             double distance = sqrt(pow(footTipHistoryGP_[i](0) - footTip(0), 2) + pow(footTipHistoryGP_[i](1) - footTip(1), 2));
@@ -3572,9 +3559,9 @@ bool ElevationMap::sinkageDepthMapLayerGP(std::string tip, double& tipDifference
             // Set weight decreasing with radius.
             double distance = sqrt(pow(inputPosition(0) - center(0), 2) + pow(inputPosition(1) - center(1), 2));
             //std::cout << "Distance from center (penetration depth layer): " << distance << std::endl;
-            double weight = fmax((radius - distance)/radius, 0.0) * exp(-distance * 0.001);
+            double weight = fmax(fabs((radius - distance)/radius), 0.0) * exp(-distance * 0.001);
 
-            double weight2 = fmax((radius2 - distance)/radius2, 0.0);
+            //double weight2 = fmax(fabs((radius2 - distance)/radius2), 0.0); // HACKED HACKED HACKED the plus 0.2
 
             //std::cout << "Weights sinkage depth: " << weight << std::endl;
             //if (fabs(regressionOutput) < 0.001) std::cout << "Zero output was generated!" << regressionOutput << std::endl;
@@ -3598,13 +3585,13 @@ bool ElevationMap::sinkageDepthMapLayerGP(std::string tip, double& tipDifference
             //if (scalarProduct > 0.0) std::cout << "Positive Scalar Product" << std::endl;
             //if (scalarProduct < 0.0) std::cout << "Negative Scalar Product" << std::endl;
 
-            if (scalarProduct < 0.0 && distance < radius2) { // Hacked the dist check!!
+            if (scalarProduct < 0.0 && distance < radius) {
                 if (!isnan(regressionOutput)){
                     if (isnan(supportMapElevationGPSinkage)){
                         supportMapElevationGPSinkage = regressionOutput;
                     }
                     else {
-                        supportMapElevationGPSinkage = (1 - weight2) *  supportMapElevationGPSinkage + regressionOutput * weight2;
+                        supportMapElevationGPSinkage = (1 - weight) *  supportMapElevationGPSinkage + regressionOutput * weight;
                     }
                 }
             }
