@@ -484,6 +484,9 @@ class ElevationMap
   //! TODO: Description:
   bool sinkageDepthMapLayerGP(std::string tip, double& tipDifference);
 
+  //! TODO: Description:
+  bool setSmoothenedTopLayer(std::string tip);
+
 
   //! ROS nodehandle.
   ros::NodeHandle nodeHandle_;
