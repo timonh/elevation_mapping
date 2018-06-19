@@ -3021,7 +3021,7 @@ bool ElevationMap::gaussianProcessSmoothing(std::string tip){
 
     // TODO: these params into config file.
     double tileResolution = 0.05;
-    double tileSize = 0.14; // HAcked larger, if slow, change this here
+    double tileSize = 0.15; // HAcked larger, if slow, change this here
     double sideLengthAddingPatch = 1.3;
     setSmoothingTiles(tileResolution, tileSize, sideLengthAddingPatch, tip);
 
@@ -3218,16 +3218,17 @@ bool ElevationMap::setSmoothingTiles(double tileResolution, double tileSize, dou
 
                             float regressionOutput = myGPR.DoRegression(testInput)(0);
 
-
-                            if (!supportMapGP_.isValid(index)){
-                                supportMapElevationGP = regressionOutput;
-                            }
-                            else {
-//                                if (supportMapElevationGP == 0.0) std::cout << "ATTENTION!! ZERO BIAS" << std::endl;
-                                supportMapElevationGP = 0.5 *  supportMapElevationGP +
-                                        (regressionOutput) * 0.5;
-                                //supportMapElevationGP = regressionOutput; // Test!!
-                                //supportMapElevationGP = myGPR.DoRegression(testInput)(0) + tipDifference; // Hacked to test!
+                            if (!isnan(regressionOutput)){
+                                if (!supportMapGP_.isValid(index)){
+                                    supportMapElevationGP = regressionOutput;
+                                }
+                                else {
+    //                                if (supportMapElevationGP == 0.0) std::cout << "ATTENTION!! ZERO BIAS" << std::endl;
+                                    supportMapElevationGP = 0.5 *  supportMapElevationGP +
+                                            (regressionOutput) * 0.5;
+                                    //supportMapElevationGP = regressionOutput; // Test!!
+                                    //supportMapElevationGP = myGPR.DoRegression(testInput)(0) + tipDifference; // Hacked to test!
+                                }
                             }
                             //}
 
@@ -3316,14 +3317,13 @@ bool ElevationMap::setSmoothingTiles(double tileResolution, double tileSize, dou
             auto& supportMapVarianceGP = supportMapGP_.at("variance_gp", index);
             auto& supportMapSinkageDepthGP = supportMapGP_.at("sinkage_depth_gp", index);
 
-            if (supportMapGP_.isValid(index)){
-                supportMapElevationGPAdded = (1 - weight) * supportMapElevationGPAdded + (supportMapElevationGP - 0 * supportMapSinkageDepthGP) * weight; // Hacked to sinkage depth rather than tipDifference (and sign change!)
-
+            if (supportMapGP_.isValid(index) && !isnan(supportMapElevationGP)){
+                supportMapElevationGPAdded = (1 - weight) * supportMapElevationGPAdded + (supportMapElevationGP) * weight;
                 // Naive approach to variance calculation:
                 supportMapVarianceGP = 0.5 * supportMapVarianceGP + 0.5 * pow((supportMapElevationGPAdded - supportMapElevationGP), 2);
             }
-            else{
-                supportMapElevationGPAdded = supportMapElevationGP - 0 * supportMapSinkageDepthGP; // Hacked to sinkage depth rather than tipDifference (and sign change!)
+            else if (!isnan(supportMapElevationGP)){
+                supportMapElevationGPAdded = supportMapElevationGP;
                 supportMapVarianceGP = 0.0;
             }
 
@@ -3657,7 +3657,7 @@ bool ElevationMap::sinkageDepthMapLayerGP(std::string tip, double& tipDifference
 
 bool ElevationMap::setSmoothenedTopLayer(std::string tip){
 
-    double smoothingRadius = 0.1;
+    double smoothingRadius = 0.16;
 
     Eigen::Vector3f tipVec;
     if (tip == "left") tipVec = getLatestLeftStance();
