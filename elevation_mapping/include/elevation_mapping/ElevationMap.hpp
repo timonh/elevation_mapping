@@ -586,6 +586,9 @@ class ElevationMap
   bool applyFrameCorrection_;
   bool runHindLegStanceDetection_;
   std::string stanceDetectionMethod_;
+  bool addOldSupportSurfaceDataToGPTraining_;
+  bool addFootTipPositionsToGPTraining_;
+  bool useBag_;
 
   //! Bool to specify wheather in high grass or not:
   bool highGrassMode_;
@@ -669,6 +672,9 @@ class ElevationMap
 
   // Foot tip position history for GP.
   std::vector<grid_map::Position3> footTipHistoryGP_;
+
+  // Quadruped velocity for low pass filtered velocity.
+  Eigen::Vector3f quadrupedBaseVelocity_;
 
 };
 
