@@ -121,6 +121,7 @@ ElevationMap::ElevationMap(ros::NodeHandle nodeHandle)
   nodeHandle_.param("stance_detection_method", stanceDetectionMethod_, string("start"));
   nodeHandle_.param("add_old_support_surface_data_to_gp_training", addOldSupportSurfaceDataToGPTraining_, false);
   nodeHandle_.param("use_bag", useBag_, false);
+  nodeHandle_.param("support_surface_estimation", supportSurfaceEstimation_, false);
 
 
   std::cout << "Stance Detection Method: : " << stanceDetectionMethod_ << std::endl;
@@ -187,6 +188,7 @@ ElevationMap::ElevationMap(ros::NodeHandle nodeHandle)
   isInStanceRight_ = false;
   isInStanceRightHind_ = false;
   supportSurfaceInitializationTrigger_ = false;
+  cumulativeSupportSurfaceUncertaintyEstimation_ = 0.0;
   // END NEW
 
   initialTime_ = ros::Time::now();
@@ -934,7 +936,9 @@ void ElevationMap::footTipStanceCallback(const quadruped_msgs::QuadrupedState& q
   // Get footprint position and orientation.
   setFootprint(quadrupedState.frame_transforms[3].transform);
 
-//  std::cout << "Velocity? " << quadrupedState.twist.twist.linear.x << std::endl;
+
+
+  //std::cout << "Velocity? " << quadrupedState.twist.twist.linear.x << std::endl;
 //  Eigen::Vector3f lowPassFilteredVelocity = 0.2 * quadrupedState.twist.twist.linear + 0.8 * getQuadrupedVelocity();
 
 //  setQuadrupedBaseVelocity_(lowPassFilteredVelocity);
@@ -1400,8 +1404,11 @@ bool ElevationMap::footTipElevationMapComparison(std::string tip)
         Position tipPosition(xTip, yTip);
 
         // New here, check what isInside does..
-        if(rawMap_.isInside(tipPosition)) updateSupportSurfaceEstimation(tip); // NEW !!!!!
-        else std::cout << "FOOT TIP CONSIDERED NOT TO BE INSIDE!!!!! \n \n \n \n " << std::endl;
+        if (supportSurfaceEstimation_){
+            if(rawMap_.isInside(tipPosition)) updateSupportSurfaceEstimation(tip); // NEW !!!!!
+            else std::cout << "FOOT TIP CONSIDERED NOT TO BE INSIDE!!!!! \n \n \n \n " << std::endl;
+        }
+
 
         // Make sure that the state is 1 and the foot tip is inside area covered by the elevation map.
         if(rawMap_.isInside(tipPosition) && !isnan(heightDifferenceFromComparison_)){ // HACKED FOR TESTS!!!
@@ -1707,7 +1714,7 @@ bool ElevationMap::frameCorrection()
     if (!isnan(heightDifferenceFromComparison_)) odomMapTransform.getOrigin()[2] += heightDifferenceFromComparison_;
     else std::cout << heightDifferenceFromComparison_ << " <- height diff is this kind of NAN for some reason? \n ? \n ? \n";
 
-    //ros::Time stamp = ros::Time().fromNSec(fusedMap_.getTimestamp());
+    ros::Time stamp = ros::Time().fromNSec(fusedMap_.getTimestamp());
 
     //std::cout << "TIMESTAMP PUBLISHED THE odom_drift_adjusted TRANSFORM!!: " << stamp << std::endl;
 
@@ -2240,20 +2247,42 @@ Eigen::Vector3f ElevationMap::getMeanOfAllFootTips(){
 
 
 bool ElevationMap::penetrationDepthVarianceEstimation(std::string tip, double verticalDifference){
-    verticalDifferenceVector_.push_back(verticalDifference);
-    if (verticalDifferenceVector_.size() > 6) verticalDifferenceVector_.erase(verticalDifferenceVector_.begin());
+
+    int maxHistory = 3;
+
+    if (!isnan(verticalDifference)) verticalDifferenceVector_.push_back(verticalDifference);
+    if (verticalDifferenceVector_.size() > maxHistory) verticalDifferenceVector_.erase(verticalDifferenceVector_.begin()); // Hacking around with the length of the vector.
     double totalVerticalDifference = 0.0;
     double squaredTotalVerticalDifference = 0.0;
+    double totalVerticalDifferenceChange = 0.0;
+    double squaredTotalVerticalDifferenceChange = 0.0;
+
     int count = verticalDifferenceVector_.size();
-    for (auto& n : verticalDifferenceVector_){
+    for (auto& n : verticalDifferenceVector_) {
         totalVerticalDifference += n;
-        squaredTotalVerticalDifference += pow(n,2);
+        squaredTotalVerticalDifference += pow(n, 2);
+    }
+
+    // Differencial version.
+    if (verticalDifferenceVector_.size() > 1) {
+        for (unsigned int j = 1; j < verticalDifferenceVector_.size(); ++j) {
+            totalVerticalDifferenceChange += verticalDifferenceVector_[j] - verticalDifferenceVector_[j-1];
+            squaredTotalVerticalDifferenceChange += pow(verticalDifferenceVector_[j] - verticalDifferenceVector_[j-1], 2);
+        }
     }
 
     double penetrationDepthVariance = squaredTotalVerticalDifference / double(count) +
             pow(totalVerticalDifference / double(count), 2);
 
+    // Differential Version.
+    double differentialPenetrationDepthVariance = squaredTotalVerticalDifferenceChange / double(count) +
+            pow(totalVerticalDifferenceChange / double(count), 2);
+
     setPenetrationDepthVariance(penetrationDepthVariance);
+    setDifferentialPenetrationDepthVariance(differentialPenetrationDepthVariance);
+
+    std::cout << "differentialPenetrationDepthVariance_: " << differentialPenetrationDepthVariance_ << std::endl;
+
     return true;
 }
 
@@ -2530,8 +2559,17 @@ void ElevationMap::setPenetrationDepthVariance(double penetrationDepthVariance){
     if (!isnan(penetrationDepthVariance)) penetrationDepthVariance_ = penetrationDepthVariance;
 }
 
+// For using it in the penetration depth estimation.
+void ElevationMap::setDifferentialPenetrationDepthVariance(double differentialPenetrationDepthVariance){
+    if (!isnan(differentialPenetrationDepthVariance)) differentialPenetrationDepthVariance_ = differentialPenetrationDepthVariance;
+}
+
 double ElevationMap::getPenetrationDepthVariance(){
     return penetrationDepthVariance_;
+}
+
+double ElevationMap::getDifferentialPenetrationDepthVariance(){
+    return differentialPenetrationDepthVariance_;
 }
 
 bool ElevationMap::penetrationDepthContinuityProcessing(std::string tip){
@@ -3030,7 +3068,7 @@ bool ElevationMap::gaussianProcessSmoothing(std::string tip){
 
     // TODO: these params into config file.
     double tileResolution = 0.08;
-    double tileDiameter = 0.2; // HAcked larger, if slow, change this here
+    double tileDiameter = 0.23; // HAcked larger, if slow, change this here
     double sideLengthAddingPatch = 1.3;
     setSmoothingTiles(tileResolution, tileDiameter, sideLengthAddingPatch, tip);
 
@@ -3044,8 +3082,6 @@ bool ElevationMap::setSmoothingTiles(double tileResolution, double tileDiameter,
         std::cout << "tile size for gaussian process model tiling must be higher than twice the tile Resolution" << std::endl;
         return false;
     }
-
-
 
     if (leftStanceVector_.size() > 0 && rightStanceVector_.size() > 0){
 
@@ -3112,6 +3148,8 @@ bool ElevationMap::setSmoothingTiles(double tileResolution, double tileDiameter,
         // Get uncertainty measures.
         double terrainVariance = getTerrainVariance();
         double supportSurfaceUncertaintyEstimation = getSupportSurfaceUncertaintyEstimation();
+        double cumulativeSupportSurfaceUncertaintyEstimation = getCumulativeSupportSurfaceUncertaintyEstimation();
+        std::cout << "CumulativeSupportSurfaceUncertaintyEstimation: " << cumulativeSupportSurfaceUncertaintyEstimation << std::endl;
 
         // Set lengthscale as function of terrain variance (assessed by foot tips only).
         double factor = 120.0;
@@ -3125,8 +3163,9 @@ bool ElevationMap::setSmoothingTiles(double tileResolution, double tileDiameter,
         adaptationMsg.twist.linear.x = terrainVariance;
         adaptationMsg.twist.linear.y = lengthscale;
         adaptationMsg.twist.angular.x = supportSurfaceUncertaintyEstimation;
-        adaptationMsg.twist.angular.y = weightFactor;
-
+        adaptationMsg.twist.angular.y = cumulativeSupportSurfaceUncertaintyEstimation;
+        adaptationMsg.twist.angular.z = getPenetrationDepthVariance();
+        adaptationMsg.twist.linear.z = getDifferentialPenetrationDepthVariance();
 
         Position footTip;
         if (tip == "left") footTip = tipLeft;
@@ -3162,19 +3201,23 @@ bool ElevationMap::setSmoothingTiles(double tileResolution, double tileDiameter,
                         trainOutput2(0) = supportMapGP_.at("elevation_gp_added", index);
 
                         if (!isnan(trainOutput(0)) && rawMap_.isValid(index)){  // TODO: remove the second argument
+
+
+                            // Studies for terrain continuity techniques..
                             myGPR.AddTrainingData(trainInput, trainOutput);
 
                             //if (addFootTipPositionsToGPTraining_){
                             //    myGPR.AddtrainingData()
                             //}
 
-                            if (addOldSupportSurfaceDataToGPTraining_ && i % 2 == 0 && j % 2 == 0){  // Hacked trying some stuff..
+
+
+                            if (addOldSupportSurfaceDataToGPTraining_ && i % 3 == 0 && j % 3 == 0){  // Hacked trying some stuff..
+                                // Trying some terrain continuity stuff!!
                                 myGPR.AddTrainingData(trainInput, trainOutput2);
                                 //std::cout << "added some old DATA .................. DATA" << std::endl;
                             }
-
                         }
-
                     }
 
                     //std::cout << "The Number of Data in this tile is: " << myGPR.get_n_data() << std::endl;
@@ -3278,7 +3321,7 @@ bool ElevationMap::setSmoothingTiles(double tileResolution, double tileDiameter,
 
 
 
-        double penetrationDepthVariance = getPenetrationDepthVariance();
+
 
         // Weight for tiles against each others.
         double intraGPWeight = 0.8;
@@ -3442,11 +3485,18 @@ bool ElevationMap::setSupportSurfaceUncertaintyEstimation(std::string tip){
     Position latestTipPosition(latestTip(0), latestTip(1));
     double diff = fabs(latestTip(2) - supportMapGP_.atPosition("elevation_gp_added", latestTipPosition));
     supportSurfaceUncertaintyEstimation_ = diff;
+    if (!isnan(diff)) cumulativeSupportSurfaceUncertaintyEstimation_ += diff;
     return true;
 }
 
 double ElevationMap::getSupportSurfaceUncertaintyEstimation(){
-    return supportSurfaceUncertaintyEstimation_;
+    if(!isnan(supportSurfaceUncertaintyEstimation_)) return supportSurfaceUncertaintyEstimation_;
+    else return 0.0;
+}
+
+double ElevationMap::getCumulativeSupportSurfaceUncertaintyEstimation(){
+    if (!isnan(cumulativeSupportSurfaceUncertaintyEstimation_)) return cumulativeSupportSurfaceUncertaintyEstimation_;
+    else return 0.0;
 }
 
 bool ElevationMap::footTipElevationMapLayerGP(std::string tip){
@@ -3650,6 +3700,15 @@ bool ElevationMap::sinkageDepthMapLayerGP(std::string tip, double& tipDifference
       //! Slow bad version END
 
     if (leftStanceVector_.size() > 0 && rightStanceVector_.size() > 0){
+
+        // For continuity assumption management.
+        double continuityWeight = 0.2;
+        double diffSinkageVariance = getDifferentialPenetrationDepthVariance();
+        double factor = 7.0; // switched off
+
+        if (!isnan(diffSinkageVariance)) continuityWeight = fmin(diffSinkageVariance * factor, 0.4);
+        std::cout << "continuityWeight: " << continuityWeight << std::endl;
+
         Eigen::Vector3f tipLeftVec = getLatestLeftStance();
         Eigen::Vector3f tipRightVec = getLatestRightStance();
         Position3 tipLeftPos3(tipLeftVec(0), tipLeftVec(1), tipLeftVec(2));
@@ -3744,7 +3803,10 @@ bool ElevationMap::sinkageDepthMapLayerGP(std::string tip, double& tipDifference
             // 2D, consider 3D
             double scalarProduct = relativePosition(0) * xAxisFootprint[0] + relativePosition(1) * xAxisFootprint[1]; // TODO, check tfVector
 
-            double continuityWeight = 0.7;
+
+
+
+
             //if (scalarProduct > 0.0) std::cout << "Positive Scalar Product" << std::endl;
             //if (scalarProduct < 0.0) std::cout << "Negative Scalar Product" << std::endl;
 
@@ -3794,13 +3856,6 @@ bool ElevationMap::sinkageDepthMapLayerGP(std::string tip, double& tipDifference
         }
         //for (CircleIterator iterator(supportMapGP_, center, radius2); !iterator.isPastEnd(); ++iterator) {
         //    const Index index(*iterator);
-
-
-
-
-
-
-
         //}
     }
     return true;

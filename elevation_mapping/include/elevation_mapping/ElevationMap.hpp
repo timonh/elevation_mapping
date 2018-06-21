@@ -419,6 +419,12 @@ class ElevationMap
   double getPenetrationDepthVariance();
 
   //! TODO: Description:
+  void setDifferentialPenetrationDepthVariance(double verticalDifference);
+
+  //! TODO: Description:
+  double getDifferentialPenetrationDepthVariance();
+
+  //! TODO: Description:
   bool penetrationDepthContinuityProcessing(std::string tip);
 
   //! TODO: Description:
@@ -477,6 +483,9 @@ class ElevationMap
 
   //! TODO: Description:
   double getSupportSurfaceUncertaintyEstimation();
+
+  //! TODO: Description:
+  double getCumulativeSupportSurfaceUncertaintyEstimation();
 
   //! TODO: Description:
   bool footTipElevationMapLayerGP(std::string std);
@@ -589,6 +598,7 @@ class ElevationMap
   bool addOldSupportSurfaceDataToGPTraining_;
   bool addFootTipPositionsToGPTraining_;
   bool useBag_;
+  bool supportSurfaceEstimation_;
 
   //! Bool to specify wheather in high grass or not:
   bool highGrassMode_;
@@ -652,7 +662,7 @@ class ElevationMap
   bool supportSurfaceInitializationTrigger_;
 
   //! For use in penetrationDepthVarianceEstimation
-  double penetrationDepthVariance_;
+  double penetrationDepthVariance_, differentialPenetrationDepthVariance_;
   std::vector<double> verticalDifferenceVector_;
 
   filters::FilterChain<grid_map::GridMap> filterChain_;
@@ -669,12 +679,16 @@ class ElevationMap
   double terrainVariance_;
   double PenetrationDepthVariance_;
   double supportSurfaceUncertaintyEstimation_;
+  double cumulativeSupportSurfaceUncertaintyEstimation_;
 
   // Foot tip position history for GP.
   std::vector<grid_map::Position3> footTipHistoryGP_;
 
   // Quadruped velocity for low pass filtered velocity.
   Eigen::Vector3f quadrupedBaseVelocity_;
+
+  // Vertical Difference Foot tip vs. smoothened top layer of elevation map.
+  double verticalDifferenceGP_;
 
 };
 
