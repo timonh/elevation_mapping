@@ -7,6 +7,7 @@
  */
 
 #include "elevation_mapping/SupportSurfaceEstimation.hpp"
+#include "elevation_mapping/ElevationMap.hpp"
 
 // Elevation Mapping
 #include "elevation_mapping/ElevationMapFunctors.hpp"
@@ -92,8 +93,8 @@ SupportSurfaceEstimation::SupportSurfaceEstimation(ros::NodeHandle nodeHandle)
 
   // TEST:
   //elevationMapCorrectedPublisher_ = nodeHandle_.advertise<grid_map_msgs::GridMap>("elevation_map_drift_adjusted", 1);
-  elevationMapSupportPublisher_ = nodeHandle_.advertise<grid_map_msgs::GridMap>("support_added", 1);
-  elevationMapInpaintedPublisher_ = nodeHandle_.advertise<grid_map_msgs::GridMap>("support_surface", 1);
+  //elevationMapSupportPublisher_ = nodeHandle_.advertise<grid_map_msgs::GridMap>("support_added", 1);
+  //elevationMapInpaintedPublisher_ = nodeHandle_.advertise<grid_map_msgs::GridMap>("support_surface", 1);
   elevationMapGPPublisher_ = nodeHandle_.advertise<grid_map_msgs::GridMap>("support_surface_gp", 1);
   // END TEST
 
@@ -138,11 +139,13 @@ SupportSurfaceEstimation::SupportSurfaceEstimation(ros::NodeHandle nodeHandle)
   //}
 
   // NEW: publish foot tip markers
-  footContactPublisher_ = nodeHandle_.advertise<visualization_msgs::Marker>("mean_foot_contact_markers_rviz", 1000);
-  elevationMapBoundPublisher_ = nodeHandle_.advertise<visualization_msgs::Marker>("map_bound_markers_rviz", 1000);
-  planeFitVisualizationPublisher_ = nodeHandle_.advertise<visualization_msgs::Marker>("plane_fit_visualization_marker_list", 1000);
+  //footContactPublisher_ = nodeHandle_.advertise<visualization_msgs::Marker>("mean_foot_contact_markers_rviz", 1000);
+  //elevationMapBoundPublisher_ = nodeHandle_.advertise<visualization_msgs::Marker>("map_bound_markers_rviz", 1000);
+  //planeFitVisualizationPublisher_ = nodeHandle_.advertise<visualization_msgs::Marker>("plane_fit_visualization_marker_list", 1000);
   varianceTwistPublisher_ = nodeHandle_.advertise<geometry_msgs::TwistStamped>("variances", 1000);
   supportSurfaceAddingAreaPublisher_ = nodeHandle_.advertise<visualization_msgs::Marker>("adding_area", 1000);
+
+  //ElevationMap map;
 
   //! uncomment!!
   //initializeFootTipMarkers();
@@ -154,32 +157,79 @@ SupportSurfaceEstimation::SupportSurfaceEstimation(ros::NodeHandle nodeHandle)
   //coloredPointCloudPublisher_ = nodeHandle_.advertise<sensor_msgs::PointCloud2>("variance_pointcloud", 1);
 
   // Initializing some class variables.
-  heightDifferenceFromComparison_ = 0.0;
-  oldDiffComparisonUpdate_ = 0.0;
-  estimatedDrift_ = 0.0;
-  estimatedDriftChange_ = 0.0;
-  estimatedDriftChangeVariance_ = 0.0;
-  usedWeight_ = 0.0;
-  footTipOutsideBounds_ = true;
-  estimatedKalmanDiff_ = 0.0;
-  estimatedKalmanDiffIncrement_ = 0.0;
-  PEstimatedKalmanDiffIncrement_ = 0.0;
-  performanceAssessment_ = 0.0;
-  performanceAssessmentFlat_ = 0.0;
-  driftEstimationPID_ = 0.0;
-  highGrassMode_ = false;
-  isInStanceLeft_ = false;
-  isInStanceLeftHind_ = false;
-  isInStanceRight_ = false;
-  isInStanceRightHind_ = false;
+  //heightDifferenceFromComparison_ = 0.0;
+  //oldDiffComparisonUpdate_ = 0.0;
+  //estimatedDrift_ = 0.0;
+  //estimatedDriftChange_ = 0.0;
+  //estimatedDriftChangeVariance_ = 0.0;
+  //usedWeight_ = 0.0;
+  //footTipOutsideBounds_ = true;
+  //estimatedKalmanDiff_ = 0.0;
+  //estimatedKalmanDiffIncrement_ = 0.0;
+  //PEstimatedKalmanDiffIncrement_ = 0.0;
+  //performanceAssessment_ = 0.0;
+  //performanceAssessmentFlat_ = 0.0;
+  //driftEstimationPID_ = 0.0;
+  //highGrassMode_ = false;
+  //isInStanceLeft_ = false;
+  //isInStanceLeftHind_ = false;
+  //isInStanceRight_ = false;
+  //isInStanceRightHind_ = false;
   supportSurfaceInitializationTrigger_ = false;
   // END NEW
+  std::cout << "Called the constructor of the SupportSurfaceEstimation!!" << std::endl;
 
   initialTime_ = ros::Time::now();
 }
 
 SupportSurfaceEstimation::~SupportSurfaceEstimation()
 {
+}
+
+bool SupportSurfaceEstimation::updateSupportSurfaceEstimation(std::string tip){
+    // Here all the functions are called and weighting is set..
+
+    //penetrationDepthContinuityPropagation(); // Deprecated
+    //terrainContinuityPropagation(); // Deprecated
+    //penetrationDepthContinuityProcessing(tip); // Switched Off
+    //terrainContinuityProcessing(); // Switched Off
+    //footTipBasedElevationMapIncorporation(); // Switched Off
+    gaussianProcessSmoothing(tip);
+    return true;
+}
+
+bool SupportSurfaceEstimation::gaussianProcessSmoothing(std::string tip){
+
+    // Uncertainty Estimation based on low pass filtered error between foot tip height and predicted support Surface.
+    setSupportSurfaceUncertaintyEstimation(tip);
+
+    // TODO: these params into config file.
+    double tileResolution = 0.08;
+    double tileDiameter = 0.23; // HAcked larger, if slow, change this here
+    double sideLengthAddingPatch = 1.3;
+    //setSmoothingTiles(tileResolution, tileDiameter, sideLengthAddingPatch, tip);
+
+    return true;
+}
+
+bool SupportSurfaceEstimation::setSupportSurfaceUncertaintyEstimation(std::string tip){
+
+    // TODO: try to access rawMap_.
+    //ElevationMap map_;
+
+    //Position pos(0.2,0.2);
+    //rawMap_.atPosition("elevation", pos);
+
+    //Eigen::Vector3f latestTip;
+    //if (tip == "left") latestTip = getLatestLeftStance();
+    //if (tip == "right") latestTip = getLatestRightStance();
+
+    // So far not low pass filtered!! -> create Vector for that (TODO)
+    //Position latestTipPosition(latestTip(0), latestTip(1));
+    //double diff = fabs(latestTip(2) - supportMapGP_.atPosition("elevation_gp_added", latestTipPosition));
+    //supportSurfaceUncertaintyEstimation_ = diff;
+    //if (!isnan(diff)) cumulativeSupportSurfaceUncertaintyEstimation_ += diff;
+    return true;
 }
 
 } /* namespace */

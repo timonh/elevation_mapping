@@ -8,6 +8,10 @@
 
 #pragma once
 
+
+// Support Surface Estimation
+#include "elevation_mapping/SupportSurfaceEstimation.hpp"
+
 // Grid Map
 #include <grid_map_ros/grid_map_ros.hpp>
 
@@ -17,6 +21,7 @@
 #include <grid_map_cv/grid_map_cv.hpp> // New for high grass
 #include <grid_map_cv/InpaintFilter.hpp> // New for high grass
 #include <grid_map_ros/grid_map_ros.hpp>
+
 
 // Eigen
 #include <Eigen/Core>
@@ -57,7 +62,6 @@ namespace elevation_mapping {
  */
 class ElevationMap
 {
- friend class StanceProcessor;
 
  public:
 
@@ -255,6 +259,8 @@ class ElevationMap
   void footTipStanceCallback(const quadruped_msgs::QuadrupedState& quadrupedState);
 
   friend class ElevationMapping;
+  friend class StanceProcessor;
+  friend class SupportSurfaceEstimation;
 
  private:
 
@@ -440,6 +446,12 @@ class ElevationMap
   grid_map::Position3 getFrontRightFootTipPosition();
 
   //! TODO: Description:
+  grid_map::Position3 getHindLeftFootTipPosition();
+
+  //! TODO: Description:
+  grid_map::Position3 getHindRightFootTipPosition();
+
+  //! TODO: Description:
   double getClosestMapValueUsingSpiralIterator(grid_map::GridMap& MapReference, grid_map::Position footTip, double radius, double tipHeight);
 
   //! The Elevation map is an upper bound to the support surface
@@ -461,7 +473,7 @@ class ElevationMap
   bool gaussianProcessSmoothing(std::string tip);
 
   //! TODO: Description:
-  bool setSmoothingTiles(double tileResolution, double tileSize, double sideLengthAddingPatch, std::string tip);
+  bool mainGPRegression(double tileResolution, double tileSize, double sideLengthAddingPatch, std::string tip);
 
   //! TODO: Description:
   double getFootTipElevationMapDifferenceGP(std::string tip);
@@ -495,6 +507,26 @@ class ElevationMap
 
   //! TODO: Description:
   bool setSmoothenedTopLayer(std::string tip);
+
+  Eigen::Vector4f getFootTipPlaneCoefficients(std::string tip);
+
+  //! TODO: Description:
+  bool sampleContinuityPlaneToTrainingData(const grid_map::Position& cellPos, const grid_map::Position& center, const double& terrainContinuityValue);
+
+  bool setQuadrupedBaseVelocity(const Eigen::Vector3f& lowPassFilteredBaseVelocity);
+
+  //! TODO: Description:
+  Eigen::Vector3f getQuadrupedBaseVelocity();
+
+  //! TODO: Description:
+  Eigen::Vector4f getPlaneCoeffsFromThreePoints(const grid_map::Position3& Point1, const grid_map::Position3& Point2, const grid_map::Position3& Point3);
+
+  //! TODO: Description:
+  double evaluatePlaneFromCoefficients(const Eigen::Vector4f& coefficients, grid_map::Position cellPos);
+
+
+
+
 
 
   //! ROS nodehandle.
@@ -598,7 +630,7 @@ class ElevationMap
   bool addOldSupportSurfaceDataToGPTraining_;
   bool addFootTipPositionsToGPTraining_;
   bool useBag_;
-  bool supportSurfaceEstimation_;
+  bool runSupportSurfaceEstimation_;
 
   //! Bool to specify wheather in high grass or not:
   bool highGrassMode_;
@@ -670,7 +702,7 @@ class ElevationMap
   std::string filterChainParametersName_;
 
   // storage of front left foottip position for simple foot tip embedding.
-  Eigen::Vector3f frontLeftFootTip_, frontRightFootTip_;
+  Eigen::Vector3f frontLeftFootTip_, frontRightFootTip_, hindLeftFootTip_, hindRightFootTip_;
 
   // Footprint storage in class member:
   geometry_msgs::Transform footprint_;
@@ -689,6 +721,16 @@ class ElevationMap
 
   // Vertical Difference Foot tip vs. smoothened top layer of elevation map.
   double verticalDifferenceGP_;
+
+
+  // Object of Support Surface Estimation.
+  //SupportSurfaceEstimation supportSurfaceEstimation_;
+
+  // Low pass filtered base velocity for sinkage depth model approximation.
+  Eigen::Vector3f lowPassFilteredBaseVelocity_;
+
+  // Config Parameter for low pass filter gain.
+  double velocityLowPassFilterGain_;
 
 };
 

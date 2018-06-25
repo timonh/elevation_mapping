@@ -8,6 +8,8 @@
 
 #pragma once
 
+#include <elevation_mapping/ElevationMap.hpp>
+
 // Grid Map
 #include <grid_map_ros/grid_map_ros.hpp>
 
@@ -17,6 +19,9 @@
 #include <grid_map_cv/grid_map_cv.hpp> // New for high grass
 #include <grid_map_cv/InpaintFilter.hpp> // New for high grass
 #include <grid_map_ros/grid_map_ros.hpp>
+
+// Elevation Mapping
+//#include "elevation_mapping/ElevationMap.hpp"
 
 // Eigen
 #include <Eigen/Core>
@@ -46,6 +51,9 @@
 // ROS msgs
 //#include <elevation_mapping/PerformanceAssessment.h>
 
+// Elevation Map
+#include "elevation_mapping/ElevationMap.hpp"
+
 // File IO
 #include <iostream>
 #include <fstream>
@@ -68,6 +76,11 @@ public:
   * Destructor.
   */
  virtual ~SupportSurfaceEstimation();
+
+ // New Stuff public
+ //! TODO: Description:
+ bool updateSupportSurfaceEstimation(std::string tip);
+
 
  /*!
   * Set the geometry of the elevation map. Clears all the data.
@@ -371,9 +384,6 @@ private:
  bool writeDataFileForParameterLearning();
 
  //! TODO: Description:
- bool updateSupportSurfaceEstimation(std::string tip);
-
- //! TODO: Description:
  bool penetrationDepthContinuityPropagation();
 
  //! TODO: Description:
@@ -478,12 +488,11 @@ private:
  //! TODO: Description:
  bool sinkageDepthMapLayerGP(std::string tip, double& tipDifference);
 
-
  //! ROS nodehandle.
  ros::NodeHandle nodeHandle_;
 
  //! Raw elevation map as grid map.
- grid_map::GridMap rawMap_;
+ //grid_map::GridMap rawMap_;
 
  //! Fused elevation map as grid map.
  grid_map::GridMap fusedMap_;
@@ -660,6 +669,8 @@ private:
  // Foot tip position history for GP.
  std::vector<grid_map::Position3> footTipHistoryGP_;
 
+ //! Elevation map.
+ //ElevationMap map_;
 };
 
 } /* namespace */

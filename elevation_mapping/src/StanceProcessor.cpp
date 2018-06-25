@@ -139,6 +139,8 @@ StanceProcessor::StanceProcessor(ros::NodeHandle nodeHandle)
   // TESTED BY CHANGING IF SCOPES..
 
 
+  std::cout << "this is getting kafkaesque if this works here: " << map_.rawMap_.exists("elevation") << std::endl;
+
   //! Uncomment:
   if(driftAdjustment_){
       if(!use_bag) footTipStanceSubscriber_ = nodeHandle_.subscribe("/state_estimator/quadruped_state", 1, &StanceProcessor::footTipStanceCallback, this);
