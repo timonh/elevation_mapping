@@ -631,6 +631,8 @@ class ElevationMap
   bool addFootTipPositionsToGPTraining_;
   bool useBag_;
   bool runSupportSurfaceEstimation_;
+  double weightTerrainContinuity_;
+  double weightingFactorSampling_;
 
   //! Bool to specify wheather in high grass or not:
   bool highGrassMode_;

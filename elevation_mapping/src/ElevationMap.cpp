@@ -129,6 +129,9 @@ ElevationMap::ElevationMap(ros::NodeHandle nodeHandle)
   nodeHandle_.param("use_bag", useBag_, false);
   nodeHandle_.param("run_support_surface_estimation", runSupportSurfaceEstimation_, false);
   nodeHandle_.param("velocity_low_pass_filter_gain", velocityLowPassFilterGain_, 0.0003);
+  nodeHandle_.param("weight_terrain_continuity", weightTerrainContinuity_, 1.0);
+  nodeHandle_.param("weighting_factor_sampling", weightingFactorSampling_, 8.0);
+
 
   std::cout << "Stance Detection Method: : " << stanceDetectionMethod_ << std::endl;
   //! End of commented section
@@ -3156,10 +3159,15 @@ bool ElevationMap::mainGPRegression(double tileResolution, double tileDiameter, 
         double weightFactor = 0.0;
         if (!isnan(supportSurfaceUncertaintyEstimation)) weightFactor = supportSurfaceUncertaintyEstimation * 0.0001; // Hacked to practically nothing
 
+        double sinkageVariance = getPenetrationDepthVariance();
+
+        // TODO: conept for relevance between these two -> two tuning params -> relevance factor AND weightFactor for exp.
+        double characteristicValue = (weightTerrainContinuity_ * terrainVariance) / sinkageVariance;
+
         // Set message values.
         adaptationMsg.header.stamp = ros::Time::now();
         adaptationMsg.twist.linear.x = terrainVariance;
-        adaptationMsg.twist.linear.y = lengthscale;
+        adaptationMsg.twist.linear.y = characteristicValue;
         adaptationMsg.twist.angular.x = supportSurfaceUncertaintyEstimation;
         adaptationMsg.twist.angular.y = cumulativeSupportSurfaceUncertaintyEstimation;
         adaptationMsg.twist.angular.z = getPenetrationDepthVariance();
@@ -3207,12 +3215,16 @@ bool ElevationMap::mainGPRegression(double tileResolution, double tileDiameter, 
 
                         // Probability sampling and replace the training data by plane value
                         // Else do all the following in this loop.
-                        double terrainContinuityValue = 0.4;
+
+                        // How to bound the characteristic value and set it as terrain Continuity Value.. (TODO!!)
+
+                        double terrainContinuityValue = fmin(characteristicValue, 1.0);
+
                         bool insert = sampleContinuityPlaneToTrainingData(cellPos, footTip, terrainContinuityValue);
                         if (insert) {
                             trainOutput(0) = evaluatePlaneFromCoefficients(planeCoefficients, cellPos);
                             //std::cout << "Plane value inserted: " << trainOutput(0) << std::endl;
-                            //if (!isnan(trainOutput(0))) myGPR.AddTrainingData(trainInput, trainOutput);
+                            if (!isnan(trainOutput(0))) myGPR.AddTrainingData(trainInput, trainOutput);
                         }
                         else if (!isnan(trainOutput(0)) && rawMap_.isValid(index)){  // TODO: remove the second argument
 
@@ -3963,30 +3975,24 @@ Eigen::Vector4f ElevationMap::getFootTipPlaneCoefficients(std::string tip){
 }
 
 bool ElevationMap::sampleContinuityPlaneToTrainingData(const Position& cellPos, const Position& center, const double& terrainContinuityValue){
-
-    // Sample by functon with distance from the foot tip and add to the second GPR.
+    // Sample by functon with distance from the foot tip and add to the main GPR.
 
     // Distance.
     float distance = sqrt(pow(cellPos(0) - center(0), 2) + pow(cellPos(1) - center(1), 2));
 
     // Probability function of: (distance form tip, continuity estimation, opt: data amount)
-    //functional form: exp(-x)
-    float exponentProportionalityFactor = 10.0; //(to be learnt)
-
+    float exponentProportionalityFactor = weightingFactorSampling_; //(to be learnt)    PARAMETER!!
     float prob = exp(-(terrainContinuityValue * exponentProportionalityFactor * distance));
-
     bool insertPlaneHeightAtCell;
-
     float r = ((float) rand() / (RAND_MAX));
-
     if (prob > r) insertPlaneHeightAtCell = true;
     else insertPlaneHeightAtCell = false;
-
-    // DO the sampling here.
 
     // (TODO!) Second version: weighted combination..
 
     // (TODO!) Third version: difference of foot tip plane and top layer added (weighted) to the sinkage depth layer (in front, i.e. walking direction)
+
+    // (TODO!) Which is the best for variance calculation?
 
     return insertPlaneHeightAtCell;
 }
@@ -4011,10 +4017,6 @@ Eigen::Vector4f ElevationMap::getPlaneCoeffsFromThreePoints(const Position3& Poi
     Eigen::Vector3f vector2 = Point2Eigen - Point3Eigen;
     Eigen::Vector3f normalVector = vector1.cross(vector2);
     Eigen::Vector3f normalisedNormalVector = normalVector.normalized();
-
-    std::cout << "Normal Vector constant?: " << normalisedNormalVector(0) << " " << normalisedNormalVector(1)
-              << " " << normalisedNormalVector(2) << " " << std::endl;
-
     float d_val = - Point3Eigen.dot(normalisedNormalVector);
     std::cout << "d_val random ?" << d_val << "Norm vec 2 " << normalisedNormalVector(2) << std::endl;
     Eigen::Vector4f coefficients(normalisedNormalVector(0), normalisedNormalVector(1), normalisedNormalVector(2), d_val);
@@ -4025,9 +4027,7 @@ double ElevationMap::evaluatePlaneFromCoefficients(const Eigen::Vector4f& coeffi
     // a*x + b*y + c*z + d = 0
     // -> z = -(coeff(0) * cellPos(0) + coeff(1) * cellPos(1) + coeff(4)) / coeff(3)
     double planeElevation =  -(coefficients(0) * cellPos(0) + coefficients(1) * cellPos(1)
-                               + coefficients(3)) / coefficients(2); // hacked to test
-    //std::cout << "Plane evaluated: " << planeElevation << std::endl;
-
+                               + coefficients(3)) / coefficients(2);
     return planeElevation;
 }
 
