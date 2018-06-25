@@ -123,6 +123,7 @@ ElevationMap::ElevationMap(ros::NodeHandle nodeHandle)
   nodeHandle_.param("ki", ki_, 0.67);
   nodeHandle_.param("kd", kd_, -0.07);
   nodeHandle_.param("weight_factor", weightingFactor_, 1.0);
+  nodeHandle_.param("run_high_grass_detection", runHighGrassDetection_, false);
   nodeHandle_.param("run_hind_leg_stance_detection", runHindLegStanceDetection_, true); // TODO: add to config file
   nodeHandle_.param("stance_detection_method", stanceDetectionMethod_, string("start"));
   nodeHandle_.param("add_old_support_surface_data_to_gp_training", addOldSupportSurfaceDataToGPTraining_, false);
@@ -800,7 +801,7 @@ bool ElevationMap::publishSpatialVariancePointCloud(const pcl::PointCloud<pcl::P
 
   pcl::toROSMsg(pointCloudColored, variancePointCloud);
   variancePointCloud.header.frame_id = "odom_drift_adjusted"; // Check if needing transform!!
-  bool publishVariancePointCloud = true;
+  bool publishVariancePointCloud = false;
   if(publishVariancePointCloud) coloredPointCloudPublisher_.publish(variancePointCloud);
 
   return true;
@@ -1530,7 +1531,6 @@ bool ElevationMap::footTipElevationMapComparison(std::string tip)
                 if(applyFrameCorrection_ && !isnan(heightDiffPID)) heightDifferenceFromComparison_ = heightDiffPID;// + 0 * driftEstimationPIDadder;// - driftEstimationPIDadder;//  driftEstimationPID_; //! HACKED FOR TESTING< ABSOLUTELY TAKE OUT AGAIN!!!
                 else heightDifferenceFromComparison_ = 0.0;
                 //if(applyFrameCorrection_ && !footTipOutsideBounds_)
-
                 // For Tuning.
                 //performance_assessment_msg_.third_measure = heightDifferenceFromComparison_;
 
@@ -1547,7 +1547,7 @@ bool ElevationMap::footTipElevationMapComparison(std::string tip)
 
                 //performance_assessment_msg_.fifth_measure = driftEstimationPID_;
 
-                double second_measure_factor = -10000.0;
+                //double second_measure_factor = -10000.0;
                 //performance_assessment_msg_.second_measure = driftEstimationPID_ * weightedDifferenceVector_[5] * second_measure_factor;
 
              //   std::cout << "weightedDifferenceVector!!: LAst element: " << weightedDifferenceVector_[5] << " Drift Est PID!!!:::::: " << (double)driftEstimationPID_ << std::endl;
@@ -1597,12 +1597,14 @@ bool ElevationMap::footTipElevationMapComparison(std::string tip)
     // Publish frame, offset by the height difference parameter.
     //frameCorrection();
 
+
     // Publish the elevation map with the new layer, at the frequency of the stances.
     grid_map_msgs::GridMap mapMessage;
     GridMapRosConverter::toMessage(rawMap_, mapMessage);
     mapMessage.info.header.frame_id = "odom_drift_adjusted"; //! HACKED!!
 
     //GridMapRosConverter::fromMessage(mapMessage, rawMapCorrected)
+
 
     elevationMapCorrectedPublisher_.publish(mapMessage);
 
@@ -1797,10 +1799,10 @@ float ElevationMap::gaussianWeightedDifferenceIncrement(double lowerBound, doubl
     }
 
     // DEBugging:
-    if (triggerSum > 3){
+    if (triggerSum > 3 && runHighGrassDetection_){
       //  std::cout << "<<<<<<<<>>>>>>>>> \n" << "<<<<<<<<<<>>>>>>>> \n" << "<<<<<<<<<<>>>>>>>>> \n";
         highGrassMode_ = true; // Hacked!!!!
-        applyFrameCorrection_ = false;
+        applyFrameCorrection_ = false; // Hacked here!!!!!!
     }
     else{
       //  std::cout << "!!!! \n" << "!!!! \n" << "!!!! \n";
@@ -3167,7 +3169,7 @@ bool ElevationMap::mainGPRegression(double tileResolution, double tileDiameter, 
 
 
 
-        double terrainContinuityValue = fmin(fmax(characteristicValue, 0.2), 7.0); // TODO: reason about bounding.
+        double terrainContinuityValue = fmin(fmax(characteristicValue, 0.3), 7.0); // TODO: reason about bounding.
 
         // Set message values.
         adaptationMsg.header.stamp = ros::Time::now();

@@ -625,6 +625,7 @@ class ElevationMap
   //! runHindLegStanceDetection_: template based stance detection for hind legs for variance estimation in unseen terrain.
   bool driftAdjustment_;
   bool applyFrameCorrection_;
+  bool runHighGrassDetection_;
   bool runHindLegStanceDetection_;
   std::string stanceDetectionMethod_;
   bool addOldSupportSurfaceDataToGPTraining_;
