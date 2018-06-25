@@ -3209,11 +3209,10 @@ bool ElevationMap::mainGPRegression(double tileResolution, double tileDiameter, 
                         // Else do all the following in this loop.
                         double terrainContinuityValue = 0.4;
                         bool insert = sampleContinuityPlaneToTrainingData(cellPos, footTip, terrainContinuityValue);
-                        insert = false;
                         if (insert) {
                             trainOutput(0) = evaluatePlaneFromCoefficients(planeCoefficients, cellPos);
-                            std::cout << "Plane value inserted: " << trainOutput(0) << std::endl;
-                            if (!isnan(trainOutput(0))) myGPR.AddTrainingData(trainInput, trainOutput);
+                            //std::cout << "Plane value inserted: " << trainOutput(0) << std::endl;
+                            //if (!isnan(trainOutput(0))) myGPR.AddTrainingData(trainInput, trainOutput);
                         }
                         else if (!isnan(trainOutput(0)) && rawMap_.isValid(index)){  // TODO: remove the second argument
 
@@ -3326,7 +3325,7 @@ bool ElevationMap::mainGPRegression(double tileResolution, double tileDiameter, 
                     geometry_msgs::Point p;
                     p.x = posTile(0);
                     p.y = posTile(1);
-                    p.z = 0.0;
+                    p.z = evaluatePlaneFromCoefficients(planeCoefficients, posTilePosition); // Foot tip Plan visualization.. (otherwise set to 0.0)
                     tileMarkerList.points.push_back(p);
 
                     bool visualizeVelocity = true;
@@ -3356,8 +3355,6 @@ bool ElevationMap::mainGPRegression(double tileResolution, double tileDiameter, 
 
         // Weight for tiles against each others.
         double intraGPWeight = 0.8;
-
-
 
         for (CircleIterator iterator(supportMapGP_, footTip, radius); !iterator.isPastEnd(); ++iterator) { // HAcked to raw map for testing..
             const Index index(*iterator);
@@ -3955,10 +3952,10 @@ Eigen::Vector4f ElevationMap::getFootTipPlaneCoefficients(std::string tip){
     hindLeftTip = getHindLeftFootTipPosition();
     hindRightTip = getHindRightFootTipPosition();
 
-    std::cout << "the three nombers: " << frontTip(0) << " " << hindLeftTip(0) << " " << hindRightTip(0) << std::endl;
+    //std::cout << "the three nombers: " << frontTip(2) << " " << hindLeftTip(2) << " " << hindRightTip(2) << std::endl;
 
     // Get the coefficients of the plane spun by three foot tips. (ordering should not matter, check this!)
-    Eigen::Vector4f coeffs = getPlaneCoeffsFromThreePoints(frontTip, hindLeftTip, hindRightTip);
+    Eigen::Vector4f coeffs = getPlaneCoeffsFromThreePoints(hindLeftTip, hindRightTip, frontTip);
     //float prob = getProbabilityofTerrainContinuityBiasing(coeffs(0), coeffs(1), coeffs(2), coeffs(3), frontTip);
 
     // Call function for terrain continuity.
@@ -4013,16 +4010,24 @@ Eigen::Vector4f ElevationMap::getPlaneCoeffsFromThreePoints(const Position3& Poi
     Eigen::Vector3f vector1 = Point1Eigen - Point3Eigen;
     Eigen::Vector3f vector2 = Point2Eigen - Point3Eigen;
     Eigen::Vector3f normalVector = vector1.cross(vector2);
-    normalVector.normalize();
-    float d_val = - Point3Eigen.dot(normalVector);
-    Eigen::Vector4f coefficients(normalVector(0), normalVector(1), normalVector(2), d_val);
+    Eigen::Vector3f normalisedNormalVector = normalVector.normalized();
+
+    std::cout << "Normal Vector constant?: " << normalisedNormalVector(0) << " " << normalisedNormalVector(1)
+              << " " << normalisedNormalVector(2) << " " << std::endl;
+
+    float d_val = - Point3Eigen.dot(normalisedNormalVector);
+    std::cout << "d_val random ?" << d_val << "Norm vec 2 " << normalisedNormalVector(2) << std::endl;
+    Eigen::Vector4f coefficients(normalisedNormalVector(0), normalisedNormalVector(1), normalisedNormalVector(2), d_val);
     return coefficients;
 }
 
 double ElevationMap::evaluatePlaneFromCoefficients(const Eigen::Vector4f& coefficients, Position cellPos){
     // a*x + b*y + c*z + d = 0
     // -> z = -(coeff(0) * cellPos(0) + coeff(1) * cellPos(1) + coeff(4)) / coeff(3)
-    double planeElevation =  -(coefficients(0) * cellPos(0) + coefficients(1) * cellPos(1) + coefficients(4)) / coefficients(3);
+    double planeElevation =  -(coefficients(0) * cellPos(0) + coefficients(1) * cellPos(1)
+                               + coefficients(3)) / coefficients(2); // hacked to test
+    //std::cout << "Plane evaluated: " << planeElevation << std::endl;
+
     return planeElevation;
 }
 
