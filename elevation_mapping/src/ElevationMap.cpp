@@ -130,7 +130,6 @@ ElevationMap::ElevationMap(ros::NodeHandle nodeHandle)
   nodeHandle_.param("run_support_surface_estimation", runSupportSurfaceEstimation_, false);
   nodeHandle_.param("velocity_low_pass_filter_gain", velocityLowPassFilterGain_, 0.0003);
   nodeHandle_.param("weight_terrain_continuity", weightTerrainContinuity_, 1.0);
-  nodeHandle_.param("weighting_factor_sampling", weightingFactorSampling_, 8.0);
 
 
   std::cout << "Stance Detection Method: : " << stanceDetectionMethod_ << std::endl;
@@ -3164,10 +3163,16 @@ bool ElevationMap::mainGPRegression(double tileResolution, double tileDiameter, 
         // TODO: conept for relevance between these two -> two tuning params -> relevance factor AND weightFactor for exp.
         double characteristicValue = (weightTerrainContinuity_ * terrainVariance) / sinkageVariance;
 
+        // TODO: reason about this functionality, anything with sqrt?? -> test and learn?
+
+
+
+        double terrainContinuityValue = fmin(fmax(characteristicValue, 0.2), 7.0); // TODO: reason about bounding.
+
         // Set message values.
         adaptationMsg.header.stamp = ros::Time::now();
         adaptationMsg.twist.linear.x = terrainVariance;
-        adaptationMsg.twist.linear.y = characteristicValue;
+        adaptationMsg.twist.linear.y = terrainContinuityValue;
         adaptationMsg.twist.angular.x = supportSurfaceUncertaintyEstimation;
         adaptationMsg.twist.angular.y = cumulativeSupportSurfaceUncertaintyEstimation;
         adaptationMsg.twist.angular.z = getPenetrationDepthVariance();
@@ -3216,9 +3221,8 @@ bool ElevationMap::mainGPRegression(double tileResolution, double tileDiameter, 
                         // Probability sampling and replace the training data by plane value
                         // Else do all the following in this loop.
 
-                        // How to bound the characteristic value and set it as terrain Continuity Value.. (TODO!!)
 
-                        double terrainContinuityValue = fmin(characteristicValue, 1.0);
+
 
                         bool insert = sampleContinuityPlaneToTrainingData(cellPos, footTip, terrainContinuityValue);
                         if (insert) {
@@ -3981,8 +3985,7 @@ bool ElevationMap::sampleContinuityPlaneToTrainingData(const Position& cellPos, 
     float distance = sqrt(pow(cellPos(0) - center(0), 2) + pow(cellPos(1) - center(1), 2));
 
     // Probability function of: (distance form tip, continuity estimation, opt: data amount)
-    float exponentProportionalityFactor = weightingFactorSampling_; //(to be learnt)    PARAMETER!!
-    float prob = exp(-(terrainContinuityValue * exponentProportionalityFactor * distance));
+    float prob = exp(-(terrainContinuityValue * distance));
     bool insertPlaneHeightAtCell;
     float r = ((float) rand() / (RAND_MAX));
     if (prob > r) insertPlaneHeightAtCell = true;
