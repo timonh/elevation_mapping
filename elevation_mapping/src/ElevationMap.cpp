@@ -131,7 +131,7 @@ ElevationMap::ElevationMap(ros::NodeHandle nodeHandle)
   nodeHandle_.param("run_support_surface_estimation", runSupportSurfaceEstimation_, false);
   nodeHandle_.param("velocity_low_pass_filter_gain", velocityLowPassFilterGain_, 0.0003);
   nodeHandle_.param("weight_terrain_continuity", weightTerrainContinuity_, 1.0);
-
+  nodeHandle_.param("run_terrain_continuity_biasing", runTerrainContinuityBiasing_, true);
 
   std::cout << "Stance Detection Method: : " << stanceDetectionMethod_ << std::endl;
   //! End of commented section
@@ -1125,6 +1125,7 @@ bool ElevationMap::processStance(std::string tip)
     if(runProprioceptiveRoughnessEstimation) proprioceptiveRoughnessEstimation(tip);
 
 
+
     if(tip != "lefthind" && tip != "righthind") footTipElevationMapComparison(tip);
     else hind = true;
     publishAveragedFootTipPositionMarkers(hind);
@@ -1137,7 +1138,7 @@ bool ElevationMap::processStance(std::string tip)
     // Data Publisher for parameter tuning.
     //tuningPublisher1_.publish(performance_assessment_msg_); // HACKED FOR DEBUGGING!!
 
-
+    std::cout << "processing: " << tip << std::endl;
 
     return true;
 }
@@ -1595,7 +1596,7 @@ bool ElevationMap::footTipElevationMapComparison(std::string tip)
     }
 
     // Publish frame, offset by the height difference parameter.
-    //frameCorrection();
+    //frameCorrection(); // Published here also.. (Hacked)
 
 
     // Publish the elevation map with the new layer, at the frequency of the stances.
@@ -1715,6 +1716,8 @@ bool ElevationMap::frameCorrection()
     // Transform Broadcaster for the /odom_z_corrected frame.
     tf::Transform odomMapTransform;
 
+
+
     odomMapTransform.setIdentity();
 
     if (!isnan(heightDifferenceFromComparison_)) odomMapTransform.getOrigin()[2] += heightDifferenceFromComparison_;
@@ -1727,6 +1730,7 @@ bool ElevationMap::frameCorrection()
     mapCorrectedOdomTransformBroadcaster_.sendTransform(tf::StampedTransform(odomMapTransform,
                                           ros::Time().fromNSec(rawMap_.getTimestamp()), "odom", "odom_drift_adjusted"));
 
+    //std::cout << "Frame correction called" << std::endl;
     return true;
 }
 
@@ -3114,7 +3118,8 @@ bool ElevationMap::mainGPRegression(double tileResolution, double tileDiameter, 
         std::cout << tipDifference << std::endl;
 
         // Update sinkage depth Layer.
-        sinkageDepthMapLayerGP(tip, tipDifference);
+        //sinkageDepthMapLayerGP(tip, tipDifference);
+        simpleSinkageDepthLayer(tip, tipDifference); // Alternative
 
         // Visualization in Rviz.
         visualization_msgs::Marker tileMarkerList;
@@ -3161,6 +3166,7 @@ bool ElevationMap::mainGPRegression(double tileResolution, double tileDiameter, 
         if (!isnan(supportSurfaceUncertaintyEstimation)) weightFactor = supportSurfaceUncertaintyEstimation * 0.0001; // Hacked to practically nothing
 
         double sinkageVariance = getPenetrationDepthVariance();
+        double differentialSinkageVariance = getDifferentialPenetrationDepthVariance();
 
         // TODO: conept for relevance between these two -> two tuning params -> relevance factor AND weightFactor for exp.
         double characteristicValue = (weightTerrainContinuity_ * terrainVariance) / sinkageVariance;
@@ -3177,8 +3183,8 @@ bool ElevationMap::mainGPRegression(double tileResolution, double tileDiameter, 
         adaptationMsg.twist.linear.y = terrainContinuityValue;
         adaptationMsg.twist.angular.x = supportSurfaceUncertaintyEstimation;
         adaptationMsg.twist.angular.y = cumulativeSupportSurfaceUncertaintyEstimation;
-        adaptationMsg.twist.angular.z = getPenetrationDepthVariance();
-        adaptationMsg.twist.linear.z = getDifferentialPenetrationDepthVariance();
+        adaptationMsg.twist.angular.z = sinkageVariance;
+        adaptationMsg.twist.linear.z = differentialSinkageVariance;
 
         Position footTip;
         if (tip == "left") footTip = tipLeft;
@@ -3223,11 +3229,8 @@ bool ElevationMap::mainGPRegression(double tileResolution, double tileDiameter, 
                         // Probability sampling and replace the training data by plane value
                         // Else do all the following in this loop.
 
-
-
-
                         bool insert = sampleContinuityPlaneToTrainingData(cellPos, footTip, terrainContinuityValue);
-                        if (insert) {
+                        if (insert) { //
                             trainOutput(0) = evaluatePlaneFromCoefficients(planeCoefficients, cellPos);
                             //std::cout << "Plane value inserted: " << trainOutput(0) << std::endl;
                             if (!isnan(trainOutput(0))) myGPR.AddTrainingData(trainInput, trainOutput);
@@ -3266,7 +3269,7 @@ bool ElevationMap::mainGPRegression(double tileResolution, double tileDiameter, 
 
 
                             auto& supportMapElevationGP = supportMapGP_.at("elevation_gp", index);
-
+                            //auto& supportMapVarianceGP = supportMapGP_.at("variance_gp", index);
 
                             //auto& supportMapElevation = supportMap_.at("elevation", index);
                             //auto& supportMapVariance = supportMap_.at("variance", index);
@@ -3307,15 +3310,19 @@ bool ElevationMap::mainGPRegression(double tileResolution, double tileDiameter, 
 
 
                             float regressionOutput = myGPR.DoRegression(testInput)(0);
+                            //float regressionOutputVariance = myGPR.GetVariance()(0);
 
                             if (!isnan(regressionOutput)){
                                 if (!supportMapGP_.isValid(index)){
                                     supportMapElevationGP = regressionOutput;
+                                    //supportMapVarianceGP = regressionOutputVariance;
                                 }
                                 else {
     //                                if (supportMapElevationGP == 0.0) std::cout << "ATTENTION!! ZERO BIAS" << std::endl;
                                     supportMapElevationGP = 0.5 *  supportMapElevationGP +
                                             (regressionOutput) * 0.5;
+                                   // supportMapVarianceGP = 0.5 *  supportMapVarianceGP +
+                                   //         (regressionOutputVariance) * 0.5;
                                     //supportMapElevationGP = regressionOutput; // Test!!
                                     //supportMapElevationGP = myGPR.DoRegression(testInput)(0) + tipDifference; // Hacked to test!
                                 }
@@ -3363,7 +3370,9 @@ bool ElevationMap::mainGPRegression(double tileResolution, double tileDiameter, 
                     }
 
                     supportSurfaceAddingAreaPublisher_.publish(tileMarkerList);
+                   // myGPR.ClearTrainingData();
                 }
+
             }
         }
 
@@ -3619,7 +3628,7 @@ bool ElevationMap::footTipElevationMapLayerGP(std::string tip){
     return true;
 }
 
-bool ElevationMap::sinkageDepthMapLayerGP(std::string tip, double& tipDifference){
+bool ElevationMap::sinkageDepthMapLayerGP(std::string tip, const double& tipDifference){
 
       //! Slow Bad version Start
 //    //! TODO: move this into contructor.
@@ -3772,7 +3781,9 @@ bool ElevationMap::sinkageDepthMapLayerGP(std::string tip, double& tipDifference
         if (tip == "right") footTip = tipRightPos3;
 
         footTipHistoryGP_.push_back(footTip);
+        sinkageDepthHistory_.push_back(tipDifference);
         if (footTipHistoryGP_.size() > maxSizeFootTipHistory) footTipHistoryGP_.erase(footTipHistoryGP_.begin());
+        if (sinkageDepthHistory_.size() > maxSizeFootTipHistory) sinkageDepthHistory_.erase(sinkageDepthHistory_.begin());
 
         GaussianProcessRegression<float> footTipGPR(inputDim, outputDim);
         footTipGPR.SetHyperParams(4.0, 0.1, 0.001);
@@ -3787,14 +3798,19 @@ bool ElevationMap::sinkageDepthMapLayerGP(std::string tip, double& tipDifference
                 Position inputPositionPosition(footTipHistoryGP_[i](0), footTipHistoryGP_[i](1));
 
                 // Adjust this value:
-                trainOutput(0) = rawMap_.atPosition("elevation", inputPositionPosition) - footTipHistoryGP_[i](2);
+                //trainOutput(0) = rawMap_.atPosition("elevation", inputPositionPosition) - footTipHistoryGP_[i](2);
+                trainOutput(0) = -sinkageDepthHistory_[i];
+                Index index;
+                rawMap_.getIndex(inputPositionPosition, index);
 
-                if (!isnan(trainOutput(0))){
+                if (!isnan(trainOutput(0)) && rawMap_.isValid(index)){
                     footTipGPR.AddTrainingData(trainInput, trainOutput);
                 }
 
-
                 validFootTips.push_back(footTipHistoryGP_[i]);
+
+
+                // TODO: new version
 
                 // New Idea, do vector of all considered reference points
                 // -> in looping: height as linear combination of these heights as linear function of distance
@@ -3901,6 +3917,71 @@ bool ElevationMap::sinkageDepthMapLayerGP(std::string tip, double& tipDifference
         //for (CircleIterator iterator(supportMapGP_, center, radius2); !iterator.isPastEnd(); ++iterator) {
         //    const Index index(*iterator);
         //}
+    }
+    return true;
+}
+
+bool ElevationMap::simpleSinkageDepthLayer(std::string& tip, const double& tipDifference){
+
+    if (leftStanceVector_.size() > 0 && rightStanceVector_.size() > 0){
+
+        Eigen::Vector3f tipLeftVec = getLatestLeftStance();
+        Eigen::Vector3f tipRightVec = getLatestRightStance();
+        Position3 tipLeftPos3(tipLeftVec(0), tipLeftVec(1), tipLeftVec(2));
+        Position3 tipRightPos3(tipRightVec(0), tipRightVec(1), tipRightVec(2));
+        double radius = 0.65;
+        int maxSizeFootTipHistory = 6;
+
+        // Do history vector.
+        Position3 footTip;
+        if (tip == "left") footTip = tipLeftPos3;
+        if (tip == "right") footTip = tipRightPos3;
+
+        footTipHistoryGP_.push_back(footTip);
+        sinkageDepthHistory_.push_back(tipDifference);
+        if (footTipHistoryGP_.size() > maxSizeFootTipHistory) footTipHistoryGP_.erase(footTipHistoryGP_.begin());
+        if (sinkageDepthHistory_.size() > maxSizeFootTipHistory) sinkageDepthHistory_.erase(sinkageDepthHistory_.begin());
+
+        Position center(footTip(0), footTip(1));
+
+        for (CircleIterator iterator(supportMapGP_, center, radius); !iterator.isPastEnd(); ++iterator) {
+
+            const Index index(*iterator);
+            auto& supportMapElevationGPSinkage = supportMapGP_.at("sinkage_depth_gp", index);
+            Position pos;
+            supportMapGP_.getPosition(index, pos);
+
+            float addingDistance = sqrt(pow(pos(0) - footTip(0), 2) + pow(pos(1) - footTip(1), 2));
+
+            // Keep track of total weight and temporary height value.
+            float totalWeight = 0.0;
+            float tempHeight = 0.0;
+
+            for (unsigned int i = 0; i < footTipHistoryGP_.size(); ++i) {
+                double distance = sqrt(pow(footTipHistoryGP_[i](0) - footTip(0), 2) + pow(footTipHistoryGP_[i](1) - footTip(1), 2));
+                if (distance < radius) {
+
+                    float localDistance = sqrt(pow(footTipHistoryGP_[i](0) - pos(0), 2) + pow(footTipHistoryGP_[i](1) - pos(1), 2));
+                    float weight = 1 / pow(localDistance, 15.0); // Hackeing here to test the range of the power.
+                    totalWeight += weight;
+                    tempHeight += - sinkageDepthHistory_[i] * weight;
+                }
+            }
+
+            float output = tempHeight / totalWeight;
+            // TODO: Adding procedure..
+
+            float addingWeight = fmax(1 - (addingDistance / radius), 0.0);
+            if (!isnan(output)){
+                if (!supportMapGP_.isValid(index)){
+                    supportMapElevationGPSinkage = output;
+                }
+                else{
+                    if (!isnan(supportMapElevationGPSinkage)) supportMapElevationGPSinkage = addingWeight * output + (1 - addingWeight) * supportMapElevationGPSinkage;
+                }
+            }
+            // TODO: idea: exponent of distance proportionality as learning parameter.
+        }
     }
     return true;
 }

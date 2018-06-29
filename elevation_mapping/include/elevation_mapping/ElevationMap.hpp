@@ -503,7 +503,7 @@ class ElevationMap
   bool footTipElevationMapLayerGP(std::string std);
 
   //! TODO: Description:
-  bool sinkageDepthMapLayerGP(std::string tip, double& tipDifference);
+  bool sinkageDepthMapLayerGP(std::string tip, const double& tipDifference);
 
   //! TODO: Description:
   bool setSmoothenedTopLayer(std::string tip);
@@ -524,6 +524,8 @@ class ElevationMap
   //! TODO: Description:
   double evaluatePlaneFromCoefficients(const Eigen::Vector4f& coefficients, grid_map::Position cellPos);
 
+  //! TODO: Description:
+  bool simpleSinkageDepthLayer(std::string& tip, const double& tipDifference);
 
 
 
@@ -634,6 +636,7 @@ class ElevationMap
   bool runSupportSurfaceEstimation_;
   double weightTerrainContinuity_;
   double weightingFactorSampling_;
+  bool runTerrainContinuityBiasing_;
 
   //! Bool to specify wheather in high grass or not:
   bool highGrassMode_;
@@ -718,6 +721,7 @@ class ElevationMap
 
   // Foot tip position history for GP.
   std::vector<grid_map::Position3> footTipHistoryGP_;
+  std::vector<float> sinkageDepthHistory_;
 
   // Quadruped velocity for low pass filtered velocity.
   Eigen::Vector3f quadrupedBaseVelocity_;
