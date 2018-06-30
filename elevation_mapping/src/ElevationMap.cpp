@@ -1040,7 +1040,7 @@ bool ElevationMap::templateMatchingForStanceDetection(std::string tip, std::vect
     //std::cout << isInStanceLeftHind_ << std::endl;
 
 
-    // Recognition of the start of a stance phase of the front legs.
+    // Recognition of the start of a stance phase.
     if(stateVector.size() >= 16 && stateVector.end()[-1]+stateVector.end()[-2]+
             stateVector.end()[-3]+stateVector.end()[-4]+stateVector.end()[-5]+
             stateVector.end()[-6]+stateVector.end()[-7]+stateVector.end()[-8] >= 6 &&
@@ -1067,6 +1067,8 @@ bool ElevationMap::templateMatchingForStanceDetection(std::string tip, std::vect
         }
     }
 
+
+
     // DEBUG:
     //std::cout << "tip: (OUTSIDE the state end detector) " << tip << std::endl;
     //std::cout << "stateVector.size: " << stateVector.size() << std::endl;
@@ -1075,7 +1077,7 @@ bool ElevationMap::templateMatchingForStanceDetection(std::string tip, std::vect
     //std::cout << "processStanceTrigger: clssic " << processStanceTriggerRight_.size() << std::endl;
 
 
-    // Recognition of the end of a stance phase of the front legs.
+    // Recognition of the end of a stance phase.
     if(stateVector.size() >= 16 &&
             stateVector.end()[-1] + stateVector.end()[-2] + stateVector.end()[-3]+
             stateVector.end()[-4]+stateVector.end()[-5] + stateVector.end()[-6]+
@@ -1110,8 +1112,6 @@ bool ElevationMap::templateMatchingForStanceDetection(std::string tip, std::vect
 
 bool ElevationMap::processStance(std::string tip)
 {
-    //std::cout << "Processing: " << tip <<std::endl;
-
     // The ordering here is crucial!
 
     bool hind = false;
@@ -1124,12 +1124,9 @@ bool ElevationMap::processStance(std::string tip)
     bool runProprioceptiveRoughnessEstimation = true;
     if(runProprioceptiveRoughnessEstimation) proprioceptiveRoughnessEstimation(tip);
 
-
-
     if(tip != "lefthind" && tip != "righthind") footTipElevationMapComparison(tip);
     else hind = true;
     publishAveragedFootTipPositionMarkers(hind);
-
 
     // Performance Assessment, sensible if wanting to tune the system while walking on flat surface.
     //bool runPreformanceAssessmentForFlatGround = false;
@@ -1137,8 +1134,6 @@ bool ElevationMap::processStance(std::string tip)
 
     // Data Publisher for parameter tuning.
     //tuningPublisher1_.publish(performance_assessment_msg_); // HACKED FOR DEBUGGING!!
-
-    std::cout << "processing: " << tip << std::endl;
 
     return true;
 }
@@ -1197,40 +1192,38 @@ bool ElevationMap::deleteFirstEntriesOfStances(std::string tip)
         std::cout << "WARNING: RIGHT HIND STANCE PHASE HAS TOO LITTLE ENTRIES TO BE PROCESSED" << std::endl;
     }
     else{
-        for (unsigned int i = 0; i < (LFTipStance_.size() - 3); ++i){
-            if (tip == "left"){
-                std::vector<Eigen::Vector3f> newLFTipStance;
-                for (unsigned int j = 1; j <= 3; ++j) {
-                    newLFTipStance.push_back(LFTipStance_[LFTipStance_.size() - j]);     // Probably an additional -1 is needed
-                }
-                LFTipStance_.clear();
-                LFTipStance_ = newLFTipStance;
-                //LFTipStance_.erase(LFTipStance_.begin()); // pop_front (.erase(begin)) // TODO
+        if (tip == "left"){
+            std::vector<Eigen::Vector3f> newLFTipStance;
+            for (unsigned int j = 1; j <= 3; ++j) {
+                newLFTipStance.push_back(LFTipStance_[LFTipStance_.size() - j]);     // Probably an additional -1 is needed
             }
-            if (tip == "right"){
-                std::vector<Eigen::Vector3f> newRFTipStance;
-                for (unsigned int j = 1; j <= 3; ++j) {
-                    newRFTipStance.push_back(RFTipStance_[RFTipStance_.size() - j]);     // Probably an additional -1 is needed
-                }
-                RFTipStance_.clear();
-                RFTipStance_ = newRFTipStance;
+            LFTipStance_.clear();
+            LFTipStance_ = newLFTipStance;
+            //LFTipStance_.erase(LFTipStance_.begin()); // pop_front (.erase(begin)) // TODO
+        }
+        if (tip == "right"){
+            std::vector<Eigen::Vector3f> newRFTipStance;
+            for (unsigned int j = 1; j <= 3; ++j) {
+                newRFTipStance.push_back(RFTipStance_[RFTipStance_.size() - j]);     // Probably an additional -1 is needed
             }
-            if (tip == "lefthind"){
-                std::vector<Eigen::Vector3f> newLHTipStance;
-                for (unsigned int j = 1; j <= 3; ++j) {
-                    newLHTipStance.push_back(LHTipStance_[LHTipStance_.size() - j]);     // Probably an additional -1 is needed
-                }
-                LHTipStance_.clear();
-                LHTipStance_ = newLHTipStance;
+            RFTipStance_.clear();
+            RFTipStance_ = newRFTipStance;
+        }
+        if (tip == "lefthind"){
+            std::vector<Eigen::Vector3f> newLHTipStance;
+            for (unsigned int j = 1; j <= 3; ++j) {
+                newLHTipStance.push_back(LHTipStance_[LHTipStance_.size() - j]);     // Probably an additional -1 is needed
             }
-            if (tip == "righthind"){
-                std::vector<Eigen::Vector3f> newRHTipStance;
-                for (unsigned int j = 1; j <= 3; ++j) {
-                    newRHTipStance.push_back(RHTipStance_[RHTipStance_.size() - j]);     // Probably an additional -1 is needed
-                }
-                RHTipStance_.clear();
-                RHTipStance_ = newRHTipStance;
+            LHTipStance_.clear();
+            LHTipStance_ = newLHTipStance;
+        }
+        if (tip == "righthind"){
+            std::vector<Eigen::Vector3f> newRHTipStance;
+            for (unsigned int j = 1; j <= 3; ++j) {
+                newRHTipStance.push_back(RHTipStance_[RHTipStance_.size() - j]);     // Probably an additional -1 is needed
             }
+            RHTipStance_.clear();
+            RHTipStance_ = newRHTipStance;
         }
     }
     return true;
@@ -3962,7 +3955,7 @@ bool ElevationMap::simpleSinkageDepthLayer(std::string& tip, const double& tipDi
                 if (distance < radius) {
 
                     float localDistance = sqrt(pow(footTipHistoryGP_[i](0) - pos(0), 2) + pow(footTipHistoryGP_[i](1) - pos(1), 2));
-                    float weight = 1 / pow(localDistance, 15.0); // Hackeing here to test the range of the power.
+                    float weight = 1 / pow(localDistance, 5.0); // Hackeing here to test the range of the power.
                     totalWeight += weight;
                     tempHeight += - sinkageDepthHistory_[i] * weight;
                 }
