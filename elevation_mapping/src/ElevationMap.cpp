@@ -3197,7 +3197,7 @@ bool ElevationMap::mainGPRegression(double tileResolution, double tileDiameter, 
                     int inputDim = 2;
                     int outputDim = 1;
                     GaussianProcessRegression<float> myGPR(inputDim, outputDim);
-                    myGPR.SetHyperParams(lengthscale * 5.0, 0.1, 0.001); // Hacked a factor * 5 remove soon
+                    myGPR.SetHyperParams(lengthscale * 4.0, 0.1, 0.001); // Hacked a factor * 5 remove soon
 
                     Eigen::Vector2f posTile;
                     posTile(0) = footTip(0) + i * tileResolution;
@@ -3226,10 +3226,21 @@ bool ElevationMap::mainGPRegression(double tileResolution, double tileDiameter, 
                         // Probability sampling and replace the training data by plane value
                         // Else do all the following in this loop.
 
+                        Eigen::Vector3f velicityLP = getQuadrupedBaseVelocity();
+                        Position relativePosition = cellPos - posTilePosition;
+
+                        // 2D, consider 3D
+                        double scalarProduct = relativePosition(0) * velicityLP(0) + relativePosition(1) * velicityLP(1); // TODO, check tfVector
+
                         bool insert = sampleContinuityPlaneToTrainingData(cellPos, footTip, terrainContinuityValue);
-                        if (insert) { //
-                            trainOutput(0) = evaluatePlaneFromCoefficients(planeCoefficients, cellPos);
-                            //std::cout << "Plane value inserted: " << trainOutput(0) << std::endl;
+                        if (insert) {
+                            if (scalarProduct < 0.0) {
+                                trainOutput(0) = evaluatePlaneFromCoefficients(planeCoefficients, cellPos);
+                            }
+                            // In this case add the old training data, not to influence the past by the continuity assumptions
+                            else {
+                                trainOutput(0) = supportMapGP_.at("elevation_gp_added", index); // Check, if this is the right way round.
+                            }
                             if (!isnan(trainOutput(0))) myGPR.AddTrainingData(trainInput, trainOutput);
                         }
                         else if (!isnan(trainOutput(0))){  // Removed validation argument here..
@@ -3238,6 +3249,10 @@ bool ElevationMap::mainGPRegression(double tileResolution, double tileDiameter, 
                             //if (addFootTipPositionsToGPTraining_){
                             //    myGPR.AddtrainingData()
                             //}
+
+
+                            // TODO: if continuity assumption: when scalar product is negative: add old data instead of plane data.
+
                             //if (addOldSupportSurfaceDataToGPTraining_ && i % 3 == 0 && j % 3 == 0){  // Hacked trying some stuff..
                             //    myGPR.AddTrainingData(trainInput, trainOutput2);
                             //}
@@ -3364,10 +3379,6 @@ bool ElevationMap::mainGPRegression(double tileResolution, double tileDiameter, 
             }
         }
 
-
-
-
-
         // Weight for tiles against each others.
         double intraGPWeight = 0.8;
 
@@ -3381,30 +3392,9 @@ bool ElevationMap::mainGPRegression(double tileResolution, double tileDiameter, 
                                    pow(addingPosition(1) - footTip(1), 2));
             double distanceFactor = sqrt(pow(addingPosition(0) - footTip(0), 2) +
                                                pow(addingPosition(1) - footTip(1), 2)) / radius;
-            //double weight = fmin(1.2 - (sqrt(pow(addingPosition(0) - footTip(0), 2) +
-            //                   pow(addingPosition(1) - footTip(1), 2)) / radius), 1.0);
-
-            // TODO: penetration depth variance is not the best value -> how much the support surface estimation is off, slightly low pass filtered
-            // is a better estimate!!
-
-            // Switch versions here:
-            //double weightFactor = fmin(penetrationDepthVariance * 0.1, 500.0);
 
 
-            // If not isnan (only relevant for the first few steps, when not beeing inside the map area)
-
-            // TODO  check the values of this!!
-
-            //std::cout << "penetrationDepthVariance: " << penetrationDepthVariance << std::endl;
-
-
-            //double weight = fmax((radius-distance)/radius, 0.0);// Hacked
-
-
-            // TODO: try: 1 until 0.5 and straight slope to zero then..
-
-            // double weight = exp(-distanceFactor * weightFactor) * fmax((radius-distance)/radius, 0.0); // Division by radius added -> if distance = 0 -> weight = 1
-
+            // TODO: here, add only if scalar product is above negative threshold.
 
             // New weighting scheme here:
             double weight;
@@ -3413,13 +3403,6 @@ bool ElevationMap::mainGPRegression(double tileResolution, double tileDiameter, 
             else weight = weightDecayThreshold_ - weightDecayThreshold_ * (distance - weightDecayThreshold_ * radius)
                     / ((1.0 - weightDecayThreshold_) * radius);
             // End of new weighting scheme
-
-            // Linear weighting scheme: (trying..)
-            //weight = fmin(1 - (distance/radius), 0.0);
-
-
-            //std::cout << "weight: " << weight << std::endl;
-
 
             auto& supportMapElevationGP = supportMapGP_.at("elevation_gp", index);
             auto& supportMapElevationGPAdded = supportMapGP_.at("elevation_gp_added", index);
@@ -3435,10 +3418,6 @@ bool ElevationMap::mainGPRegression(double tileResolution, double tileDiameter, 
                 supportMapElevationGPAdded = supportMapElevationGP;
                 supportMapVarianceGP = 0.0;
             }
-
-            // Testing:
-
-            // Think of sensible variance values..
         }
 
         // Publish adaptation Parameters
