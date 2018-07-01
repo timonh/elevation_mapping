@@ -132,6 +132,9 @@ ElevationMap::ElevationMap(ros::NodeHandle nodeHandle)
   nodeHandle_.param("velocity_low_pass_filter_gain", velocityLowPassFilterGain_, 0.0003);
   nodeHandle_.param("weight_terrain_continuity", weightTerrainContinuity_, 1.0);
   nodeHandle_.param("run_terrain_continuity_biasing", runTerrainContinuityBiasing_, true);
+  nodeHandle_.param("exponent_sinkage_depth_weight", exponentSinkageDepthWeight_, 8.0);
+  nodeHandle_.param("weight_decay_threshold", weightDecayThreshold_, 0.4);
+
 
   std::cout << "Stance Detection Method: : " << stanceDetectionMethod_ << std::endl;
   //! End of commented section
@@ -3185,6 +3188,7 @@ bool ElevationMap::mainGPRegression(double tileResolution, double tileDiameter, 
 
         // Get the foot tip plane coefficients.
         Eigen::Vector4f planeCoefficients = getFootTipPlaneCoefficients(tip);
+        if (footTipHistoryGP_.size() >= 3) planeCoefficients = getFootTipPlaneCoefficientsFrontOnly(tip); // Testing if it makes a difference.
 
         for (int i = -noOfTilesPerHalfSide; i <= noOfTilesPerHalfSide; ++i){
             for (int j = -noOfTilesPerHalfSide; j <= noOfTilesPerHalfSide; ++j){
@@ -3228,23 +3232,16 @@ bool ElevationMap::mainGPRegression(double tileResolution, double tileDiameter, 
                             //std::cout << "Plane value inserted: " << trainOutput(0) << std::endl;
                             if (!isnan(trainOutput(0))) myGPR.AddTrainingData(trainInput, trainOutput);
                         }
-                        else if (!isnan(trainOutput(0)) && rawMap_.isValid(index)){  // TODO: remove the second argument
-
-
+                        else if (!isnan(trainOutput(0))){  // Removed validation argument here..
                             // Studies for terrain continuity techniques..
                             myGPR.AddTrainingData(trainInput, trainOutput);
                             //if (addFootTipPositionsToGPTraining_){
                             //    myGPR.AddtrainingData()
                             //}
-                            if (addOldSupportSurfaceDataToGPTraining_ && i % 3 == 0 && j % 3 == 0){  // Hacked trying some stuff..
-                                // Trying some terrain continuity stuff!!
-                                myGPR.AddTrainingData(trainInput, trainOutput2);
-                                //std::cout << "added some old DATA .................. DATA" << std::endl;
-                            }
+                            //if (addOldSupportSurfaceDataToGPTraining_ && i % 3 == 0 && j % 3 == 0){  // Hacked trying some stuff..
+                            //    myGPR.AddTrainingData(trainInput, trainOutput2);
+                            //}
                         }
-
-
-
                     }
 
                     //std::cout << "The Number of Data in this tile is: " << myGPR.get_n_data() << std::endl;
@@ -3255,11 +3252,9 @@ bool ElevationMap::mainGPRegression(double tileResolution, double tileDiameter, 
                     // Only perform regression if no. of Data is sufficiently high.
                     if (myGPR.get_n_data() > 1){
 
-
                         // Loop here to get test output
                         for (CircleIterator iterator(supportMapGP_, posTilePosition, tileDiameter/2.0); !iterator.isPastEnd(); ++iterator) { // HAcked to raw map for testing..
                             const Index index(*iterator);
-
 
                             auto& supportMapElevationGP = supportMapGP_.at("elevation_gp", index);
                             //auto& supportMapVarianceGP = supportMapGP_.at("variance_gp", index);
@@ -3413,10 +3408,14 @@ bool ElevationMap::mainGPRegression(double tileResolution, double tileDiameter, 
 
             // New weighting scheme here:
             double weight;
-            if (distance <= 0.2 * radius) weight = 1 - (distance / radius);
-            else if (distance >= 0.2 * radius && distance <= 0.8 * radius) weight = 0.8;
-            else weight = 0.8 - 0.8 * (distance - 0.8 * radius) / (0.2 * radius); // Testing here..
+            if (distance <= 0.2 * radius) weight = 1.0 - (distance / radius);
+            else if (distance >= 0.2 * radius && distance <= weightDecayThreshold_ * radius) weight = 0.8;
+            else weight = weightDecayThreshold_ - weightDecayThreshold_ * (distance - weightDecayThreshold_ * radius)
+                    / ((1.0 - weightDecayThreshold_) * radius);
             // End of new weighting scheme
+
+            // Linear weighting scheme: (trying..)
+            //weight = fmin(1 - (distance/radius), 0.0);
 
 
             //std::cout << "weight: " << weight << std::endl;
@@ -3931,7 +3930,15 @@ bool ElevationMap::simpleSinkageDepthLayer(std::string& tip, const double& tipDi
         if (tip == "right") footTip = tipRightPos3;
 
         footTipHistoryGP_.push_back(footTip);
-        sinkageDepthHistory_.push_back(tipDifference);
+        if (isnan(tipDifference) && sinkageDepthHistory_.size() > 2) {
+            if (tip == "left") sinkageDepthHistory_.push_back(leftFrontSinkageDepth_); // Do not update the sinkage depth if there is no new information.
+            if (tip == "right") sinkageDepthHistory_.push_back(rightFrontSinkageDepth_);
+        }
+        else{
+            sinkageDepthHistory_.push_back(-tipDifference); // Todo nicer with class vars for each foot tip
+            if (tip == "left") leftFrontSinkageDepth_ = -tipDifference;
+            if (tip == "right") rightFrontSinkageDepth_ = -tipDifference;
+        }
         if (footTipHistoryGP_.size() > maxSizeFootTipHistory) footTipHistoryGP_.erase(footTipHistoryGP_.begin());
         if (sinkageDepthHistory_.size() > maxSizeFootTipHistory) sinkageDepthHistory_.erase(sinkageDepthHistory_.begin());
 
@@ -3955,9 +3962,9 @@ bool ElevationMap::simpleSinkageDepthLayer(std::string& tip, const double& tipDi
                 if (distance < radius) {
 
                     float localDistance = sqrt(pow(footTipHistoryGP_[i](0) - pos(0), 2) + pow(footTipHistoryGP_[i](1) - pos(1), 2));
-                    float weight = 1 / pow(localDistance, 5.0); // Hackeing here to test the range of the power.
+                    float weight = 1 / pow(localDistance, exponentSinkageDepthWeight_); // Hacking here to test the range of the power.
                     totalWeight += weight;
-                    tempHeight += - sinkageDepthHistory_[i] * weight;
+                    tempHeight += sinkageDepthHistory_[i] * weight;
                 }
             }
 
@@ -3973,6 +3980,7 @@ bool ElevationMap::simpleSinkageDepthLayer(std::string& tip, const double& tipDi
                     if (!isnan(supportMapElevationGPSinkage)) supportMapElevationGPSinkage = addingWeight * output + (1 - addingWeight) * supportMapElevationGPSinkage;
                 }
             }
+            //else std::cout << "Output would have been NANANANANANANANANANANA" << std::endl;
             // TODO: idea: exponent of distance proportionality as learning parameter.
         }
     }
@@ -4051,6 +4059,25 @@ Eigen::Vector4f ElevationMap::getFootTipPlaneCoefficients(std::string tip){
     //float prob = getProbabilityofTerrainContinuityBiasing(coeffs(0), coeffs(1), coeffs(2), coeffs(3), frontTip);
 
     // Call function for terrain continuity.
+    return coeffs;
+}
+
+Eigen::Vector4f ElevationMap::getFootTipPlaneCoefficientsFrontOnly(std::string tip){
+
+    std::vector<Position3> footTips;
+    int noOfFootTipsConsidered = 3;
+    for (unsigned int j = 1; j <= noOfFootTipsConsidered; ++j){
+        footTips.push_back(footTipHistoryGP_[footTipHistoryGP_.size() - j]);
+    }
+
+    // Get the coefficients of the plane spun by three foot tips. (ordering should not matter, check this!)
+    Eigen::Vector4f coeffs = getPlaneCoeffsFromThreePoints(footTips[0], footTips[1], footTips[2]);
+
+
+
+    std::cout << "added the new continuity scheme" << std::endl;
+
+
     return coeffs;
 }
 

@@ -75,7 +75,7 @@ SupportSurfaceEstimation::SupportSurfaceEstimation(ros::NodeHandle nodeHandle)
       //        "sensor_z_at_lowest_scan", "foot_tip_elevation", "support_surface", "elevation_inpainted", "elevation_smooth", "vegetation_height", "vegetation_height_smooth",
       //        "support_surface", "support_surface_smooth", "support_surface_added"}),//, "support_surface_smooth_inpainted", "support_surface_added"}),
       //fusedMap_({"elevation", "upper_bound", "lower_bound", "color"}),
-      supportMap_({"elevation", "variance", "elevation_gp", "elevation_gp_added"}), // New
+      //supportMap_({"elevation", "variance", "elevation_gp", "elevation_gp_added"}), // New
       supportMapGP_({"elevation_gp", "variance_gp", "elevation_gp_added", "elevation_gp_tip", "sinkage_depth_gp"}), // New
       //hasUnderlyingMap_(false),
       //visibilityCleanupDuration_(0.0),

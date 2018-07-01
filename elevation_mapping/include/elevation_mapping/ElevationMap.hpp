@@ -511,6 +511,9 @@ class ElevationMap
   Eigen::Vector4f getFootTipPlaneCoefficients(std::string tip);
 
   //! TODO: Description:
+  Eigen::Vector4f getFootTipPlaneCoefficientsFrontOnly(std::string tip);
+
+  //! TODO: Description:
   bool sampleContinuityPlaneToTrainingData(const grid_map::Position& cellPos, const grid_map::Position& center, const double& terrainContinuityValue);
 
   bool setQuadrupedBaseVelocity(const Eigen::Vector3f& lowPassFilteredBaseVelocity);
@@ -637,6 +640,8 @@ class ElevationMap
   double weightTerrainContinuity_;
   double weightingFactorSampling_;
   bool runTerrainContinuityBiasing_;
+  double exponentSinkageDepthWeight_;
+  double weightDecayThreshold_;
 
   //! Bool to specify wheather in high grass or not:
   bool highGrassMode_;
@@ -738,6 +743,9 @@ class ElevationMap
 
   // Config Parameter for low pass filter gain.
   double velocityLowPassFilterGain_;
+
+  // Store latest sinkage depth value.
+  float leftFrontSinkageDepth_, rightFrontSinkageDepth_;
 
 };
 
