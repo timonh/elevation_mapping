@@ -82,7 +82,7 @@ ElevationMap::ElevationMap(ros::NodeHandle nodeHandle)
               "support_surface", "support_surface_smooth", "support_surface_added"}),//, "support_surface_smooth_inpainted", "support_surface_added"}),
       fusedMap_({"elevation", "upper_bound", "lower_bound", "color"}),
       supportMap_({"elevation", "variance", "elevation_gp", "elevation_gp_added"}), // New
-      supportMapGP_({"elevation_gp", "variance_gp", "elevation_gp_added", "elevation_gp_tip", "sinkage_depth_gp", "smoothed_top_layer_gp"}), // New
+      supportMapGP_({"elevation_gp", "variance_gp", "elevation_gp_added", "elevation_gp_tip", "sinkage_depth_gp", "terrain_continuity_gp", "smoothed_top_layer_gp"}), // New
       hasUnderlyingMap_(false),
       visibilityCleanupDuration_(0.0),
       filterChain_("grid_map::GridMap"), // New
@@ -132,7 +132,8 @@ ElevationMap::ElevationMap(ros::NodeHandle nodeHandle)
   nodeHandle_.param("velocity_low_pass_filter_gain", velocityLowPassFilterGain_, 0.0003);
   nodeHandle_.param("weight_terrain_continuity", weightTerrainContinuity_, 1.0);
   nodeHandle_.param("run_terrain_continuity_biasing", runTerrainContinuityBiasing_, true);
-  nodeHandle_.param("exponent_sinkage_depth_weight", exponentSinkageDepthWeight_, 8.0);
+  nodeHandle_.param("exponent_sinkage_depth_weight", exponentSinkageDepthWeight_, 2.0);
+  nodeHandle_.param("exponent_terrain_continuity_weight", exponentTerrainContinuityWeight_, 2.0);
   nodeHandle_.param("weight_decay_threshold", weightDecayThreshold_, 0.4);
 
 
@@ -3116,6 +3117,7 @@ bool ElevationMap::mainGPRegression(double tileResolution, double tileDiameter, 
         // Update sinkage depth Layer.
         //sinkageDepthMapLayerGP(tip, tipDifference);
         simpleSinkageDepthLayer(tip, tipDifference); // Alternative
+        simpleTerrainContinuityLayer(tip, tipDifference);
 
         // Visualization in Rviz.
         visualization_msgs::Marker tileMarkerList;
@@ -3197,7 +3199,7 @@ bool ElevationMap::mainGPRegression(double tileResolution, double tileDiameter, 
                     int inputDim = 2;
                     int outputDim = 1;
                     GaussianProcessRegression<float> myGPR(inputDim, outputDim);
-                    myGPR.SetHyperParams(lengthscale * 4.0, 0.1, 0.001); // Hacked a factor * 5 remove soon
+                    myGPR.SetHyperParams(lengthscale * 5.0, 0.1, 0.001); // Hacked a factor * 5 remove soon
 
                     Eigen::Vector2f posTile;
                     posTile(0) = footTip(0) + i * tileResolution;
@@ -3234,13 +3236,14 @@ bool ElevationMap::mainGPRegression(double tileResolution, double tileDiameter, 
 
                         bool insert = sampleContinuityPlaneToTrainingData(cellPos, footTip, terrainContinuityValue);
                         if (insert) {
-                            if (scalarProduct < 0.0) {
-                                trainOutput(0) = evaluatePlaneFromCoefficients(planeCoefficients, cellPos);
-                            }
+                            //if (scalarProduct > 0.0) {
+                            trainOutput(0) = supportMapGP_.at("terrain_continuity_gp", index);
+                            //trainOutput(0) = evaluatePlaneFromCoefficients(planeCoefficients, cellPos);
+                            //}
                             // In this case add the old training data, not to influence the past by the continuity assumptions
-                            else {
-                                trainOutput(0) = supportMapGP_.at("elevation_gp_added", index); // Check, if this is the right way round.
-                            }
+                            //else {
+                            //    trainOutput(0) = supportMapGP_.at("elevation_gp_added", index); // Check, if this is the right way round.
+                            //}
                             if (!isnan(trainOutput(0))) myGPR.AddTrainingData(trainInput, trainOutput);
                         }
                         else if (!isnan(trainOutput(0))){  // Removed validation argument here..
@@ -3901,7 +3904,7 @@ bool ElevationMap::simpleSinkageDepthLayer(std::string& tip, const double& tipDi
         Position3 tipLeftPos3(tipLeftVec(0), tipLeftVec(1), tipLeftVec(2));
         Position3 tipRightPos3(tipRightVec(0), tipRightVec(1), tipRightVec(2));
         double radius = 0.65;
-        int maxSizeFootTipHistory = 6;
+        int maxSizeFootTipHistory = 15; // See what this does..
 
         // Do history vector.
         Position3 footTip;
@@ -3964,6 +3967,97 @@ bool ElevationMap::simpleSinkageDepthLayer(std::string& tip, const double& tipDi
         }
     }
     return true;
+}
+
+
+// Put them together atsome time..
+bool ElevationMap::simpleTerrainContinuityLayer(std::string& tip, const double& tipDifference){
+
+    if (leftStanceVector_.size() > 0 && rightStanceVector_.size() > 0){
+
+        Eigen::Vector3f tipLeftVec = getLatestLeftStance();
+        Eigen::Vector3f tipRightVec = getLatestRightStance();
+        Position3 tipLeftPos3(tipLeftVec(0), tipLeftVec(1), tipLeftVec(2));
+        Position3 tipRightPos3(tipRightVec(0), tipRightVec(1), tipRightVec(2));
+        double radius = 0.65;
+        int maxSizeFootTipHistory = 15;
+
+        // Do history vector.
+        Position3 footTip;
+        if (tip == "left") footTip = tipLeftPos3;
+        if (tip == "right") footTip = tipRightPos3;
+
+        // TODO    function that updates the sinkage depth history and the foot tip history!!!
+
+        //footTipHistoryGP_.push_back(footTip);
+        //if (isnan(tipDifference) && sinkageDepthHistory_.size() > 2) {
+        //    if (tip == "left") sinkageDepthHistory_.push_back(leftFrontSinkageDepth_); // Do not update the sinkage depth if there is no new information.
+        //    if (tip == "right") sinkageDepthHistory_.push_back(rightFrontSinkageDepth_);
+        //}
+        //else{
+        //    sinkageDepthHistory_.push_back(-tipDifference); // Todo nicer with class vars for each foot tip
+        //    if (tip == "left") leftFrontSinkageDepth_ = -tipDifference;
+        //    if (tip == "right") rightFrontSinkageDepth_ = -tipDifference;
+        //}
+        //if (footTipHistoryGP_.size() > maxSizeFootTipHistory) footTipHistoryGP_.erase(footTipHistoryGP_.begin());
+        //if (sinkageDepthHistory_.size() > maxSizeFootTipHistory) sinkageDepthHistory_.erase(sinkageDepthHistory_.begin());
+
+        Position center(footTip(0), footTip(1));
+
+        for (CircleIterator iterator(supportMapGP_, center, radius); !iterator.isPastEnd(); ++iterator) {
+
+            const Index index(*iterator);
+            auto& supportMapElevationGPContinuity = supportMapGP_.at("terrain_continuity_gp", index);
+            Position pos;
+            supportMapGP_.getPosition(index, pos);
+
+            float addingDistance = sqrt(pow(pos(0) - footTip(0), 2) + pow(pos(1) - footTip(1), 2));
+
+            // Keep track of total weight and temporary height value.
+            float totalWeight = 0.0;
+            float tempHeight = 0.0;
+
+            for (unsigned int i = 0; i < footTipHistoryGP_.size(); ++i) {
+                double distance = sqrt(pow(footTipHistoryGP_[i](0) - footTip(0), 2) + pow(footTipHistoryGP_[i](1) - footTip(1), 2));
+                if (distance < radius) {
+
+                    if (i >= 2) {
+                        Eigen::Vector4f coeffs = getPlaneCoeffsFromThreePoints(footTipHistoryGP_[i-2], footTipHistoryGP_[i-1], footTipHistoryGP_[i]);
+                        double planeHeight = evaluatePlaneFromCoefficients(coeffs, pos);
+                        // TODO: Evaluate Plane spun by three points and get do the same, but with the point value, that would have been gained by the plane
+
+
+                        float localDistance = sqrt(pow(footTipHistoryGP_[i](0) - pos(0), 2) + pow(footTipHistoryGP_[i](1) - pos(1), 2));
+                        float weight = 1 / pow(localDistance, exponentTerrainContinuityWeight_); // Hacking here to test the range of the power.
+                        totalWeight += weight;
+                        tempHeight += planeHeight * weight; // Hackin around in here, make clean
+                    }
+                }
+            }
+
+            float output = tempHeight / totalWeight;
+            // TODO: Adding procedure..
+
+            float addingWeight = fmax(1 - (addingDistance / radius), 0.0);
+            if (!isnan(output)){
+                if (!supportMapGP_.isValid(index)){
+                    supportMapElevationGPContinuity = output;
+                }
+                else{
+                    if (!isnan(supportMapElevationGPContinuity)) supportMapElevationGPContinuity = addingWeight * output + (1 - addingWeight) * supportMapElevationGPContinuity;
+                }
+            }
+        }
+    }
+    return true;
+}
+
+bool ElevationMap::updateFootTipHistory(){
+
+}
+
+bool ElevationMap::updateSinkageDepthHistory(){
+
 }
 
 bool ElevationMap::setSmoothenedTopLayer(std::string tip){
@@ -4103,7 +4197,6 @@ Eigen::Vector4f ElevationMap::getPlaneCoeffsFromThreePoints(const Position3& Poi
     Eigen::Vector3f normalVector = vector1.cross(vector2);
     Eigen::Vector3f normalisedNormalVector = normalVector.normalized();
     float d_val = - Point3Eigen.dot(normalisedNormalVector);
-    std::cout << "d_val random ?" << d_val << "Norm vec 2 " << normalisedNormalVector(2) << std::endl;
     Eigen::Vector4f coefficients(normalisedNormalVector(0), normalisedNormalVector(1), normalisedNormalVector(2), d_val);
     return coefficients;
 }

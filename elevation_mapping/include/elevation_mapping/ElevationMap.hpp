@@ -530,7 +530,14 @@ class ElevationMap
   //! TODO: Description:
   bool simpleSinkageDepthLayer(std::string& tip, const double& tipDifference);
 
+  //! TODO: Description:
+  bool simpleTerrainContinuityLayer(std::string& tip, const double& tipDifference);
 
+  //! TODO: Description:
+  bool updateFootTipHistory();
+
+  //! TODO: Description:
+  bool updateSinkageDepthHistory();
 
 
 
@@ -640,7 +647,7 @@ class ElevationMap
   double weightTerrainContinuity_;
   double weightingFactorSampling_;
   bool runTerrainContinuityBiasing_;
-  double exponentSinkageDepthWeight_;
+  double exponentSinkageDepthWeight_, exponentTerrainContinuityWeight_;
   double weightDecayThreshold_;
 
   //! Bool to specify wheather in high grass or not:
