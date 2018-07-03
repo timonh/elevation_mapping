@@ -79,7 +79,7 @@ ElevationMap::ElevationMap(ros::NodeHandle nodeHandle)
       rawMap_({"elevation", "variance", "horizontal_variance_x", "horizontal_variance_y", "horizontal_variance_xy",
               "color", "time", "lowest_scan_point", "sensor_x_at_lowest_scan", "sensor_y_at_lowest_scan",
               "sensor_z_at_lowest_scan", "foot_tip_elevation", "support_surface", "elevation_inpainted", "elevation_smooth", "vegetation_height", "vegetation_height_smooth",
-              "support_surface", "support_surface_smooth", "support_surface_added"}),//, "support_surface_smooth_inpainted", "support_surface_added"}),
+              "support_surface", "support_surface_smooth", "support_surface_added", "elevation_gp_added_raw"}),//, "support_surface_smooth_inpainted", "support_surface_added"}),
       fusedMap_({"elevation", "upper_bound", "lower_bound", "color"}),
       supportMap_({"elevation", "variance", "elevation_gp", "elevation_gp_added"}), // New
       supportMapGP_({"elevation_gp", "variance_gp", "elevation_gp_added", "elevation_gp_tip", "sinkage_depth_gp", "terrain_continuity_gp", "smoothed_top_layer_gp"}), // New
@@ -90,7 +90,7 @@ ElevationMap::ElevationMap(ros::NodeHandle nodeHandle)
 {
 
   // Timon added foot_tip_elevation layer
-  rawMap_.setBasicLayers({"elevation", "variance"});
+  rawMap_.setBasicLayers({"elevation", "variance"}); // test, addad
   fusedMap_.setBasicLayers({"elevation", "upper_bound", "lower_bound"});
   supportMap_.setBasicLayers({"elevation", "variance", "elevation_gp", "elevation_gp_added"}); // New
   supportMapGP_.setBasicLayers({"elevation_gp", "variance_gp"}); // New
@@ -135,7 +135,7 @@ ElevationMap::ElevationMap(ros::NodeHandle nodeHandle)
   nodeHandle_.param("exponent_sinkage_depth_weight", exponentSinkageDepthWeight_, 2.0);
   nodeHandle_.param("exponent_terrain_continuity_weight", exponentTerrainContinuityWeight_, 2.0);
   nodeHandle_.param("weight_decay_threshold", weightDecayThreshold_, 0.4);
-
+  nodeHandle_.param("exponent_characteristic_value", exponentCharacteristicValue_, 1.0);
 
   std::cout << "Stance Detection Method: : " << stanceDetectionMethod_ << std::endl;
   //! End of commented section
@@ -2214,7 +2214,7 @@ bool ElevationMap::proprioceptiveVariance(std::string tip){
             geometry_msgs::Twist varianceMsg;
             varianceMsg.linear.x = varianceConsecutiveFootTipPositions;
             varianceMsg.linear.y = variancePlaneFit;
-            varianceMsg.linear.z = varianceConsecutiveFootTipPositions + variancePlaneFit;
+            varianceMsg.linear.z = varianceConsecutiveFootTipPositions;// + variancePlaneFit;
 
             // set function..
             setTerrainVariance(varianceMsg.linear.z);
@@ -2278,11 +2278,11 @@ bool ElevationMap::penetrationDepthVarianceEstimation(std::string tip, double ve
         }
     }
 
-    double penetrationDepthVariance = squaredTotalVerticalDifference / double(count) +
+    double penetrationDepthVariance = squaredTotalVerticalDifference / double(count) -
             pow(totalVerticalDifference / double(count), 2);
 
     // Differential Version.
-    double differentialPenetrationDepthVariance = squaredTotalVerticalDifferenceChange / double(count) +
+    double differentialPenetrationDepthVariance = squaredTotalVerticalDifferenceChange / double(count) -
             pow(totalVerticalDifferenceChange / double(count), 2);
 
     setPenetrationDepthVariance(penetrationDepthVariance);
@@ -3167,13 +3167,14 @@ bool ElevationMap::mainGPRegression(double tileResolution, double tileDiameter, 
         double differentialSinkageVariance = getDifferentialPenetrationDepthVariance();
 
         // TODO: conept for relevance between these two -> two tuning params -> relevance factor AND weightFactor for exp.
-        double characteristicValue = (weightTerrainContinuity_ * terrainVariance) / sinkageVariance;
+        double characteristicValue = (weightTerrainContinuity_ * terrainVariance) / pow((1.0 * sinkageVariance + 0.0 * differentialSinkageVariance), exponentCharacteristicValue_);
+
 
         // TODO: reason about this functionality, anything with sqrt?? -> test and learn?
 
 
 
-        double terrainContinuityValue = fmin(fmax(characteristicValue, 0.3), 7.0); // TODO: reason about bounding.
+        double terrainContinuityValue = fmin(fmax(characteristicValue, 0.13), 7.0); // TODO: reason about bounding.
 
         // Set message values.
         adaptationMsg.header.stamp = ros::Time::now();
@@ -3436,6 +3437,7 @@ bool ElevationMap::mainGPRegression(double tileResolution, double tileDiameter, 
     supportSurfaceUpperBoundingGP(rawMap_, supportMapGP_);
 
 
+    rawMap_["elevation_gp_added_raw"] = supportMapGP_["elevation_gp_added"]; // REMOVE IF SLOW
 
 
     // Publish map
@@ -3443,6 +3445,9 @@ bool ElevationMap::mainGPRegression(double tileResolution, double tileDiameter, 
     GridMapRosConverter::toMessage(supportMapGP_, mapMessageGP);
     mapMessageGP.info.header.frame_id = "odom";
     elevationMapGPPublisher_.publish(mapMessageGP);
+
+
+
     return true;
 }
 
@@ -3913,10 +3918,10 @@ bool ElevationMap::simpleSinkageDepthLayer(std::string& tip, const double& tipDi
 
         footTipHistoryGP_.push_back(footTip);
         if (isnan(tipDifference) && sinkageDepthHistory_.size() > 2) {
-            if (tip == "left") sinkageDepthHistory_.push_back(leftFrontSinkageDepth_); // Do not update the sinkage depth if there is no new information.
-            if (tip == "right") sinkageDepthHistory_.push_back(rightFrontSinkageDepth_);
+            if (tip == "left" && !isnan(leftFrontSinkageDepth_)) sinkageDepthHistory_.push_back(leftFrontSinkageDepth_); // Do not update the sinkage depth if there is no new information.
+            if (tip == "right" && !isnan(leftFrontSinkageDepth_)) sinkageDepthHistory_.push_back(rightFrontSinkageDepth_);
         }
-        else{
+        else if (!isnan(tipDifference)) {
             sinkageDepthHistory_.push_back(-tipDifference); // Todo nicer with class vars for each foot tip
             if (tip == "left") leftFrontSinkageDepth_ = -tipDifference;
             if (tip == "right") rightFrontSinkageDepth_ = -tipDifference;
@@ -3939,14 +3944,14 @@ bool ElevationMap::simpleSinkageDepthLayer(std::string& tip, const double& tipDi
             float totalWeight = 0.0;
             float tempHeight = 0.0;
 
-            for (unsigned int i = 0; i < footTipHistoryGP_.size(); ++i) {
+            for (unsigned int i = 0; i < min(footTipHistoryGP_.size(), sinkageDepthHistory_.size()); ++i) {
                 double distance = sqrt(pow(footTipHistoryGP_[i](0) - footTip(0), 2) + pow(footTipHistoryGP_[i](1) - footTip(1), 2));
                 if (distance < radius) {
 
                     float localDistance = sqrt(pow(footTipHistoryGP_[i](0) - pos(0), 2) + pow(footTipHistoryGP_[i](1) - pos(1), 2));
                     float weight = 1 / pow(localDistance, exponentSinkageDepthWeight_); // Hacking here to test the range of the power.
                     totalWeight += weight;
-                    tempHeight += sinkageDepthHistory_[i] * weight;
+                    if (!isnan(sinkageDepthHistory_[i])) tempHeight += sinkageDepthHistory_[i] * weight;
                 }
             }
 
@@ -3987,21 +3992,6 @@ bool ElevationMap::simpleTerrainContinuityLayer(std::string& tip, const double& 
         if (tip == "left") footTip = tipLeftPos3;
         if (tip == "right") footTip = tipRightPos3;
 
-        // TODO    function that updates the sinkage depth history and the foot tip history!!!
-
-        //footTipHistoryGP_.push_back(footTip);
-        //if (isnan(tipDifference) && sinkageDepthHistory_.size() > 2) {
-        //    if (tip == "left") sinkageDepthHistory_.push_back(leftFrontSinkageDepth_); // Do not update the sinkage depth if there is no new information.
-        //    if (tip == "right") sinkageDepthHistory_.push_back(rightFrontSinkageDepth_);
-        //}
-        //else{
-        //    sinkageDepthHistory_.push_back(-tipDifference); // Todo nicer with class vars for each foot tip
-        //    if (tip == "left") leftFrontSinkageDepth_ = -tipDifference;
-        //    if (tip == "right") rightFrontSinkageDepth_ = -tipDifference;
-        //}
-        //if (footTipHistoryGP_.size() > maxSizeFootTipHistory) footTipHistoryGP_.erase(footTipHistoryGP_.begin());
-        //if (sinkageDepthHistory_.size() > maxSizeFootTipHistory) sinkageDepthHistory_.erase(sinkageDepthHistory_.begin());
-
         Position center(footTip(0), footTip(1));
 
         for (CircleIterator iterator(supportMapGP_, center, radius); !iterator.isPastEnd(); ++iterator) {
@@ -4030,7 +4020,7 @@ bool ElevationMap::simpleTerrainContinuityLayer(std::string& tip, const double& 
                         float localDistance = sqrt(pow(footTipHistoryGP_[i](0) - pos(0), 2) + pow(footTipHistoryGP_[i](1) - pos(1), 2));
                         float weight = 1 / pow(localDistance, exponentTerrainContinuityWeight_); // Hacking here to test the range of the power.
                         totalWeight += weight;
-                        tempHeight += planeHeight * weight; // Hackin around in here, make clean
+                        if (!isnan(planeHeight)) tempHeight += planeHeight * weight; // Hackin around in here, make clean
                     }
                 }
             }

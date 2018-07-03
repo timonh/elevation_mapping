@@ -647,7 +647,7 @@ class ElevationMap
   double weightTerrainContinuity_;
   double weightingFactorSampling_;
   bool runTerrainContinuityBiasing_;
-  double exponentSinkageDepthWeight_, exponentTerrainContinuityWeight_;
+  double exponentSinkageDepthWeight_, exponentTerrainContinuityWeight_, exponentCharacteristicValue_;
   double weightDecayThreshold_;
 
   //! Bool to specify wheather in high grass or not:
