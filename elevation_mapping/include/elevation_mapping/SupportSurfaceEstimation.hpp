@@ -10,53 +10,53 @@
 
 #include <elevation_mapping/ElevationMap.hpp>
 
-// Grid Map
-#include <grid_map_ros/grid_map_ros.hpp>
+//// Grid Map
+//#include <grid_map_ros/grid_map_ros.hpp>
 
 #include <filters/filter_chain.h> // For high grass new
 #include <grid_map_msgs/GridMap.h>
 #include <grid_map_core/grid_map_core.hpp>
-#include <grid_map_cv/grid_map_cv.hpp> // New for high grass
-#include <grid_map_cv/InpaintFilter.hpp> // New for high grass
+//#include <grid_map_cv/grid_map_cv.hpp> // New for high grass
+//#include <grid_map_cv/InpaintFilter.hpp> // New for high grass
 #include <grid_map_ros/grid_map_ros.hpp>
 
-// Elevation Mapping
-//#include "elevation_mapping/ElevationMap.hpp"
+//// Elevation Mapping
+////#include "elevation_mapping/ElevationMap.hpp"
 
-// Eigen
-#include <Eigen/Core>
-#include <Eigen/Geometry>
+//// Eigen
+//#include <Eigen/Core>
+//#include <Eigen/Geometry>
 
-// PCL
+//// PCL
 #include <pcl/point_cloud.h>
 #include <pcl/point_types.h>
 
-// Kindr
+//// Kindr
 #include <kindr/Core>
 
-// Boost
+//// Boost
 #include <boost/thread/recursive_mutex.hpp>
 
-// ROS
+//// ROS
 #include <ros/ros.h>
 
-// State Estimator Message
+//// State Estimator Message
 #include "quadruped_msgs/QuadrupedState.h"
 #include "quadruped_msgs/Contacts.h"
 
-// Transform Listener and broadcaster (NEW)
+//// Transform Listener and broadcaster (NEW)
 #include "tf/transform_listener.h"
 #include "tf/transform_broadcaster.h"
 
-// ROS msgs
-//#include <elevation_mapping/PerformanceAssessment.h>
+//// ROS msgs
+////#include <elevation_mapping/PerformanceAssessment.h>
 
-// Elevation Map
-#include "elevation_mapping/ElevationMap.hpp"
+//// Elevation Map
+//#include "elevation_mapping/ElevationMap.hpp"
 
-// File IO
-#include <iostream>
-#include <fstream>
+//// File IO
+//#include <iostream>
+//#include <fstream>
 
 namespace elevation_mapping {
 
@@ -266,6 +266,7 @@ public:
  void footTipStanceCallback(const quadruped_msgs::QuadrupedState& quadrupedState);
 
  friend class ElevationMapping;
+ friend class ElevationMap;
 
 private:
 
@@ -669,8 +670,8 @@ private:
  // Foot tip position history for GP.
  std::vector<grid_map::Position3> footTipHistoryGP_;
 
- //! Elevation map.
- //ElevationMap map_;
+ //! Elevation Map
+ ElevationMap map_;
 };
 
 } /* namespace */

@@ -8,13 +8,13 @@
 
 #include "elevation_mapping/ElevationMap.hpp"
 
-#include "elevation_mapping/SupportSurfaceEstimation.hpp"
+//#include "elevation_mapping/SupportSurfaceEstimation.hpp"
 
 // Elevation Mapping
 #include "elevation_mapping/ElevationMapFunctors.hpp"
 #include "elevation_mapping/WeightedEmpiricalCumulativeDistributionFunction.hpp"
 #include "elevation_mapping/HighGrassElevationMapping.hpp"
-#include "elevation_mapping/StanceProcessor.hpp"
+//#include "elevation_mapping/StanceProcessor.hpp"
 
 // Grid Map
 #include <grid_map_msgs/GridMap.h>
@@ -75,12 +75,11 @@ namespace elevation_mapping {
 
 ElevationMap::ElevationMap(ros::NodeHandle nodeHandle)
     : nodeHandle_(nodeHandle),
-      //supportSurfaceEstimation_(nodeHandle),
       rawMap_({"elevation", "variance", "horizontal_variance_x", "horizontal_variance_y", "horizontal_variance_xy",
               "color", "time", "lowest_scan_point", "sensor_x_at_lowest_scan", "sensor_y_at_lowest_scan",
               "sensor_z_at_lowest_scan", "foot_tip_elevation", "support_surface", "elevation_inpainted", "elevation_smooth", "vegetation_height", "vegetation_height_smooth",
               "support_surface", "support_surface_smooth", "support_surface_added", "elevation_gp_added_raw"}),//, "support_surface_smooth_inpainted", "support_surface_added"}),
-      fusedMap_({"elevation", "upper_bound", "lower_bound", "color"}),
+      fusedMap_({"elevation", "upper_bound", "lower_bound", "color", "elevation_gp_added_raw"}),
       supportMap_({"elevation", "variance", "elevation_gp", "elevation_gp_added"}), // New
       supportMapGP_({"elevation_gp", "variance_gp", "elevation_gp_added", "elevation_gp_tip", "sinkage_depth_gp", "terrain_continuity_gp", "smoothed_top_layer_gp"}), // New
       hasUnderlyingMap_(false),
@@ -136,6 +135,7 @@ ElevationMap::ElevationMap(ros::NodeHandle nodeHandle)
   nodeHandle_.param("exponent_terrain_continuity_weight", exponentTerrainContinuityWeight_, 2.0);
   nodeHandle_.param("weight_decay_threshold", weightDecayThreshold_, 0.4);
   nodeHandle_.param("exponent_characteristic_value", exponentCharacteristicValue_, 1.0);
+  nodeHandle_.param("continuiry_filter_gain", continuityFilterGain_, 0.8);
 
   std::cout << "Stance Detection Method: : " << stanceDetectionMethod_ << std::endl;
   //! End of commented section
@@ -3174,12 +3174,13 @@ bool ElevationMap::mainGPRegression(double tileResolution, double tileDiameter, 
 
 
 
-        double terrainContinuityValue = fmin(fmax(characteristicValue, 0.13), 7.0); // TODO: reason about bounding.
+        lowPassFilteredTerrainContinuityValue_ =  fmin(fmax(continuityFilterGain_ * lowPassFilteredTerrainContinuityValue_ + (1 - continuityFilterGain_)
+                                                            * characteristicValue, 0.13), 7.0); // TODO: reason about bounding.
 
         // Set message values.
         adaptationMsg.header.stamp = ros::Time::now();
         adaptationMsg.twist.linear.x = terrainVariance;
-        adaptationMsg.twist.linear.y = terrainContinuityValue;
+        adaptationMsg.twist.linear.y = lowPassFilteredTerrainContinuityValue_;
         adaptationMsg.twist.angular.x = supportSurfaceUncertaintyEstimation;
         adaptationMsg.twist.angular.y = cumulativeSupportSurfaceUncertaintyEstimation;
         adaptationMsg.twist.angular.z = sinkageVariance;
@@ -3235,7 +3236,7 @@ bool ElevationMap::mainGPRegression(double tileResolution, double tileDiameter, 
                         // 2D, consider 3D
                         double scalarProduct = relativePosition(0) * velicityLP(0) + relativePosition(1) * velicityLP(1); // TODO, check tfVector
 
-                        bool insert = sampleContinuityPlaneToTrainingData(cellPos, footTip, terrainContinuityValue);
+                        bool insert = sampleContinuityPlaneToTrainingData(cellPos, footTip, lowPassFilteredTerrainContinuityValue_);
                         if (insert) {
                             //if (scalarProduct > 0.0) {
                             trainOutput(0) = supportMapGP_.at("terrain_continuity_gp", index);
@@ -3412,6 +3413,8 @@ bool ElevationMap::mainGPRegression(double tileResolution, double tileDiameter, 
             auto& supportMapElevationGPAdded = supportMapGP_.at("elevation_gp_added", index);
             auto& supportMapVarianceGP = supportMapGP_.at("variance_gp", index);
             //auto& supportMapSinkageDepthGP = supportMapGP_.at("sinkage_depth_gp", index);
+            auto& rawMapElevationGP = rawMap_.at("elevation_gp_added_raw", index);
+            auto& fusedMapElevationGP = fusedMap_.at("elevation_gp_added_raw", index);
 
             if (supportMapGP_.isValid(index) && !isnan(supportMapElevationGP)){
                 supportMapElevationGPAdded = (1 - weight) * supportMapElevationGPAdded + (supportMapElevationGP) * weight;
@@ -3422,6 +3425,8 @@ bool ElevationMap::mainGPRegression(double tileResolution, double tileDiameter, 
                 supportMapElevationGPAdded = supportMapElevationGP;
                 supportMapVarianceGP = 0.0;
             }
+            if (!isnan(supportMapElevationGPAdded)) rawMapElevationGP = supportMapElevationGPAdded; // Test
+            if (!isnan(supportMapElevationGPAdded)) fusedMapElevationGP = supportMapElevationGPAdded; // Test
         }
 
         // Publish adaptation Parameters
@@ -3437,7 +3442,7 @@ bool ElevationMap::mainGPRegression(double tileResolution, double tileDiameter, 
     supportSurfaceUpperBoundingGP(rawMap_, supportMapGP_);
 
 
-    rawMap_["elevation_gp_added_raw"] = supportMapGP_["elevation_gp_added"]; // REMOVE IF SLOW
+   // rawMap_["elevation_gp_added_raw"] = supportMapGP_["elevation_gp_added"]; // REMOVE IF SLOW
 
 
     // Publish map

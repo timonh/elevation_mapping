@@ -175,6 +175,8 @@ DriftRefinement::DriftRefinement(ros::NodeHandle nodeHandle)
   supportSurfaceInitializationTrigger_ = false;
   // END NEW
 
+  std::cout << "called the drift refinement Constructor" << std::endl;
+
   initialTime_ = ros::Time::now();
 }
 

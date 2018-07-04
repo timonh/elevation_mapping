@@ -10,7 +10,7 @@
 
 
 // Support Surface Estimation
-#include "elevation_mapping/SupportSurfaceEstimation.hpp"
+//#include "elevation_mapping/SupportSurfaceEstimation.hpp"
 
 // Grid Map
 #include <grid_map_ros/grid_map_ros.hpp>
@@ -60,6 +60,7 @@ namespace elevation_mapping {
 /*!
  * Elevation map stored as grid map handling elevation height, variance, color etc.
  */
+
 class ElevationMap
 {
 
@@ -750,6 +751,9 @@ class ElevationMap
 
   // Config Parameter for low pass filter gain.
   double velocityLowPassFilterGain_;
+
+  double lowPassFilteredTerrainContinuityValue_;
+  double continuityFilterGain_;
 
   // Store latest sinkage depth value.
   float leftFrontSinkageDepth_, rightFrontSinkageDepth_;

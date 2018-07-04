@@ -10,51 +10,51 @@
 #include "elevation_mapping/ElevationMap.hpp"
 
 // Elevation Mapping
-#include "elevation_mapping/ElevationMapFunctors.hpp"
-#include "elevation_mapping/WeightedEmpiricalCumulativeDistributionFunction.hpp"
-#include "elevation_mapping/HighGrassElevationMapping.hpp"
+//#include "elevation_mapping/ElevationMapFunctors.hpp"
+//#include "elevation_mapping/WeightedEmpiricalCumulativeDistributionFunction.hpp"
+//#include "elevation_mapping/HighGrassElevationMapping.hpp"
 
-// Grid Map
-#include <grid_map_msgs/GridMap.h>
-#include <grid_map_core/grid_map_core.hpp> // New for high grass
-#include <grid_map_filters/BufferNormalizerFilter.hpp>
-#include <grid_map_cv/grid_map_cv.hpp> // New for high grass
+//// Grid Map
+//#include <grid_map_msgs/GridMap.h>
+//#include <grid_map_core/grid_map_core.hpp> // New for high grass
+//#include <grid_map_filters/BufferNormalizerFilter.hpp>
+//#include <grid_map_cv/grid_map_cv.hpp> // New for high grass
 
-#include <grid_map_cv/InpaintFilter.hpp> // New for high grass
-#include <opencv/cv.h>
-#include <grid_map_filters/ThresholdFilter.hpp>
+//#include <grid_map_cv/InpaintFilter.hpp> // New for high grass
+//#include <opencv/cv.h>
+//#include <grid_map_filters/ThresholdFilter.hpp>
 
-#include <grid_map_cv/InpaintFilter.hpp>
-#include <pluginlib/class_list_macros.h>
-#include <ros/ros.h>
+//#include <grid_map_cv/InpaintFilter.hpp>
+//#include <pluginlib/class_list_macros.h>
+//#include <ros/ros.h>
 
-#include <grid_map_cv/GridMapCvConverter.hpp>
-#include <grid_map_cv/GridMapCvProcessing.hpp>
+//#include <grid_map_cv/GridMapCvConverter.hpp>
+//#include <grid_map_cv/GridMapCvProcessing.hpp>
 
-// TEST
-#include <any_msgs/State.h>
+//// TEST
+//#include <any_msgs/State.h>
 
-// GP Regression
-#include <gaussian_process_regression/gaussian_process_regression.h>
+//// GP Regression
+//#include <gaussian_process_regression/gaussian_process_regression.h>
 
-// Math
-#include <math.h>
+//// Math
+//#include <math.h>
 
-// ROS Logging
-#include <ros/ros.h>
+//// ROS Logging
+//#include <ros/ros.h>
 
-// Eigen
-#include <Eigen/Dense>
+//// Eigen
+//#include <Eigen/Dense>
 
-// TEST thread
-#include <thread>
+//// TEST thread
+//#include <thread>
 
-// PCL conversions
-#include <pcl_conversions/pcl_conversions.h>
-#include <pcl_ros/transforms.h>
+//// PCL conversions
+//#include <pcl_conversions/pcl_conversions.h>
+//#include <pcl_ros/transforms.h>
 
-// PCL normal estimation
-#include <pcl/features/normal_3d.h>
+//// PCL normal estimation
+//#include <pcl/features/normal_3d.h>
 
 // ROS msgs
 //#include <elevation_mapping/PerformanceAssessment.h>
@@ -65,11 +65,13 @@
 
 using namespace std;
 using namespace grid_map;
+using namespace kindr;
 
 namespace elevation_mapping {
 
 SupportSurfaceEstimation::SupportSurfaceEstimation(ros::NodeHandle nodeHandle)
     : nodeHandle_(nodeHandle),
+      map_(nodeHandle),
       //rawMap_({"elevation", "variance", "horizontal_variance_x", "horizontal_variance_y", "horizontal_variance_xy",
       //        "color", "time", "lowest_scan_point", "sensor_x_at_lowest_scan", "sensor_y_at_lowest_scan",
       //        "sensor_z_at_lowest_scan", "foot_tip_elevation", "support_surface", "elevation_inpainted", "elevation_smooth", "vegetation_height", "vegetation_height_smooth",
@@ -209,6 +211,8 @@ bool SupportSurfaceEstimation::gaussianProcessSmoothing(std::string tip){
     double sideLengthAddingPatch = 1.3;
     //setSmoothingTiles(tileResolution, tileDiameter, sideLengthAddingPatch, tip);
 
+
+
     return true;
 }
 
@@ -231,5 +235,7 @@ bool SupportSurfaceEstimation::setSupportSurfaceUncertaintyEstimation(std::strin
     //if (!isnan(diff)) cumulativeSupportSurfaceUncertaintyEstimation_ += diff;
     return true;
 }
+
+
 
 } /* namespace */

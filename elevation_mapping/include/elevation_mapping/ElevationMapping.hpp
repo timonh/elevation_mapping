@@ -14,6 +14,10 @@
 #include "elevation_mapping/sensor_processors/SensorProcessorBase.hpp"
 #include "elevation_mapping/WeightedEmpiricalCumulativeDistributionFunction.hpp"
 
+// FootTipElevation MapEnhancement Methods
+#include "StanceProcessor.hpp"
+#include "elevation_mapping/SupportSurfaceEstimation.hpp"
+
 // Grid Map
 #include <grid_map_msgs/GetGridMap.h>
 #include <grid_map_msgs/ProcessFile.h>
@@ -261,6 +265,12 @@ class ElevationMapping
   //! Callback thread for raytracing cleanup.
   boost::thread visibilityCleanupThread_;
 
+  // Foot Tip Elevation Map Enhancment Objects.
+  //!Object of Stance Processor
+  StanceProcessor stanceProcessor_;
+
+  //! Object of Support Surface Estimation.
+  SupportSurfaceEstimation supportSurfaceEstimation_;
   //!
 };
 
