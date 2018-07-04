@@ -3922,7 +3922,7 @@ bool ElevationMap::simpleSinkageDepthLayer(std::string& tip, const double& tipDi
         if (tip == "right") footTip = tipRightPos3;
 
         footTipHistoryGP_.push_back(footTip);
-        if (isnan(tipDifference) && sinkageDepthHistory_.size() > 2) {
+        if (isnan(tipDifference)) {
             if (tip == "left" && !isnan(leftFrontSinkageDepth_)) sinkageDepthHistory_.push_back(leftFrontSinkageDepth_); // Do not update the sinkage depth if there is no new information.
             if (tip == "right" && !isnan(leftFrontSinkageDepth_)) sinkageDepthHistory_.push_back(rightFrontSinkageDepth_);
         }
@@ -3931,8 +3931,14 @@ bool ElevationMap::simpleSinkageDepthLayer(std::string& tip, const double& tipDi
             if (tip == "left") leftFrontSinkageDepth_ = -tipDifference;
             if (tip == "right") rightFrontSinkageDepth_ = -tipDifference;
         }
-        if (footTipHistoryGP_.size() > maxSizeFootTipHistory) footTipHistoryGP_.erase(footTipHistoryGP_.begin());
-        if (sinkageDepthHistory_.size() > maxSizeFootTipHistory) sinkageDepthHistory_.erase(sinkageDepthHistory_.begin());
+        if (footTipHistoryGP_.size() > maxSizeFootTipHistory) { // They must be the same!!
+            footTipHistoryGP_.erase(footTipHistoryGP_.begin());
+            sinkageDepthHistory_.erase(sinkageDepthHistory_.begin());
+        }
+
+        if (footTipHistoryGP_.size() != sinkageDepthHistory_.size()) {
+            std::cout << "Attention, having issues \n \n \n \n ISSUES i said!!" << std::endl;
+        }
 
         Position center(footTip(0), footTip(1));
 
@@ -4005,7 +4011,6 @@ bool ElevationMap::simpleTerrainContinuityLayer(std::string& tip, const double& 
             auto& supportMapElevationGPContinuity = supportMapGP_.at("terrain_continuity_gp", index);
             Position pos;
             supportMapGP_.getPosition(index, pos);
-
             float addingDistance = sqrt(pow(pos(0) - footTip(0), 2) + pow(pos(1) - footTip(1), 2));
 
             // Keep track of total weight and temporary height value.
@@ -4015,7 +4020,6 @@ bool ElevationMap::simpleTerrainContinuityLayer(std::string& tip, const double& 
             for (unsigned int i = 0; i < footTipHistoryGP_.size(); ++i) {
                 double distance = sqrt(pow(footTipHistoryGP_[i](0) - footTip(0), 2) + pow(footTipHistoryGP_[i](1) - footTip(1), 2));
                 if (distance < radius) {
-
                     if (i >= 2) {
                         Eigen::Vector4f coeffs = getPlaneCoeffsFromThreePoints(footTipHistoryGP_[i-2], footTipHistoryGP_[i-1], footTipHistoryGP_[i]);
                         double planeHeight = evaluatePlaneFromCoefficients(coeffs, pos);
@@ -4033,7 +4037,7 @@ bool ElevationMap::simpleTerrainContinuityLayer(std::string& tip, const double& 
             float output = tempHeight / totalWeight;
             // TODO: Adding procedure..
 
-            float addingWeight = fmax(1 - (addingDistance / radius), 0.0);
+            float addingWeight = fmin(fmax(1 - (addingDistance / radius), 0.0), 1.0);
             if (!isnan(output)){
                 if (!supportMapGP_.isValid(index)){
                     supportMapElevationGPContinuity = output;

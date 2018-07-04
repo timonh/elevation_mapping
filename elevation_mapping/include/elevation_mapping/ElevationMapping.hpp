@@ -267,10 +267,10 @@ class ElevationMapping
 
   // Foot Tip Elevation Map Enhancment Objects.
   //!Object of Stance Processor
-  StanceProcessor stanceProcessor_;
+  //StanceProcessor stanceProcessor_;
 
   //! Object of Support Surface Estimation.
-  SupportSurfaceEstimation supportSurfaceEstimation_;
+  //SupportSurfaceEstimation supportSurfaceEstimation_;
   //!
 };
 

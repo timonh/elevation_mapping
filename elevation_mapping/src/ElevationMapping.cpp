@@ -54,8 +54,8 @@ ElevationMapping::ElevationMapping(ros::NodeHandle& nodeHandle)
       map_(nodeHandle),
       robotMotionMapUpdater_(nodeHandle),
 
-      stanceProcessor_(nodeHandle),
-      supportSurfaceEstimation_(nodeHandle),
+      //stanceProcessor_(nodeHandle),
+      //supportSurfaceEstimation_(nodeHandle),
 
       isContinouslyFusing_(false),
       ignoreRobotMotionUpdates_(false)
