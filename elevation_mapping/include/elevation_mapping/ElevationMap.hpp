@@ -636,7 +636,7 @@ class ElevationMap
   //! driftAdjustment_: drift adjustment program running at all.
   //! applyFrameCorrection_: apply the calculated frame Correction -> if false performance measures are still calculated.
   //! runHindLegStanceDetection_: template based stance detection for hind legs for variance estimation in unseen terrain.
-  bool driftAdjustment_;
+  bool runFootTipElevationMapEnhancements_;
   bool applyFrameCorrection_;
   bool runHighGrassDetection_;
   bool runHindLegStanceDetection_;
@@ -745,6 +745,7 @@ class ElevationMap
 
   // Object of Support Surface Estimation.
   //SupportSurfaceEstimation supportSurfaceEstimation_;
+
 
   // Low pass filtered base velocity for sinkage depth model approximation.
   Eigen::Vector3f lowPassFilteredBaseVelocity_;

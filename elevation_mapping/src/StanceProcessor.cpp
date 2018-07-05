@@ -72,119 +72,33 @@ namespace elevation_mapping {
 StanceProcessor::StanceProcessor(ros::NodeHandle nodeHandle)
     : nodeHandle_(nodeHandle),
       map_(nodeHandle),
-      //rawMap_({"elevation", "variance", "horizontal_variance_x", "horizontal_variance_y", "horizontal_variance_xy",
-      //        "color", "time", "lowest_scan_point", "sensor_x_at_lowest_scan", "sensor_y_at_lowest_scan",
-      //        "sensor_z_at_lowest_scan", "foot_tip_elevation", "support_surface", "elevation_inpainted", "elevation_smooth", "vegetation_height", "vegetation_height_smooth",
-      //        "support_surface", "support_surface_smooth", "support_surface_added"}),//, "support_surface_smooth_inpainted", "support_surface_added"}),
-      //fusedMap_({"elevation", "upper_bound", "lower_bound", "color"}),
-      //supportMap_({"elevation", "variance", "elevation_gp", "elevation_gp_added"}), // New
-      //supportMapGP_({"elevation_gp", "variance_gp", "elevation_gp_added", "elevation_gp_tip", "sinkage_depth_gp"}), // New
-      //hasUnderlyingMap_(false),
-      //visibilityCleanupDuration_(0.0),
-      filterChain_("grid_map::GridMap"), // New
-      filterChain2_("grid_map::GridMap")
+      supportSurfaceEstimation_(nodeHandle),
+      driftRefinement_(nodeHandle)
 {
-    // Timon added foot_tip_elevation layer
-  //rawMap_.setBasicLayers({"elevation", "variance"});
-  //fusedMap_.setBasicLayers({"elevation", "upper_bound", "lower_bound"});
-  //supportMap_.setBasicLayers({"elevation", "variance", "elevation_gp", "elevation_gp_added"}); // New
-  //supportMapGP_.setBasicLayers({"elevation_gp", "variance_gp", "elevation_gp_added", "elevation_gp_tip", "sinkage_depth_gp"}); // New
-
-  //! uncomment!!
-  //clear();
-
-
   std::cout << "called the stanceprocessor Constructor" << std::endl;
 
-  // TEST:
-  elevationMapCorrectedPublisher_ = nodeHandle_.advertise<grid_map_msgs::GridMap>("elevation_map_drift_adjusted", 1);
-  elevationMapSupportPublisher_ = nodeHandle_.advertise<grid_map_msgs::GridMap>("support_added", 1);
-  elevationMapInpaintedPublisher_ = nodeHandle_.advertise<grid_map_msgs::GridMap>("support_surface", 1);
-  elevationMapGPPublisher_ = nodeHandle_.advertise<grid_map_msgs::GridMap>("support_surface_gp", 1);
-  // END TEST
-
-  //elevationMapRawPublisher_ = nodeHandle_.advertise<grid_map_msgs::GridMap>("elevation_map_raw", 1);
-  //elevationMapFusedPublisher_ = nodeHandle_.advertise<grid_map_msgs::GridMap>("elevation_map", 1);
-  //if (!underlyingMapTopic_.empty()) underlyingMapSubscriber_ =
-  //    nodeHandle_.subscribe(underlyingMapTopic_, 1, &ElevationMap::underlyingMapCallback, this);
-  // TODO if (enableVisibilityCleanup_) when parameter cleanup is ready.
-  //visbilityCleanupMapPublisher_ = nodeHandle_.advertise<grid_map_msgs::GridMap>("visibility_cleanup_map", 1);
-
   // Launching parameters.
-  nodeHandle_.param("run_drift_adjustment", driftAdjustment_, true);
-  nodeHandle_.param("apply_frame_correction", applyFrameCorrection_, true);
-  nodeHandle_.param("kp", kp_, 0.24);
-  nodeHandle_.param("ki", ki_, 0.67);
-  nodeHandle_.param("kd", kd_, -0.07);
-  nodeHandle_.param("weight_factor", weightingFactor_, 1.0);
-  nodeHandle_.param("run_hind_leg_stance_detection", runHindLegStanceDetection_, true); // TODO: add to config file
+  nodeHandle_.param("run_foot_tip_elevation_map_enhancements", runFootTipElevationMapEnhancements_, true);
+  nodeHandle_.param("run_hind_leg_stance_detection", runHindLegStanceDetection_, true);
+  nodeHandle_.param("stance_detection_method", stanceDetectionMethod_, string("start"));
+  nodeHandle_.param("use_bag", useBag_, false); // SP
 
+  nodeHandle_.param("run_support_surface_estimation", runSupportSurfaceEstimation_, false); // DR, SS??
 
-
-  // For filter chain.
-  //nodeHandle_.param("filter_chain_parameter_name", filterChainParametersName_, std::string("/grid_map_filter_chain_one"));
-  //if(!filterChain_.configure("/grid_map_filter_chain_one", nodeHandle_)){
-  //    std::cout << "Could not configure the filter chain!!" << std::endl;
-  //    return;
-  //}
-  //if(!filterChain2_.configure("/grid_map_filter_chain_two", nodeHandle_)){
-  //    std::cout << "INBETWEEN Prob" << std::endl;
-  //    std::cout << "Could not configure the filter chain!!" << std::endl;
-  //    return;
-  //}
-
-  bool use_bag = true;
-
-  // (New:) Foot tip position Subscriber for Foot tip - Elevation comparison
-  // TESTED BY CHANGING IF SCOPES..
-
-
-  std::cout << "this is getting kafkaesque if this works here: " << map_.rawMap_.exists("elevation") << std::endl;
-
-  //! Uncomment:
-  if(driftAdjustment_){
-      if(!use_bag) footTipStanceSubscriber_ = nodeHandle_.subscribe("/state_estimator/quadruped_state", 1, &StanceProcessor::footTipStanceCallback, this);
+  //if(runFootTipElevationMapEnhancements_){ TODO: uncomment
+      if(!useBag_) footTipStanceSubscriber_ = nodeHandle_.subscribe("/state_estimator/quadruped_state", 1, &StanceProcessor::footTipStanceCallback, this);
       else footTipStanceSubscriber_ = nodeHandle_.subscribe("/state_estimator/quadruped_state_remapped", 1, &StanceProcessor::footTipStanceCallback, this);
-  }
+  //} TODO: uncomment
 
-  // NEW: publish foot tip markers
+  // Publish Foot Tip Markers.
   footContactPublisher_ = nodeHandle_.advertise<visualization_msgs::Marker>("mean_foot_contact_markers_rviz", 1000);
-  elevationMapBoundPublisher_ = nodeHandle_.advertise<visualization_msgs::Marker>("map_bound_markers_rviz", 1000);
-  planeFitVisualizationPublisher_ = nodeHandle_.advertise<visualization_msgs::Marker>("plane_fit_visualization_marker_list", 1000);
-  varianceTwistPublisher_ = nodeHandle_.advertise<geometry_msgs::TwistStamped>("variances", 1000);
-  supportSurfaceAddingAreaPublisher_ = nodeHandle_.advertise<visualization_msgs::Marker>("adding_area", 1000);
-
   initializeFootTipMarkers();
 
-  // NEW: Publish data, for parameter tuning and visualization
-  //tuningPublisher1_ = nodeHandle_.advertise<elevation_mapping::PerformanceAssessment>("performance_assessment", 1000);
-
-  // NEW: publish clored pointcloud visualizing the local pointcloud variance.
-  coloredPointCloudPublisher_ = nodeHandle_.advertise<sensor_msgs::PointCloud2>("variance_pointcloud", 1);
-
-  // Initializing some class variables.
-  heightDifferenceFromComparison_ = 0.0;
-  oldDiffComparisonUpdate_ = 0.0;
-  estimatedDrift_ = 0.0;
-  estimatedDriftChange_ = 0.0;
-  estimatedDriftChangeVariance_ = 0.0;
-  usedWeight_ = 0.0;
-  footTipOutsideBounds_ = true;
-  estimatedKalmanDiff_ = 0.0;
-  estimatedKalmanDiffIncrement_ = 0.0;
-  PEstimatedKalmanDiffIncrement_ = 0.0;
-  performanceAssessment_ = 0.0;
-  performanceAssessmentFlat_ = 0.0;
-  driftEstimationPID_ = 0.0;
-  highGrassMode_ = false;
+  // Initializing Stance Bools.
   isInStanceLeft_ = false;
   isInStanceLeftHind_ = false;
   isInStanceRight_ = false;
   isInStanceRightHind_ = false;
-  supportSurfaceInitializationTrigger_ = false;
-  // END NEW
-
-  //initialTime_ = ros::Time::now();
 }
 
 StanceProcessor::~StanceProcessor()
@@ -220,26 +134,14 @@ void StanceProcessor::footTipStanceCallback(const quadruped_msgs::QuadrupedState
       RHTipState_ = quadrupedState.contacts[3].state;
   }
 
-
-  // Get footprint position and orientation.
-  //setFootprint(quadrupedState.frame_transforms[3].transform);
-
-
-  // Check if walking forward or backwards. TODO!
-  //(double)quadrupedState.twist.twist.linear.x;
-
   // Detect start and end of stances for each of the two front foot tips.
   detectStancePhase();
-  //detectStancePhase("right");
-  frameCorrection();
 
-
-
+  //frameCorrection();
 }
 
 bool StanceProcessor::detectStancePhase()
 {
-
     //boost::recursive_mutex::scoped_lock scopedLockForFootTipStanceProcessor(footTipStanceProcessorMutex_);
 
     //! TEST about the two threads
@@ -247,74 +149,69 @@ bool StanceProcessor::detectStancePhase()
     //std::cout << "This is the thread: " << this_id << std::endl;
     //! END TEST
 
-
-
     // Collect State Data for stance phase detection
     processStanceTriggerLeft_.push_back(LFTipState_);
     processStanceTriggerRight_.push_back(RFTipState_);
 
     // Constrain the size of the state arrays.
-    if(processStanceTriggerLeft_.size() > 2000){
+    if (processStanceTriggerLeft_.size() > 2000) {
         processStanceTriggerLeft_.erase(processStanceTriggerLeft_.begin());
     }
-    if(processStanceTriggerRight_.size() > 2000){
+    if (processStanceTriggerRight_.size() > 2000) {
         processStanceTriggerRight_.erase(processStanceTriggerRight_.begin());
     }
 
     // Collect the foot tip position data (if foot tip in contact). (Prevent nans)
-    if(LFTipState_ && isInStanceLeft_){
+    if (LFTipState_ && isInStanceLeft_) {
         LFTipStance_.push_back(LFTipPosition_);
     }
-    if(RFTipState_ && isInStanceRight_){
+    // For start detection scheme.
+    else if (LFTipState_ && stanceDetectionMethod_ == "start") LFTipStance_.push_back(LFTipPosition_);
+    if (RFTipState_ && isInStanceRight_) {
         RFTipStance_.push_back(RFTipPosition_);
     }
+    else if (RFTipState_ && stanceDetectionMethod_ == "start") RFTipStance_.push_back(RFTipPosition_);
 
     // Stance Detection
     templateMatchingForStanceDetection("left", processStanceTriggerLeft_);
     templateMatchingForStanceDetection("right", processStanceTriggerRight_);
 
     // Here again for hind legs..
-    if (runHindLegStanceDetection_){
-
+    if (runHindLegStanceDetection_) {
 
         // Collect State Data for stance phase detection
         processStanceTriggerLeftHind_.push_back(LHTipState_);
         processStanceTriggerRightHind_.push_back(RHTipState_);
 
         // Constrain the size of the state arrays.
-        if(processStanceTriggerLeftHind_.size() > 2000){
+        if (processStanceTriggerLeftHind_.size() > 2000) {
             processStanceTriggerLeftHind_.erase(processStanceTriggerLeftHind_.begin());
         }
-        if(processStanceTriggerRightHind_.size() > 2000){
+        if (processStanceTriggerRightHind_.size() > 2000) {
             processStanceTriggerRightHind_.erase(processStanceTriggerRightHind_.begin());
         }
 
         // Collect the foot tip position data (if foot tip in contact). (Prevent nans)
-        if(LHTipState_ && isInStanceLeftHind_){
+        if (LHTipState_ && isInStanceLeftHind_) {
             LHTipStance_.push_back(LHTipPosition_);
         }
-        if(RHTipState_ && isInStanceRightHind_){
+        else if (LHTipState_ && stanceDetectionMethod_ == "start") LHTipStance_.push_back(LHTipPosition_);
+
+        if (RHTipState_ && isInStanceRightHind_) {
             RHTipStance_.push_back(RHTipPosition_);
         }
+        else if (RHTipState_ && stanceDetectionMethod_ == "start") RHTipStance_.push_back(RHTipPosition_);
 
         // Stance Detection
         templateMatchingForStanceDetection("lefthind", processStanceTriggerLeftHind_);
         templateMatchingForStanceDetection("righthind", processStanceTriggerRightHind_);
-
-
     }
-
     return true;
 }
 
 bool StanceProcessor::templateMatchingForStanceDetection(std::string tip, std::vector<bool> &stateVector)
 {
-    //std::cout << "tip: " << tip << std::endl;
-    //std::cout << "statevec size: " << stateVector.size() << std::endl;
-    //std::cout << isInStanceLeftHind_ << std::endl;
-
-
-    // Recognition of the start of a stance phase of the front legs.
+    // Recognition of the start of a stance phase.
     if(stateVector.size() >= 16 && stateVector.end()[-1]+stateVector.end()[-2]+
             stateVector.end()[-3]+stateVector.end()[-4]+stateVector.end()[-5]+
             stateVector.end()[-6]+stateVector.end()[-7]+stateVector.end()[-8] >= 6 &&
@@ -324,28 +221,24 @@ bool StanceProcessor::templateMatchingForStanceDetection(std::string tip, std::v
         if(tip == "left" && !isInStanceLeft_){
            // std::cout << "Start of LEFT stance" << std::endl;
             isInStanceLeft_ = 1;
+            if (stanceDetectionMethod_ == "start") if(!processStance(tip)) return false;
         }
         if(tip == "lefthind" && !isInStanceLeftHind_){
             isInStanceLeftHind_ = 1;
+            if (stanceDetectionMethod_ == "start") if(!processStance(tip)) return false;
         }
         if(tip == "right" && !isInStanceRight_){
            // std::cout << "Start of Right stance" << std::endl;
             isInStanceRight_ = 1;
+            if (stanceDetectionMethod_ == "start") if(!processStance(tip)) return false;
         }
         if(tip == "righthind" && !isInStanceRightHind_){
             isInStanceRightHind_ = 1;
+            if (stanceDetectionMethod_ == "start") if(!processStance(tip)) return false;
         }
     }
 
-    // DEBUG:
-    //std::cout << "tip: (OUTSIDE the state end detector) " << tip << std::endl;
-    //std::cout << "stateVector.size: " << stateVector.size() << std::endl;
-    //std::cout << "isInstancerighthind: " << isInStanceRightHind_ << std::endl;
-    //std::cout << "processStanceTrigger: " << processStanceTriggerRightHind_.size() << std::endl;
-    //std::cout << "processStanceTrigger: clssic " << processStanceTriggerRight_.size() << std::endl;
-
-
-    // Recognition of the end of a stance phase of the front legs.
+    // Recognition of the end of a stance phase.
     if(stateVector.size() >= 16 &&
             stateVector.end()[-1] + stateVector.end()[-2] + stateVector.end()[-3]+
             stateVector.end()[-4]+stateVector.end()[-5] + stateVector.end()[-6]+
@@ -355,22 +248,22 @@ bool StanceProcessor::templateMatchingForStanceDetection(std::string tip, std::v
             stateVector.end()[-14]+stateVector.end()[-15] >=1){
 
         if(tip == "left" && isInStanceLeft_){
-            if(!processStance("left")) return false;
+            if (stanceDetectionMethod_ == "average") if(!processStance(tip)) return false;
             isInStanceLeft_ = 0;
             processStanceTriggerLeft_.clear();
         }
         if(tip == "lefthind" && isInStanceLeftHind_){
-            if(!processStance("lefthind")) return false;
+            if (stanceDetectionMethod_ == "average") if(!processStance(tip)) return false;
             isInStanceLeftHind_ = 0;
             processStanceTriggerLeftHind_.clear();
         }
         if(tip == "right" && isInStanceRight_){
-            if(!processStance("right")) return false;
+            if (stanceDetectionMethod_ == "average") if(!processStance(tip)) return false;
             isInStanceRight_ = 0;
             processStanceTriggerRight_.clear();
         }
         if(tip == "righthind" && isInStanceRightHind_){
-            if(!processStance("righthind")) return false;
+            if (stanceDetectionMethod_ == "average") if(!processStance(tip)) return false;
             isInStanceRightHind_ = 0;
             processStanceTriggerRightHind_.clear();
         }
@@ -380,33 +273,81 @@ bool StanceProcessor::templateMatchingForStanceDetection(std::string tip, std::v
 
 bool StanceProcessor::processStance(std::string tip)
 {
-    //std::cout << "Processing: " << tip <<std::endl;
 
-    // The ordering here is crucial!
 
-    bool hind = false;
-    // Delete the last 10 entries of the Foot Stance Position Vector, as these are used for transition detection
-    deleteLastEntriesOfStances(tip);
+//    // Delete the last 10 entries of the Foot Stance Position Vector, as these are used for transition detection
+    if (stanceDetectionMethod_ == "start") deleteFirstEntriesOfStances(tip);
+    if (stanceDetectionMethod_ == "average") deleteLastEntriesOfStances(tip);
+
     getAverageFootTipPositions(tip);
 
-    bool runProprioceptiveRoughnessEstimation = true;
-    if(runProprioceptiveRoughnessEstimation) proprioceptiveRoughnessEstimation(tip);
+//    bool runProprioceptiveRoughnessEstimation = true;
+//    if(runProprioceptiveRoughnessEstimation) proprioceptiveRoughnessEstimation(tip);
 
-
-    if(tip != "lefthind" && tip != "righthind") footTipElevationMapComparison(tip);
+    bool hind = false;
+    if(tip != "lefthind" && tip != "righthind") std::cout << "hind" << std::endl;//footTipElevationMapComparison(tip);
     else hind = true;
-    publishAveragedFootTipPositionMarkers(hind);
+    //publishAveragedFootTipPositionMarkers(hind);
 
+//    // Performance Assessment, sensible if wanting to tune the system while walking on flat surface.
+//    //bool runPreformanceAssessmentForFlatGround = false;
+//    //if(runPreformanceAssessmentForFlatGround) performanceAssessmentMeanElevationMap();
 
-    // Performance Assessment, sensible if wanting to tune the system while walking on flat surface.
-    //bool runPreformanceAssessmentForFlatGround = false;
-    //if(runPreformanceAssessmentForFlatGround) performanceAssessmentMeanElevationMap();
+    std::cout << "Process Stance: " << tip << std::endl;
 
-    // Data Publisher for parameter tuning.
-    //tuningPublisher1_.publish(performance_assessment_msg_); // HACKED FOR DEBUGGING!!
+    return true;
+}
 
-
-
+bool StanceProcessor::deleteFirstEntriesOfStances(std::string tip)
+{
+    // All stance entries are deleted except the last 3 ones are stored -> this gives start detection
+    if (tip == "left" && LFTipStance_.size() < 3){
+        std::cout << "WARNING: LEFT STANCE PHASE HAS TOO LITTLE ENTRIES TO BE PROCESSED" << std::endl;
+    }
+    else if (tip == "right" && RFTipStance_.size() < 3){
+        std::cout << "WARNING: RIGHT STANCE PHASE HAS TOO LITTLE ENTRIES TO BE PROCESSED" << std::endl;
+    }
+    else if (tip == "lefthind" && LHTipStance_.size() < 3){
+        std::cout << "WARNING: LEFT HIND STANCE PHASE HAS TOO LITTLE ENTRIES TO BE PROCESSED" << std::endl;
+    }
+    else if (tip == "righthind" && RHTipStance_.size() < 3){
+        std::cout << "WARNING: RIGHT HIND STANCE PHASE HAS TOO LITTLE ENTRIES TO BE PROCESSED" << std::endl;
+    }
+    else{
+        if (tip == "left"){
+            std::vector<Eigen::Vector3f> newLFTipStance;
+            for (unsigned int j = 1; j <= 3; ++j) {
+                newLFTipStance.push_back(LFTipStance_[LFTipStance_.size() - j]);     // Probably an additional -1 is needed
+            }
+            LFTipStance_.clear();
+            LFTipStance_ = newLFTipStance;
+            //LFTipStance_.erase(LFTipStance_.begin()); // pop_front (.erase(begin)) // TODO
+        }
+        if (tip == "right"){
+            std::vector<Eigen::Vector3f> newRFTipStance;
+            for (unsigned int j = 1; j <= 3; ++j) {
+                newRFTipStance.push_back(RFTipStance_[RFTipStance_.size() - j]);     // Probably an additional -1 is needed
+            }
+            RFTipStance_.clear();
+            RFTipStance_ = newRFTipStance;
+        }
+        if (tip == "lefthind"){
+            std::vector<Eigen::Vector3f> newLHTipStance;
+            for (unsigned int j = 1; j <= 3; ++j) {
+                newLHTipStance.push_back(LHTipStance_[LHTipStance_.size() - j]);     // Probably an additional -1 is needed
+            }
+            LHTipStance_.clear();
+            LHTipStance_ = newLHTipStance;
+        }
+        if (tip == "righthind"){
+            std::vector<Eigen::Vector3f> newRHTipStance;
+            for (unsigned int j = 1; j <= 3; ++j) {
+                newRHTipStance.push_back(RHTipStance_[RHTipStance_.size() - j]);     // Probably an additional -1 is needed
+            }
+            RHTipStance_.clear();
+            RHTipStance_ = newRHTipStance;
+        }
+    }
     return true;
 }
 
@@ -476,10 +417,11 @@ bool StanceProcessor::getAverageFootTipPositions(std::string tip)
         meanStance_ = totalStance / float(stance.size());
     }
 
-    // Save the front mean tip positions for simple foot tip embedding into high grass detection
+    // Save the mean tip positions for simple foot tip embedding into high grass detection
     if (tip == "left") frontLeftFootTip_ = meanStance_;
     if (tip == "right") frontRightFootTip_ = meanStance_;
-
+    if (tip == "lefthind") hindLeftFootTip_ = meanStance_;
+    if (tip == "righthind") hindRightFootTip_ = meanStance_;
 
     return true;
 }

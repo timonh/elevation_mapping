@@ -181,7 +181,7 @@ public:
 
   // New
   //! Bool drift adjustment.
-  bool driftAdjustment_;
+  bool runFootTipElevationMapEnhancements_;
   // End New
 };
 

@@ -68,41 +68,11 @@ using namespace grid_map;
 namespace elevation_mapping {
 
 DriftRefinement::DriftRefinement(ros::NodeHandle nodeHandle)
-    : nodeHandle_(nodeHandle),
-      rawMap_({"elevation", "variance", "horizontal_variance_x", "horizontal_variance_y", "horizontal_variance_xy",
-              "color", "time", "lowest_scan_point", "sensor_x_at_lowest_scan", "sensor_y_at_lowest_scan",
-              "sensor_z_at_lowest_scan", "foot_tip_elevation", "support_surface", "elevation_inpainted", "elevation_smooth", "vegetation_height", "vegetation_height_smooth",
-              "support_surface", "support_surface_smooth", "support_surface_added"}),//, "support_surface_smooth_inpainted", "support_surface_added"}),
-      fusedMap_({"elevation", "upper_bound", "lower_bound", "color"}),
-      supportMap_({"elevation", "variance", "elevation_gp", "elevation_gp_added"}), // New
-      supportMapGP_({"elevation_gp", "variance_gp", "elevation_gp_added", "elevation_gp_tip", "sinkage_depth_gp"}), // New
-      hasUnderlyingMap_(false),
-      visibilityCleanupDuration_(0.0),
-      filterChain_("grid_map::GridMap"), // New
-      filterChain2_("grid_map::GridMap")
+    : nodeHandle_(nodeHandle)
 {
-    // Timon added foot_tip_elevation layer
-  rawMap_.setBasicLayers({"elevation", "variance"});
-  fusedMap_.setBasicLayers({"elevation", "upper_bound", "lower_bound"});
-  supportMap_.setBasicLayers({"elevation", "variance", "elevation_gp", "elevation_gp_added"}); // New
-  supportMapGP_.setBasicLayers({"elevation_gp", "variance_gp", "elevation_gp_added", "elevation_gp_tip", "sinkage_depth_gp"}); // New
 
-  //! uncomment!!
-  //clear();
-
-  // TEST:
+  std::cout << "called the drift refinement Constructor" << std::endl;
   elevationMapCorrectedPublisher_ = nodeHandle_.advertise<grid_map_msgs::GridMap>("elevation_map_drift_adjusted", 1);
-  elevationMapSupportPublisher_ = nodeHandle_.advertise<grid_map_msgs::GridMap>("support_added", 1);
-  elevationMapInpaintedPublisher_ = nodeHandle_.advertise<grid_map_msgs::GridMap>("support_surface", 1);
-  elevationMapGPPublisher_ = nodeHandle_.advertise<grid_map_msgs::GridMap>("support_surface_gp", 1);
-  // END TEST
-
-  elevationMapRawPublisher_ = nodeHandle_.advertise<grid_map_msgs::GridMap>("elevation_map_raw", 1);
-  elevationMapFusedPublisher_ = nodeHandle_.advertise<grid_map_msgs::GridMap>("elevation_map", 1);
-  //if (!underlyingMapTopic_.empty()) underlyingMapSubscriber_ =
-  //    nodeHandle_.subscribe(underlyingMapTopic_, 1, &ElevationMap::underlyingMapCallback, this);
-  // TODO if (enableVisibilityCleanup_) when parameter cleanup is ready.
-  visbilityCleanupMapPublisher_ = nodeHandle_.advertise<grid_map_msgs::GridMap>("visibility_cleanup_map", 1);
 
   // Launching parameters.
   nodeHandle_.param("run_drift_adjustment", driftAdjustment_, true);
@@ -113,24 +83,6 @@ DriftRefinement::DriftRefinement(ros::NodeHandle nodeHandle)
   nodeHandle_.param("weight_factor", weightingFactor_, 1.0);
   nodeHandle_.param("run_hind_leg_stance_detection", runHindLegStanceDetection_, true); // TODO: add to config file
 
-  // For filter chain.
-  nodeHandle_.param("filter_chain_parameter_name", filterChainParametersName_, std::string("/grid_map_filter_chain_one"));
-  if(!filterChain_.configure("/grid_map_filter_chain_one", nodeHandle_)){
-      std::cout << "Could not configure the filter chain!!" << std::endl;
-      return;
-  }
-  if(!filterChain2_.configure("/grid_map_filter_chain_two", nodeHandle_)){
-      std::cout << "INBETWEEN Prob" << std::endl;
-      std::cout << "Could not configure the filter chain!!" << std::endl;
-      return;
-  }
-
-  bool use_bag = true;
-
-  // (New:) Foot tip position Subscriber for Foot tip - Elevation comparison
-  // TESTED BY CHANGING IF SCOPES..
-
-
   //! Uncomment:
   //if(driftAdjustment_){
   //    if(!use_bag) footTipStanceSubscriber_ = nodeHandle_.subscribe("/state_estimator/quadruped_state", 1, &DriftRefinement::footTipStanceCallback, this);
@@ -138,14 +90,11 @@ DriftRefinement::DriftRefinement(ros::NodeHandle nodeHandle)
   //}
 
   // NEW: publish foot tip markers
-  footContactPublisher_ = nodeHandle_.advertise<visualization_msgs::Marker>("mean_foot_contact_markers_rviz", 1000);
+  //footContactPublisher_ = nodeHandle_.advertise<visualization_msgs::Marker>("mean_foot_contact_markers_rviz", 1000); // STANCE PROCESSOR
   elevationMapBoundPublisher_ = nodeHandle_.advertise<visualization_msgs::Marker>("map_bound_markers_rviz", 1000);
-  planeFitVisualizationPublisher_ = nodeHandle_.advertise<visualization_msgs::Marker>("plane_fit_visualization_marker_list", 1000);
-  varianceTwistPublisher_ = nodeHandle_.advertise<geometry_msgs::TwistStamped>("variances", 1000);
-  supportSurfaceAddingAreaPublisher_ = nodeHandle_.advertise<visualization_msgs::Marker>("adding_area", 1000);
-
-  //! uncomment!!
-  //initializeFootTipMarkers();
+  //planeFitVisualizationPublisher_ = nodeHandle_.advertise<visualization_msgs::Marker>("plane_fit_visualization_marker_list", 1000);
+  //varianceTwistPublisher_ = nodeHandle_.advertise<geometry_msgs::TwistStamped>("variances", 1000);
+  //supportSurfaceAddingAreaPublisher_ = nodeHandle_.advertise<visualization_msgs::Marker>("adding_area", 1000);
 
   // NEW: Publish data, for parameter tuning and visualization
   //tuningPublisher1_ = nodeHandle_.advertise<elevation_mapping::PerformanceAssessment>("performance_assessment", 1000);

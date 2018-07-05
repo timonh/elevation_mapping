@@ -11,9 +11,12 @@
 // Elevation Map
 #include <elevation_mapping/ElevationMap.hpp>
 
+// Drift Refinement and Support Surface Estimation
+#include <elevation_mapping/DriftRefinement.hpp>
+#include <elevation_mapping/SupportSurfaceEstimation.hpp>
+
 // Grid Map
 #include <grid_map_ros/grid_map_ros.hpp>
-
 #include <filters/filter_chain.h> // For high grass new
 #include <grid_map_msgs/GridMap.h>
 #include <grid_map_core/grid_map_core.hpp>
@@ -298,6 +301,10 @@ private:
  //! TODO: Description!
  bool processStance(std::string tip);
 
+ //! TODO: Description:
+ bool deleteFirstEntriesOfStances(std::string tip);
+
+ //! TODO: Description:
  bool deleteLastEntriesOfStances(std::string tip);
 
  //! TODO: Description!
@@ -577,7 +584,7 @@ private:
  //! driftAdjustment_: drift adjustment program running at all.
  //! applyFrameCorrection_: apply the calculated frame Correction -> if false performance measures are still calculated.
  //! runHindLegStanceDetection_: template based stance detection for hind legs for variance estimation in unseen terrain.
- bool driftAdjustment_;
+ bool runFootTipElevationMapEnhancements_;
  bool applyFrameCorrection_;
  bool runHindLegStanceDetection_;
 
@@ -646,12 +653,10 @@ private:
  double penetrationDepthVariance_;
  std::vector<double> verticalDifferenceVector_;
 
- filters::FilterChain<grid_map::GridMap> filterChain_;
- filters::FilterChain<grid_map::GridMap> filterChain2_;
  std::string filterChainParametersName_;
 
  // storage of front left foottip position for simple foot tip embedding.
- Eigen::Vector3f frontLeftFootTip_, frontRightFootTip_;
+ Eigen::Vector3f frontLeftFootTip_, frontRightFootTip_, hindLeftFootTip_, hindRightFootTip_;
 
  // Footprint storage in class member:
  geometry_msgs::Transform footprint_;
@@ -666,6 +671,17 @@ private:
 
  //! Elevation map.
  ElevationMap map_;
+
+ //! Drift Refinement Object.
+ DriftRefinement driftRefinement_;
+
+ //! Support Surface Estimation Object.
+ SupportSurfaceEstimation supportSurfaceEstimation_;
+
+ //! Parameters.
+ std::string stanceDetectionMethod_;
+ bool useBag_;
+ bool runSupportSurfaceEstimation_;
 
 };
 

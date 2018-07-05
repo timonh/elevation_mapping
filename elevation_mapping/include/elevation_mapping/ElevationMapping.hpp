@@ -16,7 +16,6 @@
 
 // FootTipElevation MapEnhancement Methods
 #include "StanceProcessor.hpp"
-#include "elevation_mapping/SupportSurfaceEstimation.hpp"
 
 // Grid Map
 #include <grid_map_msgs/GetGridMap.h>
@@ -269,9 +268,6 @@ class ElevationMapping
   //!Object of Stance Processor
   //StanceProcessor stanceProcessor_;
 
-  //! Object of Support Surface Estimation.
-  //SupportSurfaceEstimation supportSurfaceEstimation_;
-  //!
 };
 
 } /* namespace */
