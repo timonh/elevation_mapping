@@ -262,6 +262,7 @@ class ElevationMap
   friend class ElevationMapping;
   friend class StanceProcessor;
   friend class SupportSurfaceEstimation;
+  friend class DriftRefinement;
 
  private:
 

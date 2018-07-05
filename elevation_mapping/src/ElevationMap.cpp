@@ -126,7 +126,7 @@ ElevationMap::ElevationMap(ros::NodeHandle nodeHandle)
   nodeHandle_.param("stance_detection_method", stanceDetectionMethod_, string("start")); // SP
   nodeHandle_.param("add_old_support_surface_data_to_gp_training", addOldSupportSurfaceDataToGPTraining_, false); // SS
   nodeHandle_.param("use_bag", useBag_, false); // SP
-  nodeHandle_.param("run_support_surface_estimation", runSupportSurfaceEstimation_, false); // SP/DR
+  nodeHandle_.param("run_support_surface_estimation", runSupportSurfaceEstimation_, false); // DR
   nodeHandle_.param("weight_terrain_continuity", weightTerrainContinuity_, 1.0); // SS
   nodeHandle_.param("run_terrain_continuity_biasing", runTerrainContinuityBiasing_, true); // SS
   nodeHandle_.param("exponent_sinkage_depth_weight", exponentSinkageDepthWeight_, 2.0); // SS
@@ -159,7 +159,7 @@ ElevationMap::ElevationMap(ros::NodeHandle nodeHandle)
   //! Commented as moved to StanceProcessor
   // NEW: publish foot tip markers
   footContactPublisher_ = nodeHandle_.advertise<visualization_msgs::Marker>("mean_foot_contact_markers_rviz", 1000); // SP
-  elevationMapBoundPublisher_ = nodeHandle_.advertise<visualization_msgs::Marker>("map_bound_markers_rviz", 1000); // DR
+  elevationMapBoundPublisher_ = nodeHandle_.advertise<visualization_msgs::Marker>("map_bound_markers_rviz", 1000); // SP
   planeFitVisualizationPublisher_ = nodeHandle_.advertise<visualization_msgs::Marker>("plane_fit_visualization_marker_list", 1000); // DR
   varianceTwistPublisher_ = nodeHandle_.advertise<geometry_msgs::TwistStamped>("variances", 1000); // SS
   supportSurfaceAddingAreaPublisher_ = nodeHandle_.advertise<visualization_msgs::Marker>("adding_area", 1000); // SS
@@ -909,7 +909,7 @@ float ElevationMap::cumulativeDistributionFunction(float x, float mean, float st
   return 0.5 * erfc(-(x - mean) / (standardDeviation * sqrt(2.0)));
 }
 
-void ElevationMap::footTipStanceCallback(const quadruped_msgs::QuadrupedState& quadrupedState)
+void ElevationMap::footTipStanceCallback(const quadruped_msgs::QuadrupedState& quadrupedState) // SP
 {
   //boost::recursive_mutex::scoped_lock scopedLockForFootTipStanceProcessor(footTipStanceProcessorMutex_);
   // Set class variables.
@@ -944,7 +944,7 @@ void ElevationMap::footTipStanceCallback(const quadruped_msgs::QuadrupedState& q
   frameCorrection();
 }
 
-bool ElevationMap::detectStancePhase()
+bool ElevationMap::detectStancePhase() // SP
 {
 
     //boost::recursive_mutex::scoped_lock scopedLockForFootTipStanceProcessor(footTipStanceProcessorMutex_);
@@ -1018,7 +1018,7 @@ bool ElevationMap::detectStancePhase()
     return true;
 }
 
-bool ElevationMap::templateMatchingForStanceDetection(std::string tip, std::vector<bool> &stateVector)
+bool ElevationMap::templateMatchingForStanceDetection(std::string tip, std::vector<bool> &stateVector) // SP
 {
     //std::cout << "tip: " << tip << std::endl;
     //std::cout << "statevec size: " << stateVector.size() << std::endl;
@@ -1095,7 +1095,7 @@ bool ElevationMap::templateMatchingForStanceDetection(std::string tip, std::vect
     return true;
 }
 
-bool ElevationMap::processStance(std::string tip)
+bool ElevationMap::processStance(std::string tip) // SP
 {
     // The ordering here is crucial!
 
@@ -1123,7 +1123,7 @@ bool ElevationMap::processStance(std::string tip)
     return true;
 }
 
-bool ElevationMap::deleteLastEntriesOfStances(std::string tip)
+bool ElevationMap::deleteLastEntriesOfStances(std::string tip) // SP
 {
 
     // Delete the last entries of the stance, as these might be in the false state
@@ -1160,7 +1160,7 @@ bool ElevationMap::deleteLastEntriesOfStances(std::string tip)
 }
 
 //! New
-bool ElevationMap::deleteFirstEntriesOfStances(std::string tip)
+bool ElevationMap::deleteFirstEntriesOfStances(std::string tip) // SP
 {
     // All stance entries are deleted except the last 3 ones are stored -> this gives start detection
 
@@ -1216,7 +1216,7 @@ bool ElevationMap::deleteFirstEntriesOfStances(std::string tip)
 
 //! End New
 
-bool ElevationMap::getAverageFootTipPositions(std::string tip)
+bool ElevationMap::getAverageFootTipPositions(std::string tip) // SP
 {
     Eigen::Vector3f totalStance(0, 0, 0);
     std::vector<Eigen::Vector3f> stance;
@@ -1257,7 +1257,7 @@ bool ElevationMap::getAverageFootTipPositions(std::string tip)
     return true;
 }
 
-bool ElevationMap::publishAveragedFootTipPositionMarkers(bool hind)
+bool ElevationMap::publishAveragedFootTipPositionMarkers(bool hind) // SP
 {
 
     // TESTING:
@@ -1325,7 +1325,7 @@ bool ElevationMap::publishAveragedFootTipPositionMarkers(bool hind)
 }
 
 bool ElevationMap::publishFusedMapBoundMarkers(double& xTip, double& yTip,
-                                               double& elevationFused, double& upperBoundFused, double& lowerBoundFused)
+                                               double& elevationFused, double& upperBoundFused, double& lowerBoundFused) // SP/DR
 {
     geometry_msgs::Point p_elev, p_upper, p_lower;
     p_elev.x = p_upper.x = p_lower.x = xTip;
@@ -1359,7 +1359,7 @@ bool ElevationMap::publishFusedMapBoundMarkers(double& xTip, double& yTip,
     return true;
 }
 
-bool ElevationMap::footTipElevationMapComparison(std::string tip)
+bool ElevationMap::footTipElevationMapComparison(std::string tip) // DR
 {
     //boost::recursive_mutex::scoped_lock scopedLockForFootTipStanceProcessor(footTipStanceComparisonMutex_);
     //boost::recursive_mutex::scoped_lock scopedLockForFootTipStanceProcessor(footTipStanceProcessorMutex_);
@@ -1670,7 +1670,7 @@ std::tuple<double, double> ElevationMap::filteredDriftEstimation(double diffComp
     return std::make_tuple(measDrift, PMeasDrift);
 }
 
-std::tuple<double, double, double> ElevationMap::getFusedCellBounds(const Eigen::Vector2d& position, const Eigen::Array2d& length)
+std::tuple<double, double, double> ElevationMap::getFusedCellBounds(const Eigen::Vector2d& position, const Eigen::Array2d& length) // DR
 {
     //boost::recursive_mutex::scoped_lock scopedLockForFootTipComparison(footTipStanceComparisonMutex_);
    // boost::recursive_mutex::scoped_lock scopedLock(fusedMapMutex_);
@@ -1712,7 +1712,7 @@ bool ElevationMap::frameCorrection()
     return true;
 }
 
-float ElevationMap::differenceCalculationUsingPID()
+float ElevationMap::differenceCalculationUsingPID() // DR
 {
     // TODO: Tune these, they are only guessed so far.
     float kp = kp_;
@@ -1759,7 +1759,7 @@ double ElevationMap::driftCalculationUsingPID(std::string tip){
     else return 0.0;
 }
 
-float ElevationMap::gaussianWeightedDifferenceIncrement(double lowerBound, double elevation, double upperBound, double diff)
+float ElevationMap::gaussianWeightedDifferenceIncrement(double lowerBound, double elevation, double upperBound, double diff) // DR
 {
     diff -= heightDifferenceFromComparison_;
 
@@ -3390,17 +3390,10 @@ bool ElevationMap::mainGPRegression(double tileResolution, double tileDiameter, 
         varianceTwistPublisher_.publish(adaptationMsg);
     }
 
-
-
     //footTipElevationMapLayerGP(tip);
-
-
-
     supportSurfaceUpperBoundingGP(rawMap_, supportMapGP_);
 
-
    // rawMap_["elevation_gp_added_raw"] = supportMapGP_["elevation_gp_added"]; // REMOVE IF SLOW
-
 
     // Publish map
     grid_map_msgs::GridMap mapMessageGP;

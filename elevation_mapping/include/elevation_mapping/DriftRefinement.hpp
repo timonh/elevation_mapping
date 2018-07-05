@@ -8,6 +8,9 @@
 
 #pragma once
 
+// Elevation Mapping
+#include <elevation_mapping/ElevationMap.hpp>
+
 // Grid Map
 #include <grid_map_ros/grid_map_ros.hpp>
 
@@ -253,6 +256,7 @@ public:
  void footTipStanceCallback(const quadruped_msgs::QuadrupedState& quadrupedState);
 
  friend class ElevationMapping;
+ friend class StanceProcessor;
 
 private:
 
@@ -312,7 +316,7 @@ private:
  bool templateMatchingForStanceDetection(std::string tip, std::vector<bool> &stateVector);
 
  //! TODO: Description:
- bool footTipElevationMapComparison(std::string mode);
+ bool footTipElevationMapComparison(std::string mode, Eigen::Vector3f& meanStance);
 
  //! TODO: Description:
  std::tuple<double, double> filteredDriftEstimation(double diffComparisonUpdate, float estDrift, float PEstDrift);
@@ -657,6 +661,13 @@ private:
 
  // Foot tip position history for GP.
  std::vector<grid_map::Position3> footTipHistoryGP_;
+
+ // Parameters.
+ bool runSupportSurfaceEstimation_;
+ bool runHighGrassDetection_;
+
+ // Elevation Map
+ ElevationMap map_;
 
 };
 

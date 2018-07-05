@@ -308,7 +308,7 @@ private:
  bool deleteLastEntriesOfStances(std::string tip);
 
  //! TODO: Description!
- bool getAverageFootTipPositions(std::string tip);
+ Eigen::Vector3f getAverageFootTipPositions(std::string tip);
 
  //! TODO: Description!
  bool publishAveragedFootTipPositionMarkers(bool hind);

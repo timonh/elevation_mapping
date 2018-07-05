@@ -77,6 +77,8 @@ StanceProcessor::StanceProcessor(ros::NodeHandle nodeHandle)
 {
   std::cout << "called the stanceprocessor Constructor" << std::endl;
 
+
+
   // Launching parameters.
   nodeHandle_.param("run_foot_tip_elevation_map_enhancements", runFootTipElevationMapEnhancements_, true);
   nodeHandle_.param("run_hind_leg_stance_detection", runHindLegStanceDetection_, true);
@@ -92,6 +94,7 @@ StanceProcessor::StanceProcessor(ros::NodeHandle nodeHandle)
 
   // Publish Foot Tip Markers.
   footContactPublisher_ = nodeHandle_.advertise<visualization_msgs::Marker>("mean_foot_contact_markers_rviz", 1000);
+  elevationMapBoundPublisher_ = nodeHandle_.advertise<visualization_msgs::Marker>("map_bound_markers_rviz", 1000);
   initializeFootTipMarkers();
 
   // Initializing Stance Bools.
@@ -103,6 +106,52 @@ StanceProcessor::StanceProcessor(ros::NodeHandle nodeHandle)
 
 StanceProcessor::~StanceProcessor()
 {
+}
+
+bool StanceProcessor::initializeFootTipMarkers()
+{
+    // Color and shape definition of markers for foot tip ground contact visualization.
+    footContactMarkerList_.header.frame_id = elevationMapBoundMarkerList_.header.frame_id = "odom";
+    footContactMarkerList_.header.stamp = elevationMapBoundMarkerList_.header.stamp = ros::Time();
+    footContactMarkerList_.ns = elevationMapBoundMarkerList_.ns = "elevation_mapping";
+    footContactMarkerList_.id = elevationMapBoundMarkerList_.id = 0;
+    footContactMarkerList_.type = elevationMapBoundMarkerList_.type = visualization_msgs::Marker::SPHERE_LIST;
+    footContactMarkerList_.action = elevationMapBoundMarkerList_.action = visualization_msgs::Marker::ADD;
+    footContactMarkerList_.pose.orientation.x = elevationMapBoundMarkerList_.pose.orientation.x = 0.0;
+    footContactMarkerList_.pose.orientation.y = elevationMapBoundMarkerList_.pose.orientation.y = 0.0;
+    footContactMarkerList_.pose.orientation.z = elevationMapBoundMarkerList_.pose.orientation.z = 0.0;
+    footContactMarkerList_.pose.orientation.w = elevationMapBoundMarkerList_.pose.orientation.w = 1.0;
+    footContactMarkerList_.scale.x = 0.03;
+    footContactMarkerList_.scale.y = 0.03;
+    footContactMarkerList_.scale.z = 0.03;
+    elevationMapBoundMarkerList_.scale.x = 0.02;
+    elevationMapBoundMarkerList_.scale.y = 0.02;
+    elevationMapBoundMarkerList_.scale.z = 0.02;
+    footContactMarkerList_.color.a = elevationMapBoundMarkerList_.color.a = 1.0; // Don't forget to set the alpha!
+    footContactMarkerList_.color.r = elevationMapBoundMarkerList_.color.r = 0.0;
+    footContactMarkerList_.color.g = elevationMapBoundMarkerList_.color.g = 1.0;
+    footContactMarkerList_.color.b = elevationMapBoundMarkerList_.color.b = 0.7;
+
+    // Visualize the plane, that is fit to the foot tip in a least squares fashion.
+    footTipPlaneFitVisualization_.header.frame_id = "odom";
+    footTipPlaneFitVisualization_.header.stamp = ros::Time();
+    footTipPlaneFitVisualization_.ns = "elevation_mapping";
+    footTipPlaneFitVisualization_.id = 0;
+    footTipPlaneFitVisualization_.type = visualization_msgs::Marker::CUBE_LIST;
+    footTipPlaneFitVisualization_.action = visualization_msgs::Marker::ADD;
+    footTipPlaneFitVisualization_.pose.orientation.x = 0.0;
+    footTipPlaneFitVisualization_.pose.orientation.y = 0.0;
+    footTipPlaneFitVisualization_.pose.orientation.z = 0.0;
+    footTipPlaneFitVisualization_.pose.orientation.w = 1.0;
+    footTipPlaneFitVisualization_.scale.x = 0.07;
+    footTipPlaneFitVisualization_.scale.y = 0.07;
+    footTipPlaneFitVisualization_.scale.z = 0.07;
+    footTipPlaneFitVisualization_.color.a = 1.0;
+    footTipPlaneFitVisualization_.color.r = 0.3;
+    footTipPlaneFitVisualization_.color.g = 0.05;
+    footTipPlaneFitVisualization_.color.b = 0.55;
+
+    return true;
 }
 
 void StanceProcessor::footTipStanceCallback(const quadruped_msgs::QuadrupedState& quadrupedState)
@@ -274,20 +323,19 @@ bool StanceProcessor::templateMatchingForStanceDetection(std::string tip, std::v
 bool StanceProcessor::processStance(std::string tip)
 {
 
-
 //    // Delete the last 10 entries of the Foot Stance Position Vector, as these are used for transition detection
     if (stanceDetectionMethod_ == "start") deleteFirstEntriesOfStances(tip);
     if (stanceDetectionMethod_ == "average") deleteLastEntriesOfStances(tip);
 
-    getAverageFootTipPositions(tip);
+    Eigen::Vector3f meanStance = getAverageFootTipPositions(tip);
 
 //    bool runProprioceptiveRoughnessEstimation = true;
 //    if(runProprioceptiveRoughnessEstimation) proprioceptiveRoughnessEstimation(tip);
 
     bool hind = false;
-    if(tip != "lefthind" && tip != "righthind") std::cout << "hind" << std::endl;//footTipElevationMapComparison(tip);
+    if(tip != "lefthind" && tip != "righthind") driftRefinement_.footTipElevationMapComparison(tip, meanStance);
     else hind = true;
-    //publishAveragedFootTipPositionMarkers(hind);
+    publishAveragedFootTipPositionMarkers(hind);
 
 //    // Performance Assessment, sensible if wanting to tune the system while walking on flat surface.
 //    //bool runPreformanceAssessmentForFlatGround = false;
@@ -386,7 +434,7 @@ bool StanceProcessor::deleteLastEntriesOfStances(std::string tip)
     return true;
 }
 
-bool StanceProcessor::getAverageFootTipPositions(std::string tip)
+Eigen::Vector3f StanceProcessor::getAverageFootTipPositions(std::string tip)
 {
     Eigen::Vector3f totalStance(0, 0, 0);
     std::vector<Eigen::Vector3f> stance;
@@ -423,17 +471,11 @@ bool StanceProcessor::getAverageFootTipPositions(std::string tip)
     if (tip == "lefthind") hindLeftFootTip_ = meanStance_;
     if (tip == "righthind") hindRightFootTip_ = meanStance_;
 
-    return true;
+    return meanStance_;
 }
 
 bool StanceProcessor::publishAveragedFootTipPositionMarkers(bool hind)
 {
-
-    // TESTING:
-   // std::cout << "xTip: " << meanStance_(0) << std::endl;
-   // std::cout << "yTip: " << meanStance_(0) << std::endl;
-    // END TESTING
-
     // Positions for publisher.
     geometry_msgs::Point p;
     p.x = meanStance_(0);
@@ -461,12 +503,12 @@ bool StanceProcessor::publishAveragedFootTipPositionMarkers(bool hind)
     // If outside the area, where comparison can be made (i.e. no elevation map value is found) set black color.
     // Set yellow if foot tip is outside the bounds of the fused map.
     Position coloringPosition(p.x, p.y);
-    if (isnan(map_.rawMap_.atPosition("elevation", coloringPosition))){
+    //if (isnan(map_.rawMap_.atPosition("elevation", coloringPosition))){
         c.g = 0;
         c.b = 0;
         c.r = 0;
-    }
-    else if(footTipOutsideBounds_) c.g = 0.9;
+    //}
+    //else if(footTipOutsideBounds_) c.g = 0.9;
 
     //scopedLock.unlock();
 
@@ -496,6 +538,9 @@ bool StanceProcessor::publishAveragedFootTipPositionMarkers(bool hind)
 bool StanceProcessor::publishFusedMapBoundMarkers(double& xTip, double& yTip,
                                                double& elevationFused, double& upperBoundFused, double& lowerBoundFused)
 {
+
+    // TODO: get the values from the drift adjustment and publish the map bound markers.
+
     geometry_msgs::Point p_elev, p_upper, p_lower;
     p_elev.x = p_upper.x = p_lower.x = xTip;
     p_elev.y = p_upper.y = p_lower.y = yTip;
@@ -526,645 +571,6 @@ bool StanceProcessor::publishFusedMapBoundMarkers(double& xTip, double& yTip,
     elevationMapBoundPublisher_.publish(elevationMapBoundMarkerList_);
 
     return true;
-}
-
-bool StanceProcessor::footTipElevationMapComparison(std::string tip)
-{
-    //boost::recursive_mutex::scoped_lock scopedLockForFootTipStanceProcessor(footTipStanceComparisonMutex_);
-    //boost::recursive_mutex::scoped_lock scopedLockForFootTipStanceProcessor(footTipStanceProcessorMutex_);
-    //boost::recursive_mutex::scoped_lock scopedLock(rawMapMutex_);
-
-
-    // New version
-    double xTip, yTip, zTip = 0;
-    xTip = meanStance_(0);
-    yTip = meanStance_(1);
-    zTip = meanStance_(2);
-
-
-    // TODO: Clean nan supression scheme.
-    bool useNewMethod = true;
-    if(useNewMethod){
-
-        // Offset of each step versus Elevation map.
-        double verticalDifference = 0;
-        // Weighted offset depending on the upper and lower bounds of the fused map.
-        double weightedVerticalDifferenceIncrement = 0.0;
-
-        // Horizontal position of the foot tip.
-        Position tipPosition(xTip, yTip);
-
-        // New here, check what isInside does..
-
-        //! commented this. -> at some point: create object of support surface estimation..
-        //if(rawMap_.isInside(tipPosition)) updateSupportSurfaceEstimation(tip); // NEW !!!!!
-        //else std::cout << "FOOT TIP CONSIDERED NOT TO BE INSIDE!!!!! \n \n \n \n " << std::endl;
-
-        // Make sure that the state is 1 and the foot tip is inside area covered by the elevation map.
-        if(map_.rawMap_.isInside(tipPosition) && !isnan(heightDifferenceFromComparison_)){ // HACKED FOR TESTS!!!
-            float heightMapRaw = map_.rawMap_.atPosition("elevation", tipPosition);
-            float varianceMapRaw = map_.rawMap_.atPosition("variance", tipPosition);
-            float heightMapRawElevationCorrected = map_.rawMap_.atPosition("elevation", tipPosition) + heightDifferenceFromComparison_; // Changed, since frame transformed grid map used.
-
-            // Supress nans.
-            if(!isnan(heightMapRaw)){
-
-                // Calculate difference.
-                verticalDifference = zTip - heightMapRaw;
-                double verticalDifferenceCorrected = zTip - heightMapRawElevationCorrected;
-               // std::cout << "HeightDifference CLASSICAL:    " << verticalDifference << "        HeightDifference CORRECTED:    " << verticalDifferenceCorrected << std::endl;
-
-                // New Tuning piblisher.
-
-                //performance_assessment_msg_.first_measure = verticalDifferenceCorrected;
-
-                // Wait some stances to get sorted at the beginning.
-                if(weightedDifferenceVector_.size() >= 4) performanceAssessment_ += fabs(verticalDifferenceCorrected);
-                //std::cout << "Cumulative Performance Value (summed up weighted differences): " << performanceAssessment_ << std::endl;
-
-
-                //performance_assessment_msg_.second_measure = performanceAssessment_;
-
-                // Use 3 standard deviations of the uncertainty ellipse of the foot tip positions as fusion area.
-                Eigen::Array2d ellipseAxes;
-                ellipseAxes[0] = ellipseAxes[1] = std::max(6 * sqrt(map_.rawMap_.atPosition("horizontal_variance_x",tipPosition)),
-                                          6 * sqrt(map_.rawMap_.atPosition("horizontal_variance_y",tipPosition)));
-
-                // Get lower and upper bound of the fused map.
-                auto boundTuple = getFusedCellBounds(tipPosition, ellipseAxes);
-                double lowerBoundFused = std::get<0>(boundTuple);
-                double elevationFused = std::get<1>(boundTuple);
-                double upperBoundFused = std::get<2>(boundTuple);
-               // std::cout << "lower: " << lowerBoundFused << " elev: " << elevationFused << " upper: " << upperBoundFused << std::endl;
-                weightedVerticalDifferenceIncrement = gaussianWeightedDifferenceIncrement(lowerBoundFused, elevationFused, upperBoundFused, verticalDifference);
-
-               // std::cout << "weightedVerticalDifferenceIncrement " << weightedVerticalDifferenceIncrement << std::endl;
-
-
-                //bool runPenetrationDepthVarianceEstimation = true;
-                //if (runPenetrationDepthVarianceEstimation) penetrationDepthVarianceEstimation(tip, verticalDifference);
-
-                // DEBUG:
-//                if (isnan(weightedVerticalDifferenceIncrement)){
-//                    std::cout << "NAN IN WEIGHTED DIFFERENCE INCREMENT!!!!!!!" << std::endl;
-//                    std::cout << "" << std::endl;
-//                    std::cout << "" << std::endl;
-//                    std::cout << "" << std::endl;
-//                    weightedVerticalDifferenceIncrement = 0;
-//                }
-                // END DEBUG
-
-                // TODO: Switch ON and OFF
-                publishFusedMapBoundMarkers(xTip, yTip, elevationFused, upperBoundFused, lowerBoundFused);
-
-
-                // TESTING DRIFT STUFF
-//                auto driftTuple = filteredDriftEstimation(weightedVerticalDifferenceIncrement, estimatedDriftChange_, estimatedDriftChangeVariance_);
-//                estimatedDriftChange_ = std::get<0>(driftTuple);
-//                estimatedDriftChangeVariance_ = std::get<1>(driftTuple);
-//                estimatedDrift_ += estimatedDriftChange_;
-//                std::cout << "ESTIMATED DRIFT: " << estimatedDrift_ << std::endl;
-//                std::cout << "ESTIMATED DRIFT Change: " << estimatedDriftChange_ << std::endl;
-//                std::cout << "ESTIMATED DRIFT Change Variance: " << estimatedDriftChangeVariance_ << std::endl;
-
-//                oldDiffComparisonUpdate_ = weightedVerticalDifferenceIncrement;
-//                std::cout << "ESTIMATED oldDRIFT: " << oldDiffComparisonUpdate_ << std::endl;
-                // END TESTING
-
-
-                // TODO: test validity of these:
-
-                // DEBUG
-              //  std::cout << "heightDiff befor weighted difference vector creation: " << heightDifferenceFromComparison_ <<
-              //               " weightedVerticalDiffIncrement: " << weightedVerticalDifferenceIncrement << std::endl;
-
-                // Store the vertical difference history in a vector for PID controlling.
-                weightedDifferenceVector_.push_back(heightDifferenceFromComparison_ + weightedVerticalDifferenceIncrement); // TODO: check viability
-                if(weightedDifferenceVector_.size() > 6) weightedDifferenceVector_.erase(weightedDifferenceVector_.begin());
-             //   std::cout << "Weighted Height Difference: " << weightedDifferenceVector_[0] << "\n";
-
-                // Longer weightedDifferenceVector for PID drift calculation
-                if(!isnan(heightDifferenceFromComparison_)) PIDWeightedDifferenceVector_.push_back(heightDifferenceFromComparison_); // Removed the vertical difference increment, TEST IT!
-                if(PIDWeightedDifferenceVector_.size() >= 30) PIDWeightedDifferenceVector_.erase(PIDWeightedDifferenceVector_.begin());
-
-
-                // New: create one for the left and one for the right foot tips, to get separate drift estimation
-                //if (tip == "right")
-
-                // TODO: for Kalman drift estimation, and PID with left and right separated...
-
-                // PID height offset calculation.
-                double heightDiffPID = differenceCalculationUsingPID();
-
-                // Avoid Old Nans to be included. TEST!! // TODO: check where nans might come from to avoid them earlier
-//                if(!isnan(heightDiffPID))
-
-//                // PID based drift estimation.
-//                driftEstimationPID_ = driftCalculationUsingPID(tip);
-
-
-//                if (isnan(driftEstimationPID_)){
-//                    std::cout << "NULLED THE DRIFT FOR NAN REASONS!! \n";
-//                    driftEstimationPID_ = 0.0;
-//                }
-
-//                double driftEstimationPIDadder = 0;
-//                if (heightDiffPID != 0.0) driftEstimationPIDadder = driftEstimationPID_ * (heightDiffPID/fabs(heightDiffPID));
-//                else driftEstimationPIDadder = driftEstimationPID_;
-
-                // TESTING, adjusted this, check consequences..  // HACKED ALSO IN IF ARGUMENT!!! // Hacked from minus to plus!!!!
-                if(applyFrameCorrection_ && !isnan(heightDiffPID)) heightDifferenceFromComparison_ = heightDiffPID;// + 0 * driftEstimationPIDadder;// - driftEstimationPIDadder;//  driftEstimationPID_; //! HACKED FOR TESTING< ABSOLUTELY TAKE OUT AGAIN!!!
-                else heightDifferenceFromComparison_ = 0.0;
-                //if(applyFrameCorrection_ && !footTipOutsideBounds_)
-
-                // For Tuning.
-                //performance_assessment_msg_.third_measure = heightDifferenceFromComparison_;
-
-                // Kalman Filter based offset calculation.
-                //auto diffTuple = differenceCalculationUsingKalmanFilter();
-                //estimatedKalmanDiffIncrement_ =  std::get<0>(diffTuple);
-                //estimatedKalmanDiff_ += estimatedKalmanDiffIncrement_;
-                //PEstimatedKalmanDiffIncrement_ = std::get<1>(diffTuple);
-                //std::cout << "Kalman Filtered Difference Estimate!" << estimatedKalmanDiff_ << "VS. PID Difference: " << heightDifferenceFromComparison_ << std::endl;
-                // TESTING:
-                //heightDifferenceFromComparison_ = estimatedKalmanDiff_;
-
-
-
-                //performance_assessment_msg_.fifth_measure = driftEstimationPID_;
-
-                double second_measure_factor = -10000.0;
-                //performance_assessment_msg_.second_measure = driftEstimationPID_ * weightedDifferenceVector_[5] * second_measure_factor;
-
-             //   std::cout << "weightedDifferenceVector!!: LAst element: " << weightedDifferenceVector_[5] << " Drift Est PID!!!:::::: " << (double)driftEstimationPID_ << std::endl;
-             //   std::cout << "heightDifferenceFromComparison::: " << heightDifferenceFromComparison_ << std::endl;
-
-                // TODO: Add some low pass filtering: FUTURE: Low passing for Mode changing..
-                // Low pass filtering for robust high grass detection ****************************************************
-                //if (grassDetectionHistory_.size() > 2) grassDetectionHistory_.erase(grassDetectionHistory_.begin());
-                //if (performance_assessment_msg_.second_measure > 0.1){
-                //    std::cout << "ADDED A 1 TO HIGH GRASS FILTERING!!" << std::endl;
-                //    grassDetectionHistory_.push_back(1);
-                //}
-                //else grassDetectionHistory_.push_back(0);
-
-                //int sum_of_elems = 0;
-                //for (bool n : grassDetectionHistory_)
-                //    sum_of_elems += n;
-                //if (sum_of_elems > 0)
-                   // std::cout << "HIGH GRASS MODE ACTIVATED!!!!!" << "\n" << "\n" << "\n" << "\n" << "\n" << std::endl;
-                // End low pass filtering  ************************************************
-
-
-
-
-            }
-            else{
-                //if(!isnan(driftEstimationPID_)) heightDifferenceFromComparison_ += driftEstimationPID_; // HACKED AWAY FOR TESTING!
-                //std::cout << "heightDifferenceFromComparison_ was Incremented by estimated Drift because NAN was found: " << (double)driftEstimationPID_ << std::endl;
-
-                // TODO: consider to set the height difference to zero when walking out of the map!!
-                // Delete the weighted Difference Vector if walking outside of the known mapped area to avoid large corrections when reentering..
-                if (weightedDifferenceVector_.size() > 0) weightedDifferenceVector_.erase(weightedDifferenceVector_.begin());
-                else heightDifferenceFromComparison_ = 0.0;
-            }
-        }
-        else{
-
-            std::cout << "heightDifferenceFromComparison_ wasnt changed because tip is not inside map area" << std::endl;
-
-
-            // Delete the weighted Difference Vector if walking outside of the known mapped area to avoid large corrections when reentering..
-            if (weightedDifferenceVector_.size() > 0) weightedDifferenceVector_.erase(weightedDifferenceVector_.begin());
-            else heightDifferenceFromComparison_ = 0.0;
-        }
-    }
-
-    // Publish frame, offset by the height difference parameter.
-    //frameCorrection();
-
-    std::cout << "foot tip comparison done .. " << std::endl;
-
-
-
-    // Publish the elevation map with the new layer, at the frequency of the stances.
-    grid_map_msgs::GridMap mapMessage;
-    GridMapRosConverter::toMessage(map_.rawMap_, mapMessage);
-    mapMessage.info.header.frame_id = "odom_drift_adjusted"; //! HACKED!!
-
-    //GridMapRosConverter::fromMessage(mapMessage, rawMapCorrected)
-
-    elevationMapCorrectedPublisher_.publish(mapMessage);
-
-
-
-    return true;
-}
-
-bool StanceProcessor::initializeFootTipMarkers()
-{
-    // Color and shape definition of markers for foot tip ground contact visualization.
-    footContactMarkerList_.header.frame_id = elevationMapBoundMarkerList_.header.frame_id = "odom";
-    footContactMarkerList_.header.stamp = elevationMapBoundMarkerList_.header.stamp = ros::Time();
-    footContactMarkerList_.ns = elevationMapBoundMarkerList_.ns = "elevation_mapping";
-    footContactMarkerList_.id = elevationMapBoundMarkerList_.id = 0;
-    footContactMarkerList_.type = elevationMapBoundMarkerList_.type = visualization_msgs::Marker::SPHERE_LIST;
-    footContactMarkerList_.action = elevationMapBoundMarkerList_.action = visualization_msgs::Marker::ADD;
-    footContactMarkerList_.pose.orientation.x = elevationMapBoundMarkerList_.pose.orientation.x = 0.0;
-    footContactMarkerList_.pose.orientation.y = elevationMapBoundMarkerList_.pose.orientation.y = 0.0;
-    footContactMarkerList_.pose.orientation.z = elevationMapBoundMarkerList_.pose.orientation.z = 0.0;
-    footContactMarkerList_.pose.orientation.w = elevationMapBoundMarkerList_.pose.orientation.w = 1.0;
-    footContactMarkerList_.scale.x = 0.03;
-    footContactMarkerList_.scale.y = 0.03;
-    footContactMarkerList_.scale.z = 0.03;
-    elevationMapBoundMarkerList_.scale.x = 0.02;
-    elevationMapBoundMarkerList_.scale.y = 0.02;
-    elevationMapBoundMarkerList_.scale.z = 0.02;
-    footContactMarkerList_.color.a = elevationMapBoundMarkerList_.color.a = 1.0; // Don't forget to set the alpha!
-    footContactMarkerList_.color.r = elevationMapBoundMarkerList_.color.r = 0.0;
-    footContactMarkerList_.color.g = elevationMapBoundMarkerList_.color.g = 1.0;
-    footContactMarkerList_.color.b = elevationMapBoundMarkerList_.color.b = 0.7;
-
-    // Visualize the plane, that is fit to the foot tip in a least squares fashion.
-    footTipPlaneFitVisualization_.header.frame_id = "odom";
-    footTipPlaneFitVisualization_.header.stamp = ros::Time();
-    footTipPlaneFitVisualization_.ns = "elevation_mapping";
-    footTipPlaneFitVisualization_.id = 0;
-    footTipPlaneFitVisualization_.type = visualization_msgs::Marker::CUBE_LIST;
-    footTipPlaneFitVisualization_.action = visualization_msgs::Marker::ADD;
-    footTipPlaneFitVisualization_.pose.orientation.x = 0.0;
-    footTipPlaneFitVisualization_.pose.orientation.y = 0.0;
-    footTipPlaneFitVisualization_.pose.orientation.z = 0.0;
-    footTipPlaneFitVisualization_.pose.orientation.w = 1.0;
-    footTipPlaneFitVisualization_.scale.x = 0.07;
-    footTipPlaneFitVisualization_.scale.y = 0.07;
-    footTipPlaneFitVisualization_.scale.z = 0.07;
-    footTipPlaneFitVisualization_.color.a = 1.0;
-    footTipPlaneFitVisualization_.color.r = 0.3;
-    footTipPlaneFitVisualization_.color.g = 0.05;
-    footTipPlaneFitVisualization_.color.b = 0.55;
-
-    return true;
-}
-
-std::tuple<double, double, double> StanceProcessor::getFusedCellBounds(const Eigen::Vector2d& position, const Eigen::Array2d& length)
-{
-    //boost::recursive_mutex::scoped_lock scopedLockForFootTipComparison(footTipStanceComparisonMutex_);
-   // boost::recursive_mutex::scoped_lock scopedLock(fusedMapMutex_);
-   // boost::recursive_mutex::scoped_lock scopedLockForRawData(rawMapMutex_);
-    float upperFused, lowerFused, elevationFused;
-    bool doFuseEachStep = true;
-    if(!isnan(heightDifferenceFromComparison_) && doFuseEachStep){
-        map_.fuseArea(position, length); // HAcked object..
-        elevationFused = map_.fusedMap_.atPosition("elevation", position);
-        lowerFused = map_.fusedMap_.atPosition("lower_bound", position);
-        upperFused = map_.fusedMap_.atPosition("upper_bound", position);
-    }
-    return std::make_tuple(lowerFused, elevationFused, upperFused);
-}
-
-bool StanceProcessor::frameCorrection()
-{
-    //boost::recursive_mutex::scoped_lock scopedLock(rawMapMutex_);
-    //boost::recursive_mutex::scoped_lock scopedLockForFusedData(fusedMapMutex_);
-
-   // std::cout << "entered the frame correction" << std::endl;
-
-
-    // Transform Broadcaster for the /odom_z_corrected frame.
-    tf::Transform odomMapTransform;
-
-    odomMapTransform.setIdentity();
-
-    if (!isnan(heightDifferenceFromComparison_)) odomMapTransform.getOrigin()[2] += heightDifferenceFromComparison_;
-    else std::cout << heightDifferenceFromComparison_ << " <- height diff is this kind of NAN for some reason? \n ? \n ? \n";
-
-    //ros::Time stamp = ros::Time().fromNSec(fusedMap_.getTimestamp());
-
-    //std::cout << "TIMESTAMP PUBLISHED THE odom_drift_adjusted TRANSFORM!!: " << stamp << std::endl;
-
-    mapCorrectedOdomTransformBroadcaster_.sendTransform(tf::StampedTransform(odomMapTransform,
-                                          ros::Time().fromNSec(map_.rawMap_.getTimestamp()), "odom", "odom_drift_adjusted"));
-
-    return true;
-}
-
-float StanceProcessor::differenceCalculationUsingPID()
-{
-    // TODO: Tune these, they are only guessed so far.
-    float kp = kp_;
-    float ki = ki_;
-    float kd = kd_; // Trying PI controller for now.. (Quite good between 0 and -0.1)
-
-    // Nan prevention.
-    if(weightedDifferenceVector_.size() < 1 || isnan(weightedDifferenceVector_[1])) return 0.0; // HACKED!!!!!
-    else if(weightedDifferenceVector_.size() > 1){
-        // Calculate new total diff here
-        double totalDiff = 0.0;
-        for (auto& n : weightedDifferenceVector_)
-            totalDiff += n;
-        double meanDiff = totalDiff / float(weightedDifferenceVector_.size());
-  //      std::cout << "MeanDiff: " << meanDiff << std::endl;
-        return kp * weightedDifferenceVector_[weightedDifferenceVector_.size()-1] + ki * meanDiff +
-                kd * (weightedDifferenceVector_[weightedDifferenceVector_.size()-1] -
-                weightedDifferenceVector_[weightedDifferenceVector_.size()-2]);
-    }
-    else return 0.0;
-}
-
-bool StanceProcessor::setFootprint(const geometry_msgs::Transform& footprint){
-    footprint_ = footprint;
-    return true;
-}
-
-bool StanceProcessor::proprioceptiveRoughnessEstimation(std::string tip){
-
-
-    //! TODO next! Roughness estimate:
-    //! - variance of differences of consecutive placements of the same foot tip
-    //! - plane fit into the four feet, deviation is a roughness measure as well
-    //! - other correlation between differences? Think of that..
-
-
-
-    // Only consider area where robot is trotting for now.
-    //if (meanStance_(0) < 1.3 || meanStance_(0) > 2.75){
-    if (tip == "left"){
-        leftStanceVector_.push_back(meanStance_);
-        if (leftStanceVector_.size() > 2) leftStanceVector_.erase(leftStanceVector_.begin());
-    }
-    if (tip == "right"){
-        rightStanceVector_.push_back(meanStance_);
-        if (rightStanceVector_.size() > 2) rightStanceVector_.erase(rightStanceVector_.begin());
-    }
-    if (tip == "lefthind"){
-        leftHindStanceVector_.push_back(meanStance_);
-        if (leftHindStanceVector_.size() > 2) leftHindStanceVector_.erase(leftHindStanceVector_.begin());
-    }
-    if (tip == "righthind"){
-        rightHindStanceVector_.push_back(meanStance_);
-        if (rightHindStanceVector_.size() > 2) rightHindStanceVector_.erase(rightHindStanceVector_.begin());
-    }
-    //}
-
-
-
-    bool writeHorizontalFootTipEstimationStatisticsToFile = false;
-    if(writeHorizontalFootTipEstimationStatisticsToFile){
-        if (leftStanceVector_.size() > 1 && tip == "left"){
-            double diff = double(leftStanceVector_[1](0)-leftStanceVector_[0](0));
-            //writeFootTipStatisticsToFile(diff, "/home/timon/driftEst.txt");
-        }
-        else if(rightStanceVector_.size() > 1 && tip == "right"){
-            double diff = double(rightStanceVector_[1](0)-rightStanceVector_[0](0));
-            //writeFootTipStatisticsToFile(diff, "/home/timon/driftEst.txt");
-        }
-        else if(leftHindStanceVector_.size() > 1 && tip == "lefthind"){
-            double diff = double(rightStanceVector_[1](0)-rightStanceVector_[0](0));
-            //writeFootTipStatisticsToFile(diff, "/home/timon/driftEst.txt");
-        }
-        else if(rightHindStanceVector_.size() > 1 && tip == "righthind"){
-            double diff = double(rightStanceVector_[1](0)-rightStanceVector_[0](0));
-            //writeFootTipStatisticsToFile(diff, "/home/timon/driftEst.txt");
-        }
-    }
-    proprioceptiveVariance(tip); //! Mean drift value could be found by calibration during flat ground walking
-
-}
-
-bool StanceProcessor::proprioceptiveVariance(std::string tip){
-
-    double diff = 0.0;
-    double meanDrift = 0.467;
-    if (leftStanceVector_.size() > 1 && tip == "left"){
-        diff = double((leftStanceVector_[1](0) - leftStanceVector_[0](0)));
-    }
-    else if(rightStanceVector_.size() > 1 && tip == "right"){
-        diff = double((rightStanceVector_[1](0) - rightStanceVector_[0](0)));
-    }
-    else if(leftHindStanceVector_.size() > 1 && tip == "lefthind"){
-        diff = double((leftHindStanceVector_[1](0) - leftHindStanceVector_[0](0)));
-    }
-    else if(rightHindStanceVector_.size() > 1){
-        diff = double((rightHindStanceVector_[1](0) - rightHindStanceVector_[0](0)));
-    }
-
-    feetUnseenVarianceVector_.push_back(diff);
-    if (feetUnseenVarianceVector_.size() > 12) feetUnseenVarianceVector_.erase(feetUnseenVarianceVector_.begin());
-
-    // Calculate Variance.
-    double total = 0.0;
-    double totalSquared = 0.0;
-    for (auto& n : feetUnseenVarianceVector_){
-        total += n;
-        totalSquared += pow(n, 2);
-    }
-    double varianceConsecutiveFootTipPositions = totalSquared / (double)feetUnseenVarianceVector_.size() - pow(total/(double)feetUnseenVarianceVector_.size(), 2);
-    double mean = total/(double)feetUnseenVarianceVector_.size();
-
-    // TODO: add 4 feet plane fit variance calculation..
-    // TODO: think about what slope is adding to roughness estimate..
-    // TODO: and other roughness assessment measures
-
-  //  std::cout << "varianceConsecutiveFootTipPositions::::::::::::::::::::::: " << varianceConsecutiveFootTipPositions << std::endl;
-  //  std::cout << "Mean::::::::::::::::::::::::::: " << mean << std::endl;
-    // TODO: Consider low pass filtering effect on roughness estimation!
-
-    // Plane fitting variance:
-
-
-
-    //    for all 4 feet..
-    // TODO: Plane Fitting for the 4 foot tips to get deviation from it (formulate as variance if squared difference, is that valid?)
-    if (leftStanceVector_.size() > 0 && rightStanceVector_.size() > 0 &&
-            leftHindStanceVector_.size() > 0 && rightHindStanceVector_.size() > 0){ // Check, that at least one stance position per foot tip is available.
-        Eigen::Vector3f leftTip, rightTip, leftHindTip, rightHindTip;
-        leftTip = leftStanceVector_[leftStanceVector_.size()-1];
-        rightTip = rightStanceVector_[rightStanceVector_.size()-1];
-        leftHindTip = leftHindStanceVector_[leftHindStanceVector_.size()-1];
-        rightHindTip = rightHindStanceVector_[rightHindStanceVector_.size()-1];
-
-        double meanZelevation = (leftTip(2) + rightTip(2) + leftHindTip(2) + rightHindTip(2)) / 4.0;
-    //    std::cout << "meanzvaluefrom foottips: " << meanZelevation << std::endl;
-
-        Eigen::Matrix2f leftMat;
-        leftMat(0, 0) = pow(leftTip(0),2)+pow(rightTip(0),2) + pow(leftHindTip(0),2)+pow(rightHindTip(0),2);
-        leftMat(1, 0) = leftMat(0, 1) = leftTip(0) * leftTip(1) + rightTip(0) * rightTip(1) +
-                leftHindTip(0) * leftHindTip(1) + rightHindTip(0) * rightHindTip(1);
-        leftMat(1, 1) = pow(leftTip(1),2)+pow(rightTip(1),2) + pow(leftHindTip(1),2)+pow(rightHindTip(1),2);
-        Eigen::Vector2f rightVec;
-        rightVec(0) = leftTip(0) * (leftTip(2)-meanZelevation) + rightTip(0) * (rightTip(2)-meanZelevation) +
-                leftHindTip(0) * (leftHindTip(2)-meanZelevation) + rightHindTip(0) * (rightHindTip(2)-meanZelevation);
-        rightVec(1) = leftTip(1) * (leftTip(2)-meanZelevation) + rightTip(1) * (rightTip(2)-meanZelevation) +
-                leftHindTip(1) * (leftHindTip(2)-meanZelevation) + rightHindTip(1) * (rightHindTip(2)-meanZelevation);
-
-        Eigen::Vector2f sol = leftMat.jacobiSvd(Eigen::ComputeThinU | Eigen::ComputeThinV).solve(-rightVec);
-
-        setFootTipPlaneFitCoefficients(sol);
-        Eigen::Vector3f meanOfAllFootTips;
-        for (unsigned int j = 0; j <= 2; ++j) meanOfAllFootTips(j) = 0.25 * (leftTip(j) + rightTip(j) + leftHindTip(j) + rightHindTip(j));
-        setMeanOfAllFootTips(meanOfAllFootTips);
-
-
-        bool visualizeFootTipPlaneFit = true;
-        if (visualizeFootTipPlaneFit){
-
-            geometry_msgs::Point p1, p2, p3, p4;
-            p1.x = leftTip(0);
-            p2.x = rightTip(0);
-            p3.x = leftHindTip(0);
-            p4.x = rightHindTip(0);
-            p1.y = leftTip(1);
-            p2.y = rightTip(1);
-            p3.y = leftHindTip(1);
-            p4.y = rightHindTip(1);
-
-            // Attention: TODO mean position is important!!! (mean x and y..)
-            p1.z = -(sol(0) * (leftTip(0) - meanOfAllFootTips(0)) + sol(1) * (leftTip(1) - meanOfAllFootTips(1))) + meanZelevation;
-            p2.z = -(sol(0) * (rightTip(0) - meanOfAllFootTips(0)) + sol(1) * (rightTip(1) - meanOfAllFootTips(1))) + meanZelevation;
-            p3.z = -(sol(0) * (leftHindTip(0) - meanOfAllFootTips(0)) + sol(1) * (leftHindTip(1) - meanOfAllFootTips(1))) + meanZelevation;
-            p4.z = -(sol(0) * (rightHindTip(0) - meanOfAllFootTips(0)) + sol(1) * (rightHindTip(1) - meanOfAllFootTips(1))) + meanZelevation;
-            footTipPlaneFitVisualization_.points.push_back(p1);
-            footTipPlaneFitVisualization_.points.push_back(p2);
-            footTipPlaneFitVisualization_.points.push_back(p3);
-            footTipPlaneFitVisualization_.points.push_back(p4);
-
-            // DUDUDUDUDU
-            planeFitVisualizationPublisher_.publish(footTipPlaneFitVisualization_);
-
-            // Calculate squared difference from plane:
-            double variancePlaneFit = pow(p1.z - leftTip(2), 2) + pow(p2.z - rightTip(2), 2) +
-                    pow(p3.z - leftHindTip(2), 2) + pow(p4.z - rightHindTip(2), 2);
-      //      std::cout << "variancePlaneFit: " << variancePlaneFit << std::endl;
-
-            geometry_msgs::Twist varianceMsg;
-            varianceMsg.linear.x = varianceConsecutiveFootTipPositions;
-            varianceMsg.linear.y = variancePlaneFit;
-            varianceMsg.linear.z = varianceConsecutiveFootTipPositions + variancePlaneFit;
-
-            // set function..
-            setTerrainVariance(varianceMsg.linear.z);
-
-            //varianceMsg.angular.x = getPenetrationDepthVariance();
-           // footTipPlaneFitVisualization_.action = visualization_msgs::Marker::;
-
-            // TODO: Do visualize fitted Plane!!
-            //varianceTwistPublisher_.publish(varianceMsg);
-        }
-
-    }
-    // TODO: add Layer, that takes variace uncertainty into account.
-}
-
-float StanceProcessor::gaussianWeightedDifferenceIncrement(double lowerBound, double elevation, double upperBound, double diff)
-{
-    diff -= heightDifferenceFromComparison_;
-
-    // New Stuff for testing!! ********************************************************************************************************
-    //! For testing
-    if(elevation + diff < lowerBound + 0.9 * (elevation - lowerBound)){
-      //  std::cout << "************************************* SOFT LOWER!! **************************!!!!!!!!!!!!!!!!!!!!" << std::endl;
-        grassDetectionHistory2_.push_back(1);
-    }
-    else{
-        grassDetectionHistory2_.push_back(0);
-    }
-    if (grassDetectionHistory2_.size() > 12) grassDetectionHistory2_.erase(grassDetectionHistory2_.begin());
-
-    // TODO: At some point create a triger fct, that does this..
-    int triggerSum = 0;
-    for (auto n : grassDetectionHistory2_){
-        triggerSum += n;
-    }
-
-    // DEBugging:
-    if (triggerSum > 3){
-      //  std::cout << "<<<<<<<<>>>>>>>>> \n" << "<<<<<<<<<<>>>>>>>> \n" << "<<<<<<<<<<>>>>>>>>> \n";
-        highGrassMode_ = true; // Hacked!!!!
-        applyFrameCorrection_ = false;
-    }
-    else{
-      //  std::cout << "!!!! \n" << "!!!! \n" << "!!!! \n";
-        highGrassMode_ = false;
-        applyFrameCorrection_ = true;
-    }
-
-    double footTipVal;
-    // Get normalized foot tip position within bounds.
-    if(diff < 0.0){
-        footTipVal = diff / fabs(elevation - lowerBound);
-    }
-    else{
-        footTipVal = diff / fabs(elevation - upperBound);
-    }
-
-    // Write to file to visualize in Matlab.
-
-    //writeFootTipStatisticsToFile(footTipVal, "/home/timon/FootTipStatistics.txt");
-
-    // TODO: write the foot tip characterizing numbers to a file to histogram plot it in Matlab for discussion..
-
-    // End New *******************************************************************************************************************
-
-
-    // Error difference weighted as (1 - gaussian), s.t. intervall from elevation map to bound contains two standard deviations
-
-    // Initialize
-    double weight = 0.0;
-
-    float standardDeviationFactor = weightingFactor_;  //! THIS MAY BE A LEARNING FUNCTION IN FUTURE!! // CHANGED
-
-    if(diff < 0.0){
-        weight = normalDistribution(diff, 0.0, fabs(elevation-lowerBound)*standardDeviationFactor);
-
-        // For Coloration
-        if(elevation + diff < lowerBound){
-
-        //    std::cout << "******************************************** LOWER ******************************" << std::endl;
-            footTipOutsideBounds_ = true;
-        }
-        else footTipOutsideBounds_ = false;
-
-    }
-    else{
-        weight = normalDistribution(diff, 0.0, fabs(elevation-upperBound)*standardDeviationFactor);
-
-        // For Coloration
-        if(elevation + diff > upperBound) footTipOutsideBounds_ = true;
-        else footTipOutsideBounds_ = false;
-    }
-
-    // Constrain to be maximally 1.
-    if(weight > 1.0) weight = 1.0; // For security, basically not necessary (as the weighting term is left away in the normalDistribution function)
-
-    usedWeight_ = (1.0 - weight);
-
-    // TOOD: code function that does sigmoid droppoff between 1.5 and 2 times the confidence bound -> no weight in this case -> no correction (Marco Hutters comment..)
-
-
-
-   // std::cout << "WEIGHT: " << (1-weight) << " diff: " << diff << " elevation: " << elevation <<
-   //              " lower: " << lowerBound << " upper: " << upperBound << std::endl;
-    return (1.0 - weight) * diff;
-}
-
-float StanceProcessor::normalDistribution(float arg, float mean, float stdDev)
-{
-    double e = exp(-pow((arg-mean),2)/(2.0*pow(stdDev,2)));
-    //Leaving away the weighting, as the maximum value should be one, which is sensible for weighting.
-    return e; // (stdDev * sqrt(2*M_PI));
-}
-
-bool StanceProcessor::setTerrainVariance(double& terrainVariance){
-    terrainVariance_ = terrainVariance;
-}
-
-void StanceProcessor::setFootTipPlaneFitCoefficients(Eigen::Vector2f& coeffs){
-    footTipPlaneFitCoefficients_ = coeffs;
-}
-
-void StanceProcessor::setMeanOfAllFootTips(Eigen::Vector3f& mean){
-    meanOfAllFootTips_ = mean;
 }
 
 } /* namespace */
