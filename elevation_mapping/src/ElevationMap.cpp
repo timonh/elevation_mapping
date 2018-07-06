@@ -149,10 +149,12 @@ ElevationMap::ElevationMap(ros::NodeHandle nodeHandle)
   // SS
 
   //! Commented as moved to Stance Processor
-  if(runFootTipElevationMapEnhancements_){ // SP
-      if(!useBag_) footTipStanceSubscriber_ = nodeHandle_.subscribe("/state_estimator/quadruped_state", 1, &ElevationMap::footTipStanceCallback, this);
-      else footTipStanceSubscriber_ = nodeHandle_.subscribe("/state_estimator/quadruped_state_remapped", 1, &ElevationMap::footTipStanceCallback, this);
-  } // SP
+  if (false) {
+      if(runFootTipElevationMapEnhancements_){ // SP
+          if(!useBag_) footTipStanceSubscriber_ = nodeHandle_.subscribe("/state_estimator/quadruped_state", 1, &ElevationMap::footTipStanceCallback, this);
+          else footTipStanceSubscriber_ = nodeHandle_.subscribe("/state_estimator/quadruped_state_remapped", 1, &ElevationMap::footTipStanceCallback, this);
+      } // SP
+  }
 
   //! end of commented section
 
@@ -270,8 +272,6 @@ bool ElevationMap::add(const pcl::PointCloud<pcl::PointXYZRGB>::Ptr pointCloud, 
    // auto& vegetationHeightSmooth = rawMap_.at("vegetation_height_smooth", index); // New
    // auto& supportSurface = rawMap_.at("support_surface", index); // New
     auto& supportSurfaceSmooth = rawMap_.at("support_surface_smooth", index); // New
-   // auto& supportSurfaceAdded = rawMap_.at("support_surface_added", index);
-
 
     const float& pointVariance = pointCloudVariances(i);
     const float scanTimeSinceInitialization = (timestamp - initialTime_).toSec();
@@ -790,10 +790,10 @@ bool ElevationMap::publishSpatialVariancePointCloud(const pcl::PointCloud<pcl::P
   //pcl_ros::transformPointCloud("odom_drift_adjusted", pointCloudColored,
   //                             pointCloudColoredTransformed, odomDriftAdjustedTransformListener_);
 
-  pcl::toROSMsg(pointCloudColored, variancePointCloud);
-  variancePointCloud.header.frame_id = "odom_drift_adjusted"; // Check if needing transform!!
-  bool publishVariancePointCloud = false;
-  if(publishVariancePointCloud) coloredPointCloudPublisher_.publish(variancePointCloud);
+  //pcl::toROSMsg(pointCloudColored, variancePointCloud);
+  //variancePointCloud.header.frame_id = "odom_drift_adjusted"; // Check if needing transform!!
+  //bool publishVariancePointCloud = false;
+  //if(publishVariancePointCloud) coloredPointCloudPublisher_.publish(variancePointCloud);
 
   return true;
 }
@@ -935,13 +935,13 @@ void ElevationMap::footTipStanceCallback(const quadruped_msgs::QuadrupedState& q
   }
 
   // Get footprint position and orientation.
-  setFootprint(quadrupedState.frame_transforms[3].transform);
+  //setFootprint(quadrupedState.frame_transforms[3].transform);
 
 
   // Detect start and end of stances for each of the two front foot tips.
   detectStancePhase();
   //detectStancePhase("right");
-  frameCorrection();
+  //frameCorrection();
 }
 
 bool ElevationMap::detectStancePhase() // SP

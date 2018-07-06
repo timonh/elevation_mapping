@@ -182,6 +182,15 @@ class ElevationMapping
    */
   void stopMapUpdateTimer();
 
+
+  //! New by Timon:
+  void footTipStanceCallback(const quadruped_msgs::QuadrupedState& quadrupedState); // SP
+
+  bool frameCorrection();
+
+
+
+
   //! ROS nodehandle.
   ros::NodeHandle& nodeHandle_;
 
@@ -266,7 +275,20 @@ class ElevationMapping
 
   // Foot Tip Elevation Map Enhancment Objects.
   //!Object of Stance Processor
-  //StanceProcessor stanceProcessor_;
+  StanceProcessor stanceProcessor_;
+
+  // Params.
+  bool useBag_;
+  bool runFootTipElevationMapEnhancements_;
+  bool runHindLegStanceDetection_;
+
+  // Ros Subscriber for stance detection.
+  ros::Subscriber footTipStanceSubscriber_;
+
+  // Transform Broadcaster for drift adjustment.
+  tf::TransformBroadcaster mapCorrectedOdomTransformBroadcaster_;
+
+
 
 };
 

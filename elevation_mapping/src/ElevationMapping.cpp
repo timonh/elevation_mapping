@@ -54,7 +54,7 @@ ElevationMapping::ElevationMapping(ros::NodeHandle& nodeHandle)
       map_(nodeHandle),
       robotMotionMapUpdater_(nodeHandle),
 
-      //stanceProcessor_(nodeHandle),
+      stanceProcessor_(nodeHandle),
       //supportSurfaceEstimation_(nodeHandle),
 
       isContinouslyFusing_(false),
@@ -106,6 +106,18 @@ ElevationMapping::ElevationMapping(ros::NodeHandle& nodeHandle)
 
   clearMapService_ = nodeHandle_.advertiseService("clear_map", &ElevationMapping::clearMap, this);
   saveMapService_ = nodeHandle_.advertiseService("save_map", &ElevationMapping::saveMap, this);
+
+  // Parameters. // TODO: when complete move to read parameters
+  nodeHandle_.param("use_bag", useBag_, false); // SP
+  nodeHandle_.param("run_foot_tip_elevation_map_enhancements", runFootTipElevationMapEnhancements_, true); // SP
+  nodeHandle_.param("run_hind_leg_stance_detection", runHindLegStanceDetection_, true); // SP
+
+  //! Introduced by Timon
+  if(runFootTipElevationMapEnhancements_){ // SP
+      if(!useBag_) footTipStanceSubscriber_ = nodeHandle_.subscribe("/state_estimator/quadruped_state", 1, &ElevationMapping::footTipStanceCallback, this);
+      else footTipStanceSubscriber_ = nodeHandle_.subscribe("/state_estimator/quadruped_state_remapped", 1, &ElevationMapping::footTipStanceCallback, this);
+  } // SP
+  //! End of newly introduced section
 
   initialize();
 }
@@ -484,5 +496,66 @@ void ElevationMapping::stopMapUpdateTimer()
 {
   mapUpdateTimer_.stop();
 }
+
+void ElevationMapping::footTipStanceCallback(const quadruped_msgs::QuadrupedState& quadrupedState) // SP
+{
+  //boost::recursive_mutex::scoped_lock scopedLockForFootTipStanceProcessor(footTipStanceProcessorMutex_);
+  // Set class variables.
+
+  stanceProcessor_.LFTipPosition_(0) = (double)quadrupedState.contacts[0].position.x;
+  stanceProcessor_.LFTipPosition_(1) = (double)quadrupedState.contacts[0].position.y;
+  stanceProcessor_.LFTipPosition_(2) = (double)quadrupedState.contacts[0].position.z;
+  stanceProcessor_.RFTipPosition_(0) = (double)quadrupedState.contacts[1].position.x;
+  stanceProcessor_.RFTipPosition_(1) = (double)quadrupedState.contacts[1].position.y;
+  stanceProcessor_.RFTipPosition_(2) = (double)quadrupedState.contacts[1].position.z;
+  stanceProcessor_.LFTipState_ = quadrupedState.contacts[0].state;
+  stanceProcessor_.RFTipState_ = quadrupedState.contacts[1].state;
+
+  if(runHindLegStanceDetection_){
+      // Add hind legs for proprioceptive variance estimation.
+      stanceProcessor_.LHTipPosition_(0) = (double)quadrupedState.contacts[2].position.x;
+      stanceProcessor_.LHTipPosition_(1) = (double)quadrupedState.contacts[2].position.y;
+      stanceProcessor_.LHTipPosition_(2) = (double)quadrupedState.contacts[2].position.z;
+      stanceProcessor_.RHTipPosition_(0) = (double)quadrupedState.contacts[3].position.x;
+      stanceProcessor_.RHTipPosition_(1) = (double)quadrupedState.contacts[3].position.y;
+      stanceProcessor_.RHTipPosition_(2) = (double)quadrupedState.contacts[3].position.z;
+      stanceProcessor_.LHTipState_ = quadrupedState.contacts[2].state;
+      stanceProcessor_.RHTipState_ = quadrupedState.contacts[3].state;
+  }
+
+  // Detect start and end of stances for each of the two front foot tips.
+  stanceProcessor_.detectStancePhase();
+
+  // Broadcast frame transform for drift adjustment.
+  frameCorrection();
+
+}
+
+bool ElevationMapping::frameCorrection()
+{
+    //boost::recursive_mutex::scoped_lock scopedLock(rawMapMutex_);
+    //boost::recursive_mutex::scoped_lock scopedLockForFusedData(fusedMapMutex_);
+
+    // Transform Broadcaster for the /odom_z_corrected frame.
+    tf::Transform odomMapTransform;
+    odomMapTransform.setIdentity();
+
+    //std::cout << "This is the comparison value: " << stanceProcessor_.driftRefinement_.heightDifferenceFromComparison_ << std::endl;
+
+    if (!isnan(stanceProcessor_.driftRefinement_.heightDifferenceFromComparison_)) odomMapTransform.getOrigin()[2] += stanceProcessor_.driftRefinement_.heightDifferenceFromComparison_;
+    else std::cout << stanceProcessor_.driftRefinement_.heightDifferenceFromComparison_ << " <- height diff is this kind of NAN for some reason? \n ? \n ? \n";
+
+    ros::Time stamp = ros::Time().fromNSec(map_.fusedMap_.getTimestamp());
+
+    //std::cout << "TIMESTAMP PUBLISHED THE odom_drift_adjusted TRANSFORM!!: " << stamp << std::endl;
+
+    mapCorrectedOdomTransformBroadcaster_.sendTransform(tf::StampedTransform(odomMapTransform,
+                                          ros::Time().fromNSec(map_.rawMap_.getTimestamp()), "odom", "odom_drift_adjusted"));
+
+    return true;
+}
+
+
+
 
 } /* namespace */

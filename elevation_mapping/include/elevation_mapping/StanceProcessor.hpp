@@ -670,13 +670,13 @@ private:
  std::vector<grid_map::Position3> footTipHistoryGP_;
 
  //! Elevation map.
- ElevationMap map_;
+ //ElevationMap map_;
 
  //! Drift Refinement Object.
  DriftRefinement driftRefinement_;
 
  //! Support Surface Estimation Object.
- SupportSurfaceEstimation supportSurfaceEstimation_;
+ //SupportSurfaceEstimation supportSurfaceEstimation_;
 
  //! Parameters.
  std::string stanceDetectionMethod_;

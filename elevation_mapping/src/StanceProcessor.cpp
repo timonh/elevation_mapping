@@ -71,13 +71,11 @@ namespace elevation_mapping {
 
 StanceProcessor::StanceProcessor(ros::NodeHandle nodeHandle)
     : nodeHandle_(nodeHandle),
-      map_(nodeHandle),
-      supportSurfaceEstimation_(nodeHandle),
+      //map_(nodeHandle),
+      //supportSurfaceEstimation_(nodeHandle),
       driftRefinement_(nodeHandle)
 {
   std::cout << "called the stanceprocessor Constructor" << std::endl;
-
-
 
   // Launching parameters.
   nodeHandle_.param("run_foot_tip_elevation_map_enhancements", runFootTipElevationMapEnhancements_, true);
@@ -88,8 +86,8 @@ StanceProcessor::StanceProcessor(ros::NodeHandle nodeHandle)
   nodeHandle_.param("run_support_surface_estimation", runSupportSurfaceEstimation_, false); // DR, SS??
 
   //if(runFootTipElevationMapEnhancements_){ TODO: uncomment
-      if(!useBag_) footTipStanceSubscriber_ = nodeHandle_.subscribe("/state_estimator/quadruped_state", 1, &StanceProcessor::footTipStanceCallback, this);
-      else footTipStanceSubscriber_ = nodeHandle_.subscribe("/state_estimator/quadruped_state_remapped", 1, &StanceProcessor::footTipStanceCallback, this);
+  //    if(!useBag_) footTipStanceSubscriber_ = nodeHandle_.subscribe("/state_estimator/quadruped_state", 1, &StanceProcessor::footTipStanceCallback, this);
+  //    else footTipStanceSubscriber_ = nodeHandle_.subscribe("/state_estimator/quadruped_state_remapped", 1, &StanceProcessor::footTipStanceCallback, this);
   //} TODO: uncomment
 
   // Publish Foot Tip Markers.
@@ -185,8 +183,6 @@ void StanceProcessor::footTipStanceCallback(const quadruped_msgs::QuadrupedState
 
   // Detect start and end of stances for each of the two front foot tips.
   detectStancePhase();
-
-  //frameCorrection();
 }
 
 bool StanceProcessor::detectStancePhase()
@@ -197,6 +193,9 @@ bool StanceProcessor::detectStancePhase()
     //std::thread::id this_id = std::this_thread::get_id();
     //std::cout << "This is the thread: " << this_id << std::endl;
     //! END TEST
+    //!<
+
+
 
     // Collect State Data for stance phase detection
     processStanceTriggerLeft_.push_back(LFTipState_);
@@ -331,6 +330,8 @@ bool StanceProcessor::processStance(std::string tip)
 
 //    bool runProprioceptiveRoughnessEstimation = true;
 //    if(runProprioceptiveRoughnessEstimation) proprioceptiveRoughnessEstimation(tip);
+
+    // Introduce a trigger here and call the foot tip elevation map comparison from elevation mapping class -> pass raw map as a reference with each call.
 
     bool hind = false;
     if(tip != "lefthind" && tip != "righthind") driftRefinement_.footTipElevationMapComparison(tip, meanStance);

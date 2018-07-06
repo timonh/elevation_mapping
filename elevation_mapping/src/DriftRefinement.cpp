@@ -141,10 +141,6 @@ bool DriftRefinement::footTipElevationMapComparison(std::string tip, Eigen::Vect
         //else std::cout << "FOOT TIP CONSIDERED NOT TO BE INSIDE!!!!! \n \n \n \n " << std::endl;
     }
 
-    std::cout << "ISINSIDE CHECK: " << rawMap.isInside(tipPosition) << std::endl;
-    std::cout << "NOTISNAN CHECK: " << !isnan(heightDifferenceFromComparison_) << std::endl;
-    std::cout << "Exists?? " << rawMap.exists("elevation") << std::endl;
-
     // Make sure that the state is 1 and the foot tip is inside area covered by the elevation map.
     if(rawMap.isInside(tipPosition) && !isnan(heightDifferenceFromComparison_)){ // HACKED FOR TESTS!!!
         float heightMapRaw = rawMap.atPosition("elevation", tipPosition);
