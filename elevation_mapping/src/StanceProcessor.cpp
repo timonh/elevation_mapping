@@ -91,8 +91,6 @@ StanceProcessor::StanceProcessor(ros::NodeHandle nodeHandle)
   //} TODO: uncomment
 
   // Publish Foot Tip Markers.
-  footContactPublisher_ = nodeHandle_.advertise<visualization_msgs::Marker>("mean_foot_contact_markers_rviz", 1000);
-  elevationMapBoundPublisher_ = nodeHandle_.advertise<visualization_msgs::Marker>("map_bound_markers_rviz", 1000);
   initializeFootTipMarkers();
 
   // Initializing Stance Bools.
@@ -337,7 +335,7 @@ bool StanceProcessor::processStance(std::string tip)
     bool hind = false;
     if(tip != "lefthind" && tip != "righthind") setFootTipComparisonTrigger(tip);
     else hind = true;
-    publishAveragedFootTipPositionMarkers(hind);
+    //driftRefinement_.publishAveragedFootTipPositionMarkers(hind);
 
 //    // Performance Assessment, sensible if wanting to tune the system while walking on flat surface.
 //    //bool runPreformanceAssessmentForFlatGround = false;
@@ -474,67 +472,6 @@ Eigen::Vector3f StanceProcessor::getAverageFootTipPositions(std::string tip)
     if (tip == "righthind") hindRightFootTip_ = meanStance_;
 
     return meanStance_;
-}
-
-bool StanceProcessor::publishAveragedFootTipPositionMarkers(bool hind)
-{
-    // Positions for publisher.
-    geometry_msgs::Point p;
-    p.x = meanStance_(0);
-    p.y = meanStance_(1);
-    p.z = meanStance_(2);
-
-    // Coloring as function of applied weight.
-    bool footTipColoring = true;
-    double coloring_factor = 2.5;
-    std_msgs::ColorRGBA c;
-    c.g = 0;
-    c.b = max(0.0, 1 - coloring_factor * usedWeight_); // TODO set after tuning to get sensible results..
-    c.r = min(1.0, coloring_factor * usedWeight_);
-    c.a = 0.5;
-
-    if(hind){
-        c.g = 1;
-        c.b = 1;
-        c.r = 1;
-        c.a = 1;
-    }
-
-    //boost::recursive_mutex::scoped_lock scopedLock(rawMapMutex_);
-
-    // If outside the area, where comparison can be made (i.e. no elevation map value is found) set black color.
-    // Set yellow if foot tip is outside the bounds of the fused map.
-    Position coloringPosition(p.x, p.y);
-    //if (isnan(map_.rawMap_.atPosition("elevation", coloringPosition))){
-        c.g = 0;
-        c.b = 0;
-        c.r = 0;
-    //}
-    //else if(footTipOutsideBounds_) c.g = 0.9;
-
-    //scopedLock.unlock();
-
-    // Check for nans
-    if(p.x != p.x || p.y != p.y || p.z != p.z){
-        std::cout << "NAN FOUND IN MEAN FOOT TIP POSITION!!" << std::endl;
-    }
-    else{
-        footContactMarkerList_.points.push_back(p);
-        if(footTipColoring)footContactMarkerList_.colors.push_back(c);
-    }
-
-    // Publish averaged foot tip positions
-    footContactPublisher_.publish(footContactMarkerList_);
-
-
-    // Uses the footContactMarkerList_, therefore called here.
-    // Updates the map layer, that purely relies on the last n foot tips.
-    //int numberOfConsideredFootTips = 4;
-
-    //! HACKED AWAY, no foot tip layer updates now!!
-    //updateFootTipBasedElevationMapLayer(numberOfConsideredFootTips);
-
-    return true;
 }
 
 void StanceProcessor::setFootTipComparisonTrigger(std::string tip){

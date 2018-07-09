@@ -304,7 +304,7 @@ private:
  bool getAverageFootTipPositions(std::string tip);
 
  //! TODO: Description!
- bool publishAveragedFootTipPositionMarkers(bool hind);
+ bool publishAveragedFootTipPositionMarkers(const grid_map::GridMap& rawMap, const Eigen::Vector3f meanStance, std::string tip);
 
  //! TODO: Description!
  bool publishFusedMapBoundMarkers(double& xTip, double& yTip,
@@ -322,7 +322,7 @@ private:
  std::tuple<double, double> filteredDriftEstimation(double diffComparisonUpdate, float estDrift, float PEstDrift);
 
  //! TODO: Description:
- void initializeMapBoundMarkers();
+ void initializeVisualizationMarkers();
 
  //! TODO: Description:
  std::tuple<double, double, double> getFusedCellBounds(const Eigen::Vector2d& position, const grid_map::GridMap& fusedMap);

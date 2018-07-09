@@ -84,6 +84,7 @@ DriftRefinement::DriftRefinement(ros::NodeHandle nodeHandle)
   nodeHandle_.param("run_support_surface_estimation", runSupportSurfaceEstimation_, false);
 
   //planeFitVisualizationPublisher_ = nodeHandle_.advertise<visualization_msgs::Marker>("plane_fit_visualization_marker_list", 1000); // DR
+  footContactPublisher_ = nodeHandle_.advertise<visualization_msgs::Marker>("mean_foot_contact_markers_rviz", 1000);
   elevationMapBoundPublisher_ = nodeHandle_.advertise<visualization_msgs::Marker>("map_bound_markers_rviz", 1000);
 
   // Initializing some class variables.
@@ -102,8 +103,8 @@ DriftRefinement::DriftRefinement(ros::NodeHandle nodeHandle)
   driftEstimationPID_ = 0.0;
   highGrassMode_ = false;
 
-  // Initialize the markers for publishing the confidence bounds of the fused map.
-  initializeMapBoundMarkers();
+  // Initialize the markers for publishing the confidence bounds of the fused map and the foot tip positions within them.
+  initializeVisualizationMarkers();
 
   std::cout << "called the drift refinement Constructor" << std::endl;
 }
@@ -498,25 +499,92 @@ float DriftRefinement::normalDistribution(float arg, float mean, float stdDev)
     return e; // (stdDev * sqrt(2*M_PI));
 }
 
-void DriftRefinement::initializeMapBoundMarkers() {
+void DriftRefinement::initializeVisualizationMarkers() {
     // Color and shape definition of markers for foot tip ground contact visualization.
-    elevationMapBoundMarkerList_.header.frame_id = "odom";
-    elevationMapBoundMarkerList_.header.stamp = ros::Time();
-    elevationMapBoundMarkerList_.ns = "elevation_mapping";
-    elevationMapBoundMarkerList_.id = 0;
-    elevationMapBoundMarkerList_.type = visualization_msgs::Marker::SPHERE_LIST;
-    elevationMapBoundMarkerList_.action = visualization_msgs::Marker::ADD;
-    elevationMapBoundMarkerList_.pose.orientation.x = 0.0;
-    elevationMapBoundMarkerList_.pose.orientation.y = 0.0;
-    elevationMapBoundMarkerList_.pose.orientation.z = 0.0;
-    elevationMapBoundMarkerList_.pose.orientation.w = 1.0;
+    footContactMarkerList_.header.frame_id = elevationMapBoundMarkerList_.header.frame_id = "odom";
+    footContactMarkerList_.header.stamp = elevationMapBoundMarkerList_.header.stamp = ros::Time();
+    footContactMarkerList_.ns = elevationMapBoundMarkerList_.ns = "elevation_mapping";
+    footContactMarkerList_.id = elevationMapBoundMarkerList_.id = 0;
+    footContactMarkerList_.type = elevationMapBoundMarkerList_.type = visualization_msgs::Marker::SPHERE_LIST;
+    footContactMarkerList_.action = elevationMapBoundMarkerList_.action = visualization_msgs::Marker::ADD;
+    footContactMarkerList_.pose.orientation.x = elevationMapBoundMarkerList_.pose.orientation.x = 0.0;
+    footContactMarkerList_.pose.orientation.y = elevationMapBoundMarkerList_.pose.orientation.y = 0.0;
+    footContactMarkerList_.pose.orientation.z = elevationMapBoundMarkerList_.pose.orientation.z = 0.0;
+    footContactMarkerList_.pose.orientation.w = elevationMapBoundMarkerList_.pose.orientation.w = 1.0;
+    footContactMarkerList_.scale.x = 0.03;
+    footContactMarkerList_.scale.y = 0.03;
+    footContactMarkerList_.scale.z = 0.03;
     elevationMapBoundMarkerList_.scale.x = 0.02;
     elevationMapBoundMarkerList_.scale.y = 0.02;
     elevationMapBoundMarkerList_.scale.z = 0.02;
-    elevationMapBoundMarkerList_.color.a = 1.0; // Don't forget to set the alpha!
-    elevationMapBoundMarkerList_.color.r = 0.0;
-    elevationMapBoundMarkerList_.color.g = 1.0;
-    elevationMapBoundMarkerList_.color.b = 0.7;
+    footContactMarkerList_.color.a = elevationMapBoundMarkerList_.color.a = 1.0; // Don't forget to set the alpha!
+    footContactMarkerList_.color.r = elevationMapBoundMarkerList_.color.r = 0.0;
+    footContactMarkerList_.color.g = elevationMapBoundMarkerList_.color.g = 1.0;
+    footContactMarkerList_.color.b = elevationMapBoundMarkerList_.color.b = 0.7;
+}
+
+bool DriftRefinement::publishAveragedFootTipPositionMarkers(const GridMap& rawMap, const Eigen::Vector3f meanStance, std::string tip)
+{
+    // Positions for publisher.
+    geometry_msgs::Point p;
+    p.x = meanStance(0);
+    p.y = meanStance(1);
+    p.z = meanStance(2);
+
+    // Coloring as function of applied weight.
+    bool footTipColoring = true;
+    double coloring_factor = 2.5;
+    std_msgs::ColorRGBA c;
+    c.g = 0;
+    c.b = max(0.0, 1 - coloring_factor * usedWeight_); // TODO set after tuning to get sensible results..
+    c.r = min(1.0, coloring_factor * usedWeight_);
+    c.a = 0.5;
+
+    bool hind = false;
+    if (tip == "lefthind" || tip == "righthind") hind = true;
+    //! TODO: uncomment this!!
+    if(hind){
+        c.g = 1;
+        c.b = 1;
+        c.r = 1;
+        c.a = 1;
+    }
+
+    //boost::recursive_mutex::scoped_lock scopedLock(rawMapMutex_);
+
+    // If outside the area, where comparison can be made (i.e. no elevation map value is found) set black color.
+    // Set yellow if foot tip is outside the bounds of the fused map.
+    Position coloringPosition(p.x, p.y);
+    if (isnan(rawMap.atPosition("elevation", coloringPosition))){
+        c.g = 0;
+        c.b = 0;
+        c.r = 0;
+    }
+    else if(footTipOutsideBounds_) c.g = 0.9;
+
+    //scopedLock.unlock();
+
+    // Check for nans
+    if(p.x != p.x || p.y != p.y || p.z != p.z){
+        std::cout << "NAN FOUND IN MEAN FOOT TIP POSITION!!" << std::endl;
+    }
+    else{
+        footContactMarkerList_.points.push_back(p);
+        if(footTipColoring)footContactMarkerList_.colors.push_back(c);
+    }
+
+    // Publish averaged foot tip positions
+    footContactPublisher_.publish(footContactMarkerList_);
+
+
+    // Uses the footContactMarkerList_, therefore called here.
+    // Updates the map layer, that purely relies on the last n foot tips.
+    //int numberOfConsideredFootTips = 4;
+
+    //! HACKED AWAY, no foot tip layer updates now!!
+    //updateFootTipBasedElevationMapLayer(numberOfConsideredFootTips);
+
+    return true;
 }
 
 } /* namespace */

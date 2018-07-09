@@ -547,6 +547,8 @@ void ElevationMapping::footTipStanceCallback(const quadruped_msgs::QuadrupedStat
       stanceProcessor_.footTipComparisonTrigger_ = false;
   }
 
+  stanceProcessor_.driftRefinement_.publishAveragedFootTipPositionMarkers(map_.getRawGridMap(), stanceProcessor_.meanStance_, getTipTrigger());
+
 }
 
 bool ElevationMapping::frameCorrection()
