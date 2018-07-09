@@ -316,16 +316,16 @@ private:
  bool templateMatchingForStanceDetection(std::string tip, std::vector<bool> &stateVector);
 
  //! TODO: Description:
- bool footTipElevationMapComparison(std::string mode, Eigen::Vector3f& meanStance, grid_map::GridMap& rawMap);
+ bool footTipElevationMapComparison(std::string mode, Eigen::Vector3f& meanStance, grid_map::GridMap& rawMap, grid_map::GridMap& fusedMap);
 
  //! TODO: Description:
  std::tuple<double, double> filteredDriftEstimation(double diffComparisonUpdate, float estDrift, float PEstDrift);
 
  //! TODO: Description:
- bool initializeFootTipMarkers();
+ void initializeMapBoundMarkers();
 
  //! TODO: Description:
- std::tuple<double, double, double> getFusedCellBounds(const Eigen::Vector2d& position, const Eigen::Array2d& length);
+ std::tuple<double, double, double> getFusedCellBounds(const Eigen::Vector2d& position, const grid_map::GridMap& fusedMap);
 
  //! TODO: Description:
  bool frameCorrection();

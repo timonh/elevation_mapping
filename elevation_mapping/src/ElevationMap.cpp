@@ -149,7 +149,7 @@ ElevationMap::ElevationMap(ros::NodeHandle nodeHandle)
   // SS
 
   //! Commented as moved to Stance Processor
-  if (true) {
+  if (false) {
       if(runFootTipElevationMapEnhancements_){ // SP
           if(!useBag_) footTipStanceSubscriber_ = nodeHandle_.subscribe("/state_estimator/quadruped_state", 1, &ElevationMap::footTipStanceCallback, this);
           else footTipStanceSubscriber_ = nodeHandle_.subscribe("/state_estimator/quadruped_state_remapped", 1, &ElevationMap::footTipStanceCallback, this);
@@ -4000,7 +4000,7 @@ bool ElevationMap::simpleTerrainContinuityLayer(std::string& tip, const double& 
             }
 
             float output;
-            if (totalWeight > 0.001) output = tempHeight / totalWeight;
+            if (totalWeight > 0.0001) output = tempHeight / totalWeight;
             else output = footTip(2); // Here is a problem, get it very neat!!! TODO! -> does this solve it????
 
             float addingWeight = fmin(fmax(1 - (addingDistance / radius), 0.0), 1.0);

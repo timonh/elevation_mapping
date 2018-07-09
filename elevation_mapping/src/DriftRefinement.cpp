@@ -102,6 +102,9 @@ DriftRefinement::DriftRefinement(ros::NodeHandle nodeHandle)
   driftEstimationPID_ = 0.0;
   highGrassMode_ = false;
 
+  // Initialize the markers for publishing the confidence bounds of the fused map.
+  initializeMapBoundMarkers();
+
   std::cout << "called the drift refinement Constructor" << std::endl;
 }
 
@@ -109,7 +112,7 @@ DriftRefinement::~DriftRefinement()
 {
 }
 
-bool DriftRefinement::footTipElevationMapComparison(std::string tip, Eigen::Vector3f& meanStance, GridMap& rawMap)
+bool DriftRefinement::footTipElevationMapComparison(std::string tip, Eigen::Vector3f& meanStance, GridMap& rawMap, GridMap& fusedMap)
 {
     //boost::recursive_mutex::scoped_lock scopedLockForFootTipStanceProcessor(footTipStanceComparisonMutex_);
     //boost::recursive_mutex::scoped_lock scopedLockForFootTipStanceProcessor(footTipStanceProcessorMutex_);
@@ -148,10 +151,10 @@ bool DriftRefinement::footTipElevationMapComparison(std::string tip, Eigen::Vect
 
         std::cout << "got into the function isnan: " << isnan(heightMapRaw) << " the tip: " << tip << std::endl;
 
-        Index ind;
-        rawMap_.getIndex(tipPosition, ind);
+        //Index ind;
+        //rawMap_.getIndex(tipPosition, ind);
 
-        std::cout << "Isvalid?? " << rawMap_.isValid(ind) << std::endl;
+        //std::cout << "Isvalid?? " << rawMap.isValid(ind) << std::endl;
 
         // Supress nans.
         if(!isnan(heightMapRaw)){
@@ -171,16 +174,15 @@ bool DriftRefinement::footTipElevationMapComparison(std::string tip, Eigen::Vect
             if(weightedDifferenceVector_.size() >= 4) performanceAssessment_ += fabs(verticalDifferenceCorrected);
             //std::cout << "Cumulative Performance Value (summed up weighted differences): " << performanceAssessment_ << std::endl;
 
-
             //performance_assessment_msg_.second_measure = performanceAssessment_;
 
             // Use 3 standard deviations of the uncertainty ellipse of the foot tip positions as fusion area.
-            Eigen::Array2d ellipseAxes;
-            ellipseAxes[0] = ellipseAxes[1] = std::max(6 * sqrt(rawMap.atPosition("horizontal_variance_x",tipPosition)),
-                                      6 * sqrt(rawMap.atPosition("horizontal_variance_y",tipPosition)));
+            //Eigen::Array2d ellipseAxes;
+            //ellipseAxes[0] = ellipseAxes[1] = std::max(6 * sqrt(rawMap.atPosition("horizontal_variance_x",tipPosition)),
+            //                          6 * sqrt(rawMap.atPosition("horizontal_variance_y",tipPosition)));
 
             // Get lower and upper bound of the fused map.
-            auto boundTuple = getFusedCellBounds(tipPosition, ellipseAxes);
+            auto boundTuple = getFusedCellBounds(tipPosition, fusedMap);
             double lowerBoundFused = std::get<0>(boundTuple);
             double elevationFused = std::get<1>(boundTuple);
             double upperBoundFused = std::get<2>(boundTuple);
@@ -189,38 +191,12 @@ bool DriftRefinement::footTipElevationMapComparison(std::string tip, Eigen::Vect
 
            // std::cout << "weightedVerticalDifferenceIncrement " << weightedVerticalDifferenceIncrement << std::endl;
 
-
-            //! TODO: uncomment
+            //! TODO: uncomment - > move to support surface estimation.
             //bool runPenetrationDepthVarianceEstimation = true;
             //if (runPenetrationDepthVarianceEstimation) penetrationDepthVarianceEstimation(tip, verticalDifference);
 
-            // DEBUG:
-//                if (isnan(weightedVerticalDifferenceIncrement)){
-//                    std::cout << "NAN IN WEIGHTED DIFFERENCE INCREMENT!!!!!!!" << std::endl;
-//                    std::cout << "" << std::endl;
-//                    std::cout << "" << std::endl;
-//                    std::cout << "" << std::endl;
-//                    weightedVerticalDifferenceIncrement = 0;
-//                }
-            // END DEBUG
-
             // TODO: Switch ON and OFF
             publishFusedMapBoundMarkers(xTip, yTip, elevationFused, upperBoundFused, lowerBoundFused);
-
-
-            // TESTING DRIFT STUFF
-//                auto driftTuple = filteredDriftEstimation(weightedVerticalDifferenceIncrement, estimatedDriftChange_, estimatedDriftChangeVariance_);
-//                estimatedDriftChange_ = std::get<0>(driftTuple);
-//                estimatedDriftChangeVariance_ = std::get<1>(driftTuple);
-//                estimatedDrift_ += estimatedDriftChange_;
-//                std::cout << "ESTIMATED DRIFT: " << estimatedDrift_ << std::endl;
-//                std::cout << "ESTIMATED DRIFT Change: " << estimatedDriftChange_ << std::endl;
-//                std::cout << "ESTIMATED DRIFT Change Variance: " << estimatedDriftChangeVariance_ << std::endl;
-
-//                oldDiffComparisonUpdate_ = weightedVerticalDifferenceIncrement;
-//                std::cout << "ESTIMATED oldDRIFT: " << oldDiffComparisonUpdate_ << std::endl;
-            // END TESTING
-
 
             // TODO: test validity of these:
 
@@ -236,7 +212,6 @@ bool DriftRefinement::footTipElevationMapComparison(std::string tip, Eigen::Vect
             // Longer weightedDifferenceVector for PID drift calculation
             if(!isnan(heightDifferenceFromComparison_)) PIDWeightedDifferenceVector_.push_back(heightDifferenceFromComparison_); // Removed the vertical difference increment, TEST IT!
             if(PIDWeightedDifferenceVector_.size() >= 30) PIDWeightedDifferenceVector_.erase(PIDWeightedDifferenceVector_.begin());
-
 
             // New: create one for the left and one for the right foot tips, to get separate drift estimation
             //if (tip == "right")
@@ -380,12 +355,13 @@ bool DriftRefinement::publishFusedMapBoundMarkers(double& xTip, double& yTip,
     elevationMapBoundMarkerList_.points.push_back(p_lower);
     elevationMapBoundMarkerList_.colors.push_back(c);
 
+
     elevationMapBoundPublisher_.publish(elevationMapBoundMarkerList_);
 
     return true;
 }
 
-std::tuple<double, double, double> DriftRefinement::getFusedCellBounds(const Eigen::Vector2d& position, const Eigen::Array2d& length)
+std::tuple<double, double, double> DriftRefinement::getFusedCellBounds(const Eigen::Vector2d& position, const GridMap& fusedMap)
 {
     //boost::recursive_mutex::scoped_lock scopedLockForFootTipComparison(footTipStanceComparisonMutex_);
    // boost::recursive_mutex::scoped_lock scopedLock(fusedMapMutex_);
@@ -393,10 +369,9 @@ std::tuple<double, double, double> DriftRefinement::getFusedCellBounds(const Eig
     float upperFused, lowerFused, elevationFused;
     bool doFuseEachStep = true;
     if(!isnan(heightDifferenceFromComparison_) && doFuseEachStep){
-        map_.fuseArea(position, length);
-        elevationFused = map_.fusedMap_.atPosition("elevation", position);
-        lowerFused = map_.fusedMap_.atPosition("lower_bound", position);
-        upperFused = map_.fusedMap_.atPosition("upper_bound", position);
+        elevationFused = fusedMap.atPosition("elevation", position);
+        lowerFused = fusedMap.atPosition("lower_bound", position);
+        upperFused = fusedMap.atPosition("upper_bound", position);
     }
     return std::make_tuple(lowerFused, elevationFused, upperFused);
 }
@@ -521,6 +496,27 @@ float DriftRefinement::normalDistribution(float arg, float mean, float stdDev)
     double e = exp(-pow((arg-mean),2)/(2.0*pow(stdDev,2)));
     //Leaving away the weighting, as the maximum value should be one, which is sensible for weighting.
     return e; // (stdDev * sqrt(2*M_PI));
+}
+
+void DriftRefinement::initializeMapBoundMarkers() {
+    // Color and shape definition of markers for foot tip ground contact visualization.
+    elevationMapBoundMarkerList_.header.frame_id = "odom";
+    elevationMapBoundMarkerList_.header.stamp = ros::Time();
+    elevationMapBoundMarkerList_.ns = "elevation_mapping";
+    elevationMapBoundMarkerList_.id = 0;
+    elevationMapBoundMarkerList_.type = visualization_msgs::Marker::SPHERE_LIST;
+    elevationMapBoundMarkerList_.action = visualization_msgs::Marker::ADD;
+    elevationMapBoundMarkerList_.pose.orientation.x = 0.0;
+    elevationMapBoundMarkerList_.pose.orientation.y = 0.0;
+    elevationMapBoundMarkerList_.pose.orientation.z = 0.0;
+    elevationMapBoundMarkerList_.pose.orientation.w = 1.0;
+    elevationMapBoundMarkerList_.scale.x = 0.02;
+    elevationMapBoundMarkerList_.scale.y = 0.02;
+    elevationMapBoundMarkerList_.scale.z = 0.02;
+    elevationMapBoundMarkerList_.color.a = 1.0; // Don't forget to set the alpha!
+    elevationMapBoundMarkerList_.color.r = 0.0;
+    elevationMapBoundMarkerList_.color.g = 1.0;
+    elevationMapBoundMarkerList_.color.b = 0.7;
 }
 
 } /* namespace */

@@ -537,44 +537,6 @@ bool StanceProcessor::publishAveragedFootTipPositionMarkers(bool hind)
     return true;
 }
 
-bool StanceProcessor::publishFusedMapBoundMarkers(double& xTip, double& yTip,
-                                               double& elevationFused, double& upperBoundFused, double& lowerBoundFused)
-{
-
-    // TODO: get the values from the drift adjustment and publish the map bound markers.
-
-    geometry_msgs::Point p_elev, p_upper, p_lower;
-    p_elev.x = p_upper.x = p_lower.x = xTip;
-    p_elev.y = p_upper.y = p_lower.y = yTip;
-    p_elev.z = elevationFused + heightDifferenceFromComparison_;
-    p_upper.z = upperBoundFused + heightDifferenceFromComparison_;
-    p_lower.z = lowerBoundFused + heightDifferenceFromComparison_;
-
-
-    std_msgs::ColorRGBA c;
-    c.r = 1;
-    c.g = 0.5;
-    c.b = 0;
-    if(highGrassMode_){
-        c.g = 0.3;
-        c.r = 0.0;
-        c.b = 0.0;
-    }// New, colors to show if frame correction on or high grass detection..
-    c.a = 1;
-    //footContactMarkerList_.points.push_back(p_elev);
-    //footContactMarkerList_.colors.push_back(c);
-
-    elevationMapBoundMarkerList_.points.push_back(p_upper);
-    elevationMapBoundMarkerList_.colors.push_back(c);
-
-    elevationMapBoundMarkerList_.points.push_back(p_lower);
-    elevationMapBoundMarkerList_.colors.push_back(c);
-
-    elevationMapBoundPublisher_.publish(elevationMapBoundMarkerList_);
-
-    return true;
-}
-
 void StanceProcessor::setFootTipComparisonTrigger(std::string tip){
     footTipComparisonTrigger_ = true;
     tipTrigger_ = tip;
