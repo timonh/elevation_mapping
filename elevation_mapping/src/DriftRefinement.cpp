@@ -109,16 +109,13 @@ DriftRefinement::~DriftRefinement()
 {
 }
 
-bool DriftRefinement::footTipElevationMapComparison(std::string tip, Eigen::Vector3f& meanStance) // DR
+bool DriftRefinement::footTipElevationMapComparison(std::string tip, Eigen::Vector3f& meanStance, GridMap& rawMap)
 {
     //boost::recursive_mutex::scoped_lock scopedLockForFootTipStanceProcessor(footTipStanceComparisonMutex_);
     //boost::recursive_mutex::scoped_lock scopedLockForFootTipStanceProcessor(footTipStanceProcessorMutex_);
     //boost::recursive_mutex::scoped_lock scopedLock(rawMapMutex_);
 
-
-    grid_map::GridMap& rawMap = map_.getRawGridMap();
-
-    std::cout << "Called the foot tip elevation map comparison function" << std::endl;
+    //std::cout << "Called the foot tip elevation map comparison function" << std::endl;
 
     // New version
     double xTip, yTip, zTip = 0;
@@ -141,14 +138,25 @@ bool DriftRefinement::footTipElevationMapComparison(std::string tip, Eigen::Vect
         //else std::cout << "FOOT TIP CONSIDERED NOT TO BE INSIDE!!!!! \n \n \n \n " << std::endl;
     }
 
+    std::cout << "is it inside????? " << rawMap.isInside(tipPosition) << std::endl;
+
     // Make sure that the state is 1 and the foot tip is inside area covered by the elevation map.
     if(rawMap.isInside(tipPosition) && !isnan(heightDifferenceFromComparison_)){ // HACKED FOR TESTS!!!
         float heightMapRaw = rawMap.atPosition("elevation", tipPosition);
         float varianceMapRaw = rawMap.atPosition("variance", tipPosition);
         float heightMapRawElevationCorrected = rawMap.atPosition("elevation", tipPosition) + heightDifferenceFromComparison_; // Changed, since frame transformed grid map used.
 
+        std::cout << "got into the function isnan: " << isnan(heightMapRaw) << " the tip: " << tip << std::endl;
+
+        Index ind;
+        rawMap_.getIndex(tipPosition, ind);
+
+        std::cout << "Isvalid?? " << rawMap_.isValid(ind) << std::endl;
+
         // Supress nans.
         if(!isnan(heightMapRaw)){
+
+            std::cout << "got into the function 2: " << heightMapRaw << std::endl;
 
             // Calculate difference.
             verticalDifference = zTip - heightMapRaw;
@@ -320,6 +328,8 @@ bool DriftRefinement::footTipElevationMapComparison(std::string tip, Eigen::Vect
         else heightDifferenceFromComparison_ = 0.0;
     }
 
+
+    std::cout << "foot Tip Elev Comparison: " << heightDifferenceFromComparison_ << std::endl;
 
     // Publish frame, offset by the height difference parameter.
     //frameCorrection(); // Published here also.. (Hacked)

@@ -149,7 +149,7 @@ ElevationMap::ElevationMap(ros::NodeHandle nodeHandle)
   // SS
 
   //! Commented as moved to Stance Processor
-  if (false) {
+  if (true) {
       if(runFootTipElevationMapEnhancements_){ // SP
           if(!useBag_) footTipStanceSubscriber_ = nodeHandle_.subscribe("/state_estimator/quadruped_state", 1, &ElevationMap::footTipStanceCallback, this);
           else footTipStanceSubscriber_ = nodeHandle_.subscribe("/state_estimator/quadruped_state_remapped", 1, &ElevationMap::footTipStanceCallback, this);
@@ -192,6 +192,8 @@ ElevationMap::ElevationMap(ros::NodeHandle nodeHandle)
   isInStanceRightHind_ = false; // SP
   supportSurfaceInitializationTrigger_ = false; // SS
   cumulativeSupportSurfaceUncertaintyEstimation_ = 0.0; // SS
+  initializedLeftSinkageDepth_ = false;
+  initializedRightSinkageDepth_ = false;
   // END NEW
 
   initialTime_ = ros::Time::now();
@@ -941,7 +943,7 @@ void ElevationMap::footTipStanceCallback(const quadruped_msgs::QuadrupedState& q
   // Detect start and end of stances for each of the two front foot tips.
   detectStancePhase();
   //detectStancePhase("right");
-  //frameCorrection();
+  frameCorrection();
 }
 
 bool ElevationMap::detectStancePhase() // SP
@@ -3170,8 +3172,8 @@ bool ElevationMap::mainGPRegression(double tileResolution, double tileDiameter, 
         if (tip == "right") footTip = tipRight;
 
         // Get the foot tip plane coefficients.
-        Eigen::Vector4f planeCoefficients = getFootTipPlaneCoefficients(tip);
-        if (footTipHistoryGP_.size() >= 3) planeCoefficients = getFootTipPlaneCoefficientsFrontOnly(tip); // Testing if it makes a difference.
+        //Eigen::Vector4f planeCoefficients = getFootTipPlaneCoefficients(tip);
+        //if (footTipHistoryGP_.size() >= 3) planeCoefficients = getFootTipPlaneCoefficientsFrontOnly(tip); // Testing if it makes a difference.
 
         for (int i = -noOfTilesPerHalfSide; i <= noOfTilesPerHalfSide; ++i){
             for (int j = -noOfTilesPerHalfSide; j <= noOfTilesPerHalfSide; ++j){
@@ -3331,7 +3333,7 @@ bool ElevationMap::mainGPRegression(double tileResolution, double tileDiameter, 
                     geometry_msgs::Point p;
                     p.x = posTile(0);
                     p.y = posTile(1);
-                    p.z = evaluatePlaneFromCoefficients(planeCoefficients, posTilePosition); // Foot tip Plan visualization.. (otherwise set to 0.0)
+                    p.z = 0.0; // Foot tip Plan visualization.. (otherwise set to 0.0)
                     tileMarkerList.points.push_back(p);
 
                     supportSurfaceAddingAreaPublisher_.publish(tileMarkerList);
@@ -3866,22 +3868,39 @@ bool ElevationMap::simpleSinkageDepthLayer(std::string& tip, const double& tipDi
         if (tip == "left") footTip = tipLeftPos3;
         if (tip == "right") footTip = tipRightPos3;
 
-        footTipHistoryGP_.push_back(footTip);
+
         if (isnan(tipDifference)) {
-            if (tip == "left" && !isnan(leftFrontSinkageDepth_)) sinkageDepthHistory_.push_back(leftFrontSinkageDepth_); // Do not update the sinkage depth if there is no new information.
-            if (tip == "right" && !isnan(leftFrontSinkageDepth_)) sinkageDepthHistory_.push_back(rightFrontSinkageDepth_);
+            if (tip == "left" && !isnan(leftFrontSinkageDepth_) && initializedLeftSinkageDepth_) {
+                sinkageDepthHistory_.push_back(leftFrontSinkageDepth_); // Do not update the sinkage depth if there is no new information.
+                sinkageFootTipHistoryGP_.push_back(footTip);
+            }
+            else {
+
+            }
+            if (tip == "right" && !isnan(rightFrontSinkageDepth_) && initializedRightSinkageDepth_) {
+                sinkageDepthHistory_.push_back(rightFrontSinkageDepth_);
+                sinkageFootTipHistoryGP_.push_back(footTip);
+            }
         }
-        else if (!isnan(tipDifference)) {
+        else {
             sinkageDepthHistory_.push_back(-tipDifference); // Todo nicer with class vars for each foot tip
-            if (tip == "left") leftFrontSinkageDepth_ = -tipDifference;
-            if (tip == "right") rightFrontSinkageDepth_ = -tipDifference;
+            if (tip == "left"){
+                leftFrontSinkageDepth_ = -tipDifference;
+                initializedLeftSinkageDepth_ = true;
+                sinkageFootTipHistoryGP_.push_back(footTip);
+            }
+            if (tip == "right") {
+                rightFrontSinkageDepth_ = -tipDifference;
+                initializedRightSinkageDepth_ = true;
+                sinkageFootTipHistoryGP_.push_back(footTip);
+            }
         }
-        if (footTipHistoryGP_.size() > maxSizeFootTipHistory) { // They must be the same!!
-            footTipHistoryGP_.erase(footTipHistoryGP_.begin());
+        if (sinkageFootTipHistoryGP_.size() > maxSizeFootTipHistory) { // They must be the same!!
+            sinkageFootTipHistoryGP_.erase(sinkageFootTipHistoryGP_.begin());
             sinkageDepthHistory_.erase(sinkageDepthHistory_.begin());
         }
 
-        if (footTipHistoryGP_.size() != sinkageDepthHistory_.size()) {
+        if (sinkageFootTipHistoryGP_.size() != sinkageDepthHistory_.size()) {
             std::cout << "Attention, having issues \n \n \n \n ISSUES i said!!" << std::endl;
         }
 
@@ -3900,11 +3919,10 @@ bool ElevationMap::simpleSinkageDepthLayer(std::string& tip, const double& tipDi
             float totalWeight = 0.0;
             float tempHeight = 0.0;
 
-            for (unsigned int i = 0; i < min(footTipHistoryGP_.size(), sinkageDepthHistory_.size()); ++i) {
-                double distance = sqrt(pow(footTipHistoryGP_[i](0) - footTip(0), 2) + pow(footTipHistoryGP_[i](1) - footTip(1), 2));
+            for (unsigned int i = 0; i < min(sinkageFootTipHistoryGP_.size(), sinkageDepthHistory_.size()); ++i) {
+                double distance = sqrt(pow(sinkageFootTipHistoryGP_[i](0) - footTip(0), 2) + pow(sinkageFootTipHistoryGP_[i](1) - footTip(1), 2));
                 if (distance < radius) {
-
-                    float localDistance = sqrt(pow(footTipHistoryGP_[i](0) - pos(0), 2) + pow(footTipHistoryGP_[i](1) - pos(1), 2));
+                    float localDistance = sqrt(pow(sinkageFootTipHistoryGP_[i](0) - pos(0), 2) + pow(sinkageFootTipHistoryGP_[i](1) - pos(1), 2));
                     float weight = 1 / pow(localDistance, exponentSinkageDepthWeight_); // Hacking here to test the range of the power.
                     totalWeight += weight;
                     if (!isnan(sinkageDepthHistory_[i])) tempHeight += sinkageDepthHistory_[i] * weight;
@@ -3914,7 +3932,6 @@ bool ElevationMap::simpleSinkageDepthLayer(std::string& tip, const double& tipDi
             float output;
             if (totalWeight > 0.0) output = tempHeight / totalWeight;
             else output = 0.0;
-            // TODO: Adding procedure..
 
             float addingWeight = fmax(1 - (addingDistance / radius), 0.0);
             if (!isnan(output)){
@@ -3949,6 +3966,7 @@ bool ElevationMap::simpleTerrainContinuityLayer(std::string& tip, const double& 
         Position3 footTip;
         if (tip == "left") footTip = tipLeftPos3;
         if (tip == "right") footTip = tipRightPos3;
+        footTipHistoryGP_.push_back(footTip);
 
         Position center(footTip(0), footTip(1));
 
@@ -3967,7 +3985,7 @@ bool ElevationMap::simpleTerrainContinuityLayer(std::string& tip, const double& 
             for (unsigned int i = 0; i < footTipHistoryGP_.size(); ++i) {
                 double distance = sqrt(pow(footTipHistoryGP_[i](0) - footTip(0), 2) + pow(footTipHistoryGP_[i](1) - footTip(1), 2));
                 if (distance < radius) {
-                    if (i >= 2) {
+                    if (i > 2) {
                         Eigen::Vector4f coeffs = getPlaneCoeffsFromThreePoints(footTipHistoryGP_[i-2], footTipHistoryGP_[i-1], footTipHistoryGP_[i]);
                         double planeHeight = evaluatePlaneFromCoefficients(coeffs, pos);
                         // TODO: Evaluate Plane spun by three points and get do the same, but with the point value, that would have been gained by the plane
@@ -3982,8 +4000,8 @@ bool ElevationMap::simpleTerrainContinuityLayer(std::string& tip, const double& 
             }
 
             float output;
-            if (totalWeight > 0.0) output = tempHeight / totalWeight;
-            else return true; // Here is a problem, get it very neat!!! TODO!
+            if (totalWeight > 0.001) output = tempHeight / totalWeight;
+            else output = footTip(2); // Here is a problem, get it very neat!!! TODO! -> does this solve it????
 
             float addingWeight = fmin(fmax(1 - (addingDistance / radius), 0.0), 1.0);
             if (!isnan(output)){

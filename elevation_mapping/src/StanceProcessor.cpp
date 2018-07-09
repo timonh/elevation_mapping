@@ -100,6 +100,7 @@ StanceProcessor::StanceProcessor(ros::NodeHandle nodeHandle)
   isInStanceLeftHind_ = false;
   isInStanceRight_ = false;
   isInStanceRightHind_ = false;
+  footTipComparisonTrigger_ = false;
 }
 
 StanceProcessor::~StanceProcessor()
@@ -334,7 +335,7 @@ bool StanceProcessor::processStance(std::string tip)
     // Introduce a trigger here and call the foot tip elevation map comparison from elevation mapping class -> pass raw map as a reference with each call.
 
     bool hind = false;
-    if(tip != "lefthind" && tip != "righthind") driftRefinement_.footTipElevationMapComparison(tip, meanStance);
+    if(tip != "lefthind" && tip != "righthind") setFootTipComparisonTrigger(tip);
     else hind = true;
     publishAveragedFootTipPositionMarkers(hind);
 
@@ -572,6 +573,11 @@ bool StanceProcessor::publishFusedMapBoundMarkers(double& xTip, double& yTip,
     elevationMapBoundPublisher_.publish(elevationMapBoundMarkerList_);
 
     return true;
+}
+
+void StanceProcessor::setFootTipComparisonTrigger(std::string tip){
+    footTipComparisonTrigger_ = true;
+    tipTrigger_ = tip;
 }
 
 } /* namespace */

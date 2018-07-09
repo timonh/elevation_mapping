@@ -760,6 +760,10 @@ class ElevationMap
   // Store latest sinkage depth value.
   float leftFrontSinkageDepth_, rightFrontSinkageDepth_;
 
+  // Bools for sinkage depth history storage.
+  bool initializedLeftSinkageDepth_, initializedRightSinkageDepth_;
+  std::vector<grid_map::Position3> sinkageFootTipHistoryGP_;
+
 };
 
 } /* namespace */
