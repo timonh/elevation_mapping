@@ -13,6 +13,8 @@
 // New.
 #include "elevation_mapping/StanceProcessor.hpp"
 
+#include <ros/console.h>
+
 int main(int argc, char** argv)
 {
     {
@@ -20,9 +22,10 @@ int main(int argc, char** argv)
     ros::NodeHandle nodeHandle("~");
     elevation_mapping::ElevationMapping elevationMap(nodeHandle);
 
-    //std::cout << "No instantiating instance of stance processor" << std::endl;
-    //elevation_mapping::StanceProcessor stanceProcessor(nodeHandle);
-    //elevation_mapping::HighGrassElevationMapping highGrassElevationMap(nodeHandle);
+    // Added by timon to set the logger level.
+    //if( ros::console::set_logger_level(ROSCONSOLE_DEFAULT_NAME, ros::console::levels::Warn) ) {
+    //   ros::console::notifyLoggerLevelsChanged();
+    //}
 
     // Spin
     ros::AsyncSpinner spinner(2); // Use n threads // MANIPULATED!!!!!

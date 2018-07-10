@@ -65,13 +65,11 @@
 
 using namespace std;
 using namespace grid_map;
-using namespace kindr;
 
 namespace elevation_mapping {
 
 SupportSurfaceEstimation::SupportSurfaceEstimation(ros::NodeHandle nodeHandle)
     : nodeHandle_(nodeHandle),
-      map_(nodeHandle),
       //rawMap_({"elevation", "variance", "horizontal_variance_x", "horizontal_variance_y", "horizontal_variance_xy",
       //        "color", "time", "lowest_scan_point", "sensor_x_at_lowest_scan", "sensor_y_at_lowest_scan",
       //        "sensor_z_at_lowest_scan", "foot_tip_elevation", "support_surface", "elevation_inpainted", "elevation_smooth", "vegetation_height", "vegetation_height_smooth",
@@ -87,36 +85,26 @@ SupportSurfaceEstimation::SupportSurfaceEstimation(ros::NodeHandle nodeHandle)
     // Timon added foot_tip_elevation layer
   //rawMap_.setBasicLayers({"elevation", "variance"});
   //fusedMap_.setBasicLayers({"elevation", "upper_bound", "lower_bound"});
-  supportMap_.setBasicLayers({"elevation", "variance", "elevation_gp", "elevation_gp_added"}); // New
+  //supportMap_.setBasicLayers({"elevation", "variance", "elevation_gp", "elevation_gp_added"}); // New
   supportMapGP_.setBasicLayers({"elevation_gp", "variance_gp", "elevation_gp_added", "elevation_gp_tip", "sinkage_depth_gp"}); // New
 
   //! uncomment!!
   //clear();
 
-  // TEST:
-  //elevationMapCorrectedPublisher_ = nodeHandle_.advertise<grid_map_msgs::GridMap>("elevation_map_drift_adjusted", 1);
-  //elevationMapSupportPublisher_ = nodeHandle_.advertise<grid_map_msgs::GridMap>("support_added", 1);
-  //elevationMapInpaintedPublisher_ = nodeHandle_.advertise<grid_map_msgs::GridMap>("support_surface", 1);
-  elevationMapGPPublisher_ = nodeHandle_.advertise<grid_map_msgs::GridMap>("support_surface_gp", 1);
-  // END TEST
+  elevationMapSupportPublisher_ = nodeHandle_.advertise<grid_map_msgs::GridMap>("support_added", 1); // SS
+  elevationMapInpaintedPublisher_ = nodeHandle_.advertise<grid_map_msgs::GridMap>("support_surface", 1); // SS
+  elevationMapGPPublisher_ = nodeHandle_.advertise<grid_map_msgs::GridMap>("support_surface_gp", 1); // SS
 
-  //elevationMapRawPublisher_ = nodeHandle_.advertise<grid_map_msgs::GridMap>("elevation_map_raw", 1);
-  //elevationMapFusedPublisher_ = nodeHandle_.advertise<grid_map_msgs::GridMap>("elevation_map", 1);
-  //if (!underlyingMapTopic_.empty()) underlyingMapSubscriber_ =
-  //    nodeHandle_.subscribe(underlyingMapTopic_, 1, &ElevationMap::underlyingMapCallback, this);
-  // TODO if (enableVisibilityCleanup_) when parameter cleanup is ready.
-  //visbilityCleanupMapPublisher_ = nodeHandle_.advertise<grid_map_msgs::GridMap>("visibility_cleanup_map", 1);
+  nodeHandle_.param("add_old_support_surface_data_to_gp_training", addOldSupportSurfaceDataToGPTraining_, false); // SS
+  nodeHandle_.param("weight_terrain_continuity", weightTerrainContinuity_, 1.0); // SS
+  nodeHandle_.param("run_terrain_continuity_biasing", runTerrainContinuityBiasing_, true); // SS
+  nodeHandle_.param("exponent_sinkage_depth_weight", exponentSinkageDepthWeight_, 2.0); // SS
+  nodeHandle_.param("exponent_terrain_continuity_weight", exponentTerrainContinuityWeight_, 2.0); // SS
+  nodeHandle_.param("weight_decay_threshold", weightDecayThreshold_, 0.4); // SS
+  nodeHandle_.param("exponent_characteristic_value", exponentCharacteristicValue_, 1.0); // SS
+  nodeHandle_.param("continuity_filter_gain", continuityFilterGain_, 0.3); // SS
 
-  // Launching parameters.
-  nodeHandle_.param("run_drift_adjustment", driftAdjustment_, true);
-  nodeHandle_.param("apply_frame_correction", applyFrameCorrection_, true);
-  nodeHandle_.param("kp", kp_, 0.24);
-  nodeHandle_.param("ki", ki_, 0.67);
-  nodeHandle_.param("kd", kd_, -0.07);
-  nodeHandle_.param("weight_factor", weightingFactor_, 1.0);
-  nodeHandle_.param("run_hind_leg_stance_detection", runHindLegStanceDetection_, true); // TODO: add to config file
-
-  // For filter chain.
+  // For filter chain. // SS
   nodeHandle_.param("filter_chain_parameter_name", filterChainParametersName_, std::string("/grid_map_filter_chain_one"));
   if(!filterChain_.configure("/grid_map_filter_chain_one", nodeHandle_)){
       std::cout << "Could not configure the filter chain!!" << std::endl;
@@ -128,58 +116,12 @@ SupportSurfaceEstimation::SupportSurfaceEstimation(ros::NodeHandle nodeHandle)
       return;
   }
 
-  //bool use_bag = true;
-
-  // (New:) Foot tip position Subscriber for Foot tip - Elevation comparison
-  // TESTED BY CHANGING IF SCOPES..
-
-
-  //! Uncomment:
-  //if(driftAdjustment_){
-  //    if(!use_bag) footTipStanceSubscriber_ = nodeHandle_.subscribe("/state_estimator/quadruped_state", 1, &SupportSurfaceEstimation::footTipStanceCallback, this);
-  //    else footTipStanceSubscriber_ = nodeHandle_.subscribe("/state_estimator/quadruped_state_remapped", 1, &SupportSurfaceEstimation::footTipStanceCallback, this);
-  //}
-
-  // NEW: publish foot tip markers
-  //footContactPublisher_ = nodeHandle_.advertise<visualization_msgs::Marker>("mean_foot_contact_markers_rviz", 1000);
-  //elevationMapBoundPublisher_ = nodeHandle_.advertise<visualization_msgs::Marker>("map_bound_markers_rviz", 1000);
-  //planeFitVisualizationPublisher_ = nodeHandle_.advertise<visualization_msgs::Marker>("plane_fit_visualization_marker_list", 1000);
   varianceTwistPublisher_ = nodeHandle_.advertise<geometry_msgs::TwistStamped>("variances", 1000);
   supportSurfaceAddingAreaPublisher_ = nodeHandle_.advertise<visualization_msgs::Marker>("adding_area", 1000);
 
-  //ElevationMap map;
 
-  //! uncomment!!
-  //initializeFootTipMarkers();
-
-  // NEW: Publish data, for parameter tuning and visualization
-  //tuningPublisher1_ = nodeHandle_.advertise<elevation_mapping::PerformanceAssessment>("performance_assessment", 1000);
-
-  // NEW: publish clored pointcloud visualizing the local pointcloud variance.
-  //coloredPointCloudPublisher_ = nodeHandle_.advertise<sensor_msgs::PointCloud2>("variance_pointcloud", 1);
-
-  // Initializing some class variables.
-  //heightDifferenceFromComparison_ = 0.0;
-  //oldDiffComparisonUpdate_ = 0.0;
-  //estimatedDrift_ = 0.0;
-  //estimatedDriftChange_ = 0.0;
-  //estimatedDriftChangeVariance_ = 0.0;
-  //usedWeight_ = 0.0;
-  //footTipOutsideBounds_ = true;
-  //estimatedKalmanDiff_ = 0.0;
-  //estimatedKalmanDiffIncrement_ = 0.0;
-  //PEstimatedKalmanDiffIncrement_ = 0.0;
-  //performanceAssessment_ = 0.0;
-  //performanceAssessmentFlat_ = 0.0;
-  //driftEstimationPID_ = 0.0;
-  //highGrassMode_ = false;
-  //isInStanceLeft_ = false;
-  //isInStanceLeftHind_ = false;
-  //isInStanceRight_ = false;
-  //isInStanceRightHind_ = false;
-  supportSurfaceInitializationTrigger_ = false;
-  // END NEW
-  std::cout << "Called the constructor of the SupportSurfaceEstimation!!" << std::endl;
+  supportSurfaceInitializationTrigger_ = false; // SS
+  cumulativeSupportSurfaceUncertaintyEstimation_ = 0.0; // SS
 
   initialTime_ = ros::Time::now();
 }
@@ -188,54 +130,93 @@ SupportSurfaceEstimation::~SupportSurfaceEstimation()
 {
 }
 
-bool SupportSurfaceEstimation::updateSupportSurfaceEstimation(std::string tip){
-    // Here all the functions are called and weighting is set..
-
-    //penetrationDepthContinuityPropagation(); // Deprecated
-    //terrainContinuityPropagation(); // Deprecated
-    //penetrationDepthContinuityProcessing(tip); // Switched Off
-    //terrainContinuityProcessing(); // Switched Off
-    //footTipBasedElevationMapIncorporation(); // Switched Off
-    gaussianProcessSmoothing(tip);
-    return true;
-}
-
-bool SupportSurfaceEstimation::gaussianProcessSmoothing(std::string tip){
+bool SupportSurfaceEstimation::updateSupportSurfaceEstimation(std::string tip, GridMap& rawMap){
 
     // Uncertainty Estimation based on low pass filtered error between foot tip height and predicted support Surface.
     setSupportSurfaceUncertaintyEstimation(tip);
+
+    // Set coefficients spun by three of the foot tips.
+    //terrainContinuityBiasing(tip);
 
     // TODO: these params into config file.
     double tileResolution = 0.08;
     double tileDiameter = 0.23; // HAcked larger, if slow, change this here
     double sideLengthAddingPatch = 1.3;
-    //setSmoothingTiles(tileResolution, tileDiameter, sideLengthAddingPatch, tip);
-
-
-
+    //mainGPRegression(tileResolution, tileDiameter, sideLengthAddingPatch, tip);
     return true;
 }
+
+//Position3 ElevationMap::getFrontLeftFootTipPosition(){
+//    Position3 tipPos(frontLeftFootTip_(0), frontLeftFootTip_(1), frontLeftFootTip_(2));
+//    return tipPos;
+//}
+
+//Position3 ElevationMap::getFrontRightFootTipPosition(){
+//    Position3 tipPos(frontRightFootTip_(0), frontRightFootTip_(1), frontRightFootTip_(2));
+//    return tipPos;
+//}
+
+//Position3 ElevationMap::getHindLeftFootTipPosition(){
+//    Position3 tipPos(hindLeftFootTip_(0), hindLeftFootTip_(1), hindLeftFootTip_(2));
+//    return tipPos;
+//}
+
+//Position3 ElevationMap::getHindRightFootTipPosition(){
+//    Position3 tipPos(hindRightFootTip_(0), hindRightFootTip_(1), hindRightFootTip_(2));
+//    return tipPos;
+//}
 
 bool SupportSurfaceEstimation::setSupportSurfaceUncertaintyEstimation(std::string tip){
 
-    // TODO: try to access rawMap_.
-    //ElevationMap map_;
+//    Eigen::Vector3f latestTip;
+//    if (tip == "left") latestTip = getLatestLeftStance();
+//    if (tip == "right") latestTip = getLatestRightStance();
 
-    //Position pos(0.2,0.2);
-    //rawMap_.atPosition("elevation", pos);
-
-    //Eigen::Vector3f latestTip;
-    //if (tip == "left") latestTip = getLatestLeftStance();
-    //if (tip == "right") latestTip = getLatestRightStance();
-
-    // So far not low pass filtered!! -> create Vector for that (TODO)
-    //Position latestTipPosition(latestTip(0), latestTip(1));
-    //double diff = fabs(latestTip(2) - supportMapGP_.atPosition("elevation_gp_added", latestTipPosition));
-    //supportSurfaceUncertaintyEstimation_ = diff;
-    //if (!isnan(diff)) cumulativeSupportSurfaceUncertaintyEstimation_ += diff;
+//    // So far not low pass filtered!! -> create Vector for that (TODO)
+//    grid_map::Position latestTipPosition(latestTip(0), latestTip(1));
+//    double diff = fabs(latestTip(2) - supportMapGP_.atPosition("elevation_gp_added", latestTipPosition));
+//    supportSurfaceUncertaintyEstimation_ = diff;
+//    if (!isnan(diff)) cumulativeSupportSurfaceUncertaintyEstimation_ += diff;
     return true;
 }
 
+double SupportSurfaceEstimation::getFootTipElevationMapDifferenceGP(std::string tip){
 
+//    double radius = 0.1; // Maximum search radius for spiralling search in order to find the closest map element in case if nan is present..
+//    Position3 footTip3;
+//    if (tip == "left") footTip3 = getFrontLeftFootTipPosition();
+//    if (tip == "right") footTip3 = getFrontRightFootTipPosition();
+//    grid_map::Position footTipHorizontal(footTip3(0), footTip3(1));
+//    double verticalDifference;
+//    if (supportMapGP_.exists("smoothed_top_layer_gp")) { // New Check!!!
+//        if(supportMapGP_.isInside(footTipHorizontal)){
+//            if (!isnan(supportMapGP_.atPosition("smoothed_top_layer_gp", footTipHorizontal))){
+//                verticalDifference = footTip3(2) - supportMapGP_.atPosition("smoothed_top_layer_gp", footTipHorizontal); // Hacked to rawMap_
+//            }
+//            else verticalDifference = getClosestMapValueUsingSpiralIteratorElevation(supportMapGP_, footTipHorizontal, radius, footTip3(2)); // New experiment.. Wrong, not difference yet!!!
+//        }
+//    }
+//    else verticalDifference = std::numeric_limits<double>::quiet_NaN();
+//    std::cout << "Vertical Difference!! -> ->: " << verticalDifference << std::endl;
+    //return verticalDifference;
+}
+
+double SupportSurfaceEstimation::getClosestMapValueUsingSpiralIteratorElevation(grid_map::GridMap& MapReference, Position footTip, double radius, double tipHeight){
+
+//    int counter = 0;
+//    for (grid_map::SpiralIterator iterator(MapReference, footTip, radius);
+//         !iterator.isPastEnd(); ++iterator) {   // Hacked to is inside..
+//        Index index(*iterator);
+//        Position pos;
+//        MapReference.getPosition(index, pos);
+//        if (MapReference.isInside(pos) && !isnan(MapReference.at("smoothed_top_layer_gp", index)) && MapReference.isValid(index)){
+//            std::cout << "RETURNED DIFFERENCE TO A CLOSE NEIGHBOR USING SPIRALLING!!!" << std::endl;
+//            return tipHeight - MapReference.at("smoothed_top_layer_gp", index); // && MapReference.isValid(index)
+//        }
+//        counter++;
+//        if (counter > 28) break;
+//    }
+//    return std::numeric_limits<double>::quiet_NaN();
+}
 
 } /* namespace */

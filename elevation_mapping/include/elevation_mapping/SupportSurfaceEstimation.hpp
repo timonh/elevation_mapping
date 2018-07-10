@@ -79,7 +79,7 @@ public:
 
  // New Stuff public
  //! TODO: Description:
- bool updateSupportSurfaceEstimation(std::string tip);
+ bool updateSupportSurfaceEstimation(std::string tip, grid_map::GridMap& rawMap);
 
 
  /*!
@@ -493,7 +493,7 @@ private:
  ros::NodeHandle nodeHandle_;
 
  //! Raw elevation map as grid map.
- //grid_map::GridMap rawMap_;
+ grid_map::GridMap rawMap_;
 
  //! Fused elevation map as grid map.
  grid_map::GridMap fusedMap_;
@@ -583,9 +583,20 @@ private:
  //! driftAdjustment_: drift adjustment program running at all.
  //! applyFrameCorrection_: apply the calculated frame Correction -> if false performance measures are still calculated.
  //! runHindLegStanceDetection_: template based stance detection for hind legs for variance estimation in unseen terrain.
- bool driftAdjustment_;
+ bool runFootTipElevationMapEnhancements_;
  bool applyFrameCorrection_;
+ bool runHighGrassDetection_;
  bool runHindLegStanceDetection_;
+ std::string stanceDetectionMethod_;
+ bool addOldSupportSurfaceDataToGPTraining_;
+ bool addFootTipPositionsToGPTraining_;
+ bool useBag_;
+ bool runSupportSurfaceEstimation_;
+ double weightTerrainContinuity_;
+ double weightingFactorSampling_;
+ bool runTerrainContinuityBiasing_;
+ double exponentSinkageDepthWeight_, exponentTerrainContinuityWeight_, exponentCharacteristicValue_;
+ double weightDecayThreshold_;
 
  //! Bool to specify wheather in high grass or not:
  bool highGrassMode_;
@@ -649,7 +660,7 @@ private:
  bool supportSurfaceInitializationTrigger_;
 
  //! For use in penetrationDepthVarianceEstimation
- double penetrationDepthVariance_;
+ double penetrationDepthVariance_, differentialPenetrationDepthVariance_;
  std::vector<double> verticalDifferenceVector_;
 
  filters::FilterChain<grid_map::GridMap> filterChain_;
@@ -657,7 +668,7 @@ private:
  std::string filterChainParametersName_;
 
  // storage of front left foottip position for simple foot tip embedding.
- Eigen::Vector3f frontLeftFootTip_, frontRightFootTip_;
+ Eigen::Vector3f frontLeftFootTip_, frontRightFootTip_, hindLeftFootTip_, hindRightFootTip_;
 
  // Footprint storage in class member:
  geometry_msgs::Transform footprint_;
@@ -666,12 +677,38 @@ private:
  double terrainVariance_;
  double PenetrationDepthVariance_;
  double supportSurfaceUncertaintyEstimation_;
+ double cumulativeSupportSurfaceUncertaintyEstimation_;
 
  // Foot tip position history for GP.
  std::vector<grid_map::Position3> footTipHistoryGP_;
+ std::vector<float> sinkageDepthHistory_;
 
- //! Elevation Map
- ElevationMap map_;
+ // Quadruped velocity for low pass filtered velocity.
+ Eigen::Vector3f quadrupedBaseVelocity_;
+
+ // Vertical Difference Foot tip vs. smoothened top layer of elevation map.
+ double verticalDifferenceGP_;
+
+
+ // Object of Support Surface Estimation.
+ //SupportSurfaceEstimation supportSurfaceEstimation_;
+
+
+ // Low pass filtered base velocity for sinkage depth model approximation.
+ Eigen::Vector3f lowPassFilteredBaseVelocity_;
+
+ // Config Parameter for low pass filter gain.
+ double velocityLowPassFilterGain_;
+
+ double lowPassFilteredTerrainContinuityValue_;
+ double continuityFilterGain_;
+
+ // Store latest sinkage depth value.
+ float leftFrontSinkageDepth_, rightFrontSinkageDepth_;
+
+ // Bools for sinkage depth history storage.
+ bool initializedLeftSinkageDepth_, initializedRightSinkageDepth_;
+ std::vector<grid_map::Position3> sinkageFootTipHistoryGP_;
 };
 
 } /* namespace */

@@ -541,7 +541,8 @@ class ElevationMap
   //! TODO: Description:
   bool updateSinkageDepthHistory();
 
-
+  //! TODO: Description:
+  double gazeboPerformanceAssessment();
 
   //! ROS nodehandle.
   ros::NodeHandle nodeHandle_;
@@ -763,6 +764,11 @@ class ElevationMap
   // Bools for sinkage depth history storage.
   bool initializedLeftSinkageDepth_, initializedRightSinkageDepth_;
   std::vector<grid_map::Position3> sinkageFootTipHistoryGP_;
+
+  // GP Hyperparameters.
+  double GPLengthscale_;
+  double GPSigmaN_;
+  double GPSigmaF_;
 
 };
 

@@ -54,7 +54,7 @@ ElevationMapping::ElevationMapping(ros::NodeHandle& nodeHandle)
       map_(nodeHandle),
       robotMotionMapUpdater_(nodeHandle),
 
-      stanceProcessor_(nodeHandle),
+      //stanceProcessor_(nodeHandle),
       //supportSurfaceEstimation_(nodeHandle),
 
       isContinouslyFusing_(false),
@@ -111,9 +111,10 @@ ElevationMapping::ElevationMapping(ros::NodeHandle& nodeHandle)
   nodeHandle_.param("use_bag", useBag_, false); // SP
   nodeHandle_.param("run_foot_tip_elevation_map_enhancements", runFootTipElevationMapEnhancements_, true); // SP
   nodeHandle_.param("run_hind_leg_stance_detection", runHindLegStanceDetection_, true); // SP
+  nodeHandle_.param("run_support_surface_estimation", runSupportSurfaceEstimation_, false);
 
   //! Introduced by Timon
-  if (true) {
+  if (false) {
     if(runFootTipElevationMapEnhancements_){ // SP
       if(!useBag_) footTipStanceSubscriber_ = nodeHandle_.subscribe("/state_estimator/quadruped_state", 1, &ElevationMapping::footTipStanceCallback, this);
       else footTipStanceSubscriber_ = nodeHandle_.subscribe("/state_estimator/quadruped_state_remapped", 1, &ElevationMapping::footTipStanceCallback, this);
@@ -501,54 +502,76 @@ void ElevationMapping::stopMapUpdateTimer()
 
 void ElevationMapping::footTipStanceCallback(const quadruped_msgs::QuadrupedState& quadrupedState) // SP
 {
-  //boost::recursive_mutex::scoped_lock scopedLockForFootTipStanceProcessor(footTipStanceProcessorMutex_);
-  // Set class variables.
+//  //boost::recursive_mutex::scoped_lock scopedLockForFootTipStanceProcessor(footTipStanceProcessorMutex_);
+//  // Set class variables.
 
-  stanceProcessor_.LFTipPosition_(0) = (double)quadrupedState.contacts[0].position.x;
-  stanceProcessor_.LFTipPosition_(1) = (double)quadrupedState.contacts[0].position.y;
-  stanceProcessor_.LFTipPosition_(2) = (double)quadrupedState.contacts[0].position.z;
-  stanceProcessor_.RFTipPosition_(0) = (double)quadrupedState.contacts[1].position.x;
-  stanceProcessor_.RFTipPosition_(1) = (double)quadrupedState.contacts[1].position.y;
-  stanceProcessor_.RFTipPosition_(2) = (double)quadrupedState.contacts[1].position.z;
-  stanceProcessor_.LFTipState_ = quadrupedState.contacts[0].state;
-  stanceProcessor_.RFTipState_ = quadrupedState.contacts[1].state;
+//  stanceProcessor_.LFTipPosition_(0) = (double)quadrupedState.contacts[0].position.x;
+//  stanceProcessor_.LFTipPosition_(1) = (double)quadrupedState.contacts[0].position.y;
+//  stanceProcessor_.LFTipPosition_(2) = (double)quadrupedState.contacts[0].position.z;
+//  stanceProcessor_.RFTipPosition_(0) = (double)quadrupedState.contacts[1].position.x;
+//  stanceProcessor_.RFTipPosition_(1) = (double)quadrupedState.contacts[1].position.y;
+//  stanceProcessor_.RFTipPosition_(2) = (double)quadrupedState.contacts[1].position.z;
+//  stanceProcessor_.LFTipState_ = quadrupedState.contacts[0].state;
+//  stanceProcessor_.RFTipState_ = quadrupedState.contacts[1].state;
 
-  if(runHindLegStanceDetection_){
-      // Add hind legs for proprioceptive variance estimation.
-      stanceProcessor_.LHTipPosition_(0) = (double)quadrupedState.contacts[2].position.x;
-      stanceProcessor_.LHTipPosition_(1) = (double)quadrupedState.contacts[2].position.y;
-      stanceProcessor_.LHTipPosition_(2) = (double)quadrupedState.contacts[2].position.z;
-      stanceProcessor_.RHTipPosition_(0) = (double)quadrupedState.contacts[3].position.x;
-      stanceProcessor_.RHTipPosition_(1) = (double)quadrupedState.contacts[3].position.y;
-      stanceProcessor_.RHTipPosition_(2) = (double)quadrupedState.contacts[3].position.z;
-      stanceProcessor_.LHTipState_ = quadrupedState.contacts[2].state;
-      stanceProcessor_.RHTipState_ = quadrupedState.contacts[3].state;
-  }
+//  if(runHindLegStanceDetection_){
+//      // Add hind legs for proprioceptive variance estimation.
+//      stanceProcessor_.LHTipPosition_(0) = (double)quadrupedState.contacts[2].position.x;
+//      stanceProcessor_.LHTipPosition_(1) = (double)quadrupedState.contacts[2].position.y;
+//      stanceProcessor_.LHTipPosition_(2) = (double)quadrupedState.contacts[2].position.z;
+//      stanceProcessor_.RHTipPosition_(0) = (double)quadrupedState.contacts[3].position.x;
+//      stanceProcessor_.RHTipPosition_(1) = (double)quadrupedState.contacts[3].position.y;
+//      stanceProcessor_.RHTipPosition_(2) = (double)quadrupedState.contacts[3].position.z;
+//      stanceProcessor_.LHTipState_ = quadrupedState.contacts[2].state;
+//      stanceProcessor_.RHTipState_ = quadrupedState.contacts[3].state;
+//  }
 
-  // Detect start and end of stances for each of the two front foot tips.
-  stanceProcessor_.detectStancePhase();
+//  // Detect start and end of stances for each of the two front foot tips.
+//  stanceProcessor_.detectStancePhase();
 
-  // Broadcast frame transform for drift adjustment.
-  frameCorrection();
+//  // Broadcast frame transform for drift adjustment.
+//  frameCorrection();
 
-  bool trigger = getFootTipComparisonTrigger();
-  if (trigger) {
+//  bool trigger = getFootTipComparisonTrigger();
+//  if (trigger) {
 
-      grid_map::Position tipPosition(stanceProcessor_.meanStance_(0), stanceProcessor_.meanStance_(1));
-      // Do function get ellipsis axes for clarity..
-      Eigen::Array2d ellipseAxes;
-      ellipseAxes[0] = ellipseAxes[1] = std::max(6 * sqrt(map_.rawMap_.atPosition("horizontal_variance_x",tipPosition)),
-                                6 * sqrt(map_.rawMap_.atPosition("horizontal_variance_y",tipPosition)));
+//      grid_map::Position tipPosition(stanceProcessor_.meanStance_(0), stanceProcessor_.meanStance_(1));
+//      // Do function get ellipsis axes for clarity..
+//      Eigen::Array2d ellipseAxes;
+//      ellipseAxes[0] = ellipseAxes[1] = std::max(6 * sqrt(map_.rawMap_.atPosition("horizontal_variance_x",tipPosition)),
+//                                6 * sqrt(map_.rawMap_.atPosition("horizontal_variance_y",tipPosition)));
 
-      map_.fuseArea(tipPosition, ellipseAxes);
-      // TODO: elevation map bound fusion here. and pass fused map as reference to the comparison function..
+//      map_.fuseArea(tipPosition, ellipseAxes);
+//      // TODO: elevation map bound fusion here. and pass fused map as reference to the comparison function..
 
-      stanceProcessor_.driftRefinement_.footTipElevationMapComparison(getTipTrigger(), stanceProcessor_.meanStance_, map_.getRawGridMap(), map_.getFusedGridMap());
-      stanceProcessor_.footTipComparisonTrigger_ = false;
-  }
+//      stanceProcessor_.driftRefinement_.footTipElevationMapComparison(getTriggeredTip(), stanceProcessor_.meanStance_, map_.getRawGridMap(), map_.getFusedGridMap());
+//      stanceProcessor_.footTipComparisonTrigger_ = false;
 
-  stanceProcessor_.driftRefinement_.publishAveragedFootTipPositionMarkers(map_.getRawGridMap(), stanceProcessor_.meanStance_, getTipTrigger());
+//      stanceProcessor_.driftRefinement_.publishAveragedFootTipPositionMarkers(map_.getRawGridMap(), stanceProcessor_.meanStance_, getTriggeredTip());
 
+
+//      // TODO: getVertical Difference
+//      double verticalDifference = supportSurfaceEstimation_.getFootTipElevationMapDifferenceGP(getTriggeredTip());
+
+//      //! TODO: uncomment - > move to support surface estimation.
+//      bool runPenetrationDepthVarianceEstimation = true;
+//      if (runPenetrationDepthVarianceEstimation) supportSurfaceEstimation_.penetrationDepthVarianceEstimation(getTriggeredTip(), verticalDifference);
+
+////    bool runPenetrationDepthVarianceEstimation = true;
+////    if (runPenetrationDepthVarianceEstimation) penetrationDepthVarianceEstimation(tip, verticalDifference);
+
+//      // TODO here, function for managing the continuity assumptions
+
+//      // New here, check what isInside does..
+//      if (runSupportSurfaceEstimation_){
+//          if(map_.rawMap_.isInside(tipPosition))
+//              supportSurfaceEstimation_.updateSupportSurfaceEstimation(getTriggeredTip(), map_.getRawGridMap()); // NEW !!!!!
+//          else std::cout << "FOOT TIP CONSIDERED NOT TO BE INSIDE!!!!! \n \n \n \n " << std::endl;
+//      }
+
+
+
+//  }
 }
 
 bool ElevationMapping::frameCorrection()
@@ -560,8 +583,8 @@ bool ElevationMapping::frameCorrection()
     tf::Transform odomMapTransform;
     odomMapTransform.setIdentity();
 
-    if (!isnan(stanceProcessor_.driftRefinement_.heightDifferenceFromComparison_)) odomMapTransform.getOrigin()[2] += stanceProcessor_.driftRefinement_.heightDifferenceFromComparison_;
-    else std::cout << stanceProcessor_.driftRefinement_.heightDifferenceFromComparison_ << " <- height diff is this kind of NAN for some reason? \n ? \n ? \n";
+  //  if (!isnan(stanceProcessor_.driftRefinement_.heightDifferenceFromComparison_)) odomMapTransform.getOrigin()[2] += stanceProcessor_.driftRefinement_.heightDifferenceFromComparison_;
+  //  else std::cout << stanceProcessor_.driftRefinement_.heightDifferenceFromComparison_ << " <- height diff is this kind of NAN for some reason? \n ? \n ? \n";
 
     //ros::Time stamp = ros::Time().fromNSec(map_.fusedMap_.getTimestamp());
     mapCorrectedOdomTransformBroadcaster_.sendTransform(tf::StampedTransform(odomMapTransform,
@@ -571,11 +594,11 @@ bool ElevationMapping::frameCorrection()
 }
 
 bool ElevationMapping::getFootTipComparisonTrigger(){
-    return stanceProcessor_.footTipComparisonTrigger_;
+  //  return stanceProcessor_.footTipComparisonTrigger_;
 }
 
-std::string ElevationMapping::getTipTrigger(){
-    return stanceProcessor_.tipTrigger_;
+std::string ElevationMapping::getTriggeredTip(){
+  //  return stanceProcessor_.tipTrigger_;
 }
 
 

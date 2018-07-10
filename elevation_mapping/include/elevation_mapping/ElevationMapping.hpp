@@ -190,7 +190,7 @@ class ElevationMapping
 
   bool getFootTipComparisonTrigger();
 
-  std::string getTipTrigger();
+  std::string getTriggeredTip();
 
   //! ROS nodehandle.
   ros::NodeHandle& nodeHandle_;
@@ -276,12 +276,14 @@ class ElevationMapping
 
   // Foot Tip Elevation Map Enhancment Objects.
   //!Object of Stance Processor
-  StanceProcessor stanceProcessor_;
+  //StanceProcessor stanceProcessor_;
+  //SupportSurfaceEstimation supportSurfaceEstimation_;
 
   // Params.
   bool useBag_;
   bool runFootTipElevationMapEnhancements_;
   bool runHindLegStanceDetection_;
+  bool runSupportSurfaceEstimation_;
 
   // Ros Subscriber for stance detection.
   ros::Subscriber footTipStanceSubscriber_;

@@ -134,6 +134,9 @@ ElevationMap::ElevationMap(ros::NodeHandle nodeHandle)
   nodeHandle_.param("weight_decay_threshold", weightDecayThreshold_, 0.4); // SS
   nodeHandle_.param("exponent_characteristic_value", exponentCharacteristicValue_, 1.0); // SS
   nodeHandle_.param("continuity_filter_gain", continuityFilterGain_, 0.3); // SS
+  nodeHandle_.param("gp_lengthscale", GPLengthscale_, 10.0); // SS
+  nodeHandle_.param("gp_sigma_n", GPSigmaN_, 0.1); // SS
+  nodeHandle_.param("gp_sigma_f", GPSigmaF_, 0.001); // SS
 
   // For filter chain. // SS
   nodeHandle_.param("filter_chain_parameter_name", filterChainParametersName_, std::string("/grid_map_filter_chain_one"));
@@ -149,7 +152,7 @@ ElevationMap::ElevationMap(ros::NodeHandle nodeHandle)
   // SS
 
   //! Commented as moved to Stance Processor
-  if (false) {
+  if (true) {
       if(runFootTipElevationMapEnhancements_){ // SP
           if(!useBag_) footTipStanceSubscriber_ = nodeHandle_.subscribe("/state_estimator/quadruped_state", 1, &ElevationMap::footTipStanceCallback, this);
           else footTipStanceSubscriber_ = nodeHandle_.subscribe("/state_estimator/quadruped_state_remapped", 1, &ElevationMap::footTipStanceCallback, this);
@@ -3139,7 +3142,7 @@ bool ElevationMap::mainGPRegression(double tileResolution, double tileDiameter, 
 
         // Set lengthscale as function of terrain variance (assessed by foot tips only).
         double factor = 120.0;
-        double lengthscale = fmax(5.0 - (terrainVariance * factor), 0.7);
+        double lengthscale = 5.0 * fmax(5.0 - (terrainVariance * factor), 0.7);
         // Set the weight of the adding procedure as a function of the support surface uncertainty (i.e. difference between foot tip and support surface)
         double weightFactor = 0.0;
         if (!isnan(supportSurfaceUncertaintyEstimation)) weightFactor = supportSurfaceUncertaintyEstimation * 0.0001; // Hacked to practically nothing
@@ -3156,7 +3159,7 @@ bool ElevationMap::mainGPRegression(double tileResolution, double tileDiameter, 
 
 
         lowPassFilteredTerrainContinuityValue_ =  fmin(fmax(continuityFilterGain_ * lowPassFilteredTerrainContinuityValue_ + (1 - continuityFilterGain_)
-                                                            * characteristicValue, 0.13), 7.0); // TODO: reason about bounding.
+                                                            * characteristicValue, 0.2), 7.0); // TODO: reason about bounding.
 
         // Set message values.
         adaptationMsg.header.stamp = ros::Time::now();
@@ -3182,7 +3185,7 @@ bool ElevationMap::mainGPRegression(double tileResolution, double tileDiameter, 
                     int inputDim = 2;
                     int outputDim = 1;
                     GaussianProcessRegression<float> myGPR(inputDim, outputDim);
-                    myGPR.SetHyperParams(lengthscale * 5.0, 0.1, 0.001); // Hacked a factor * 5 remove soon
+                    myGPR.SetHyperParams(GPLengthscale_, GPSigmaN_, GPSigmaF_); // Hacked a factor * 5 remove soon
 
                     Eigen::Vector2f posTile;
                     posTile(0) = footTip(0) + i * tileResolution;
@@ -3863,19 +3866,23 @@ bool ElevationMap::simpleSinkageDepthLayer(std::string& tip, const double& tipDi
         double radius = 0.65;
         int maxSizeFootTipHistory = 15; // See what this does..
 
+
+        // DEBUG:
+        if (-tipDifference < 0.0) std::cout << "Attention, negative tip DIfference found!!: " << -tipDifference << std::endl;
+        if (initializedLeftSinkageDepth_ && leftFrontSinkageDepth_ < 0.0) std::cout << "Attention, negative leftfrontsd found!!: " << leftFrontSinkageDepth_ << std::endl;
+        if (initializedRightSinkageDepth_ && rightFrontSinkageDepth_ < 0.0) std::cout << "Attention, negative rightfrontsd found!!: " << rightFrontSinkageDepth_ << std::endl;
+
+
+
         // Do history vector.
         Position3 footTip;
         if (tip == "left") footTip = tipLeftPos3;
         if (tip == "right") footTip = tipRightPos3;
 
-
         if (isnan(tipDifference)) {
             if (tip == "left" && !isnan(leftFrontSinkageDepth_) && initializedLeftSinkageDepth_) {
                 sinkageDepthHistory_.push_back(leftFrontSinkageDepth_); // Do not update the sinkage depth if there is no new information.
                 sinkageFootTipHistoryGP_.push_back(footTip);
-            }
-            else {
-
             }
             if (tip == "right" && !isnan(rightFrontSinkageDepth_) && initializedRightSinkageDepth_) {
                 sinkageDepthHistory_.push_back(rightFrontSinkageDepth_);
@@ -3884,15 +3891,14 @@ bool ElevationMap::simpleSinkageDepthLayer(std::string& tip, const double& tipDi
         }
         else {
             sinkageDepthHistory_.push_back(-tipDifference); // Todo nicer with class vars for each foot tip
+            sinkageFootTipHistoryGP_.push_back(footTip);
             if (tip == "left"){
                 leftFrontSinkageDepth_ = -tipDifference;
                 initializedLeftSinkageDepth_ = true;
-                sinkageFootTipHistoryGP_.push_back(footTip);
             }
             if (tip == "right") {
                 rightFrontSinkageDepth_ = -tipDifference;
                 initializedRightSinkageDepth_ = true;
-                sinkageFootTipHistoryGP_.push_back(footTip);
             }
         }
         if (sinkageFootTipHistoryGP_.size() > maxSizeFootTipHistory) { // They must be the same!!
@@ -3929,8 +3935,9 @@ bool ElevationMap::simpleSinkageDepthLayer(std::string& tip, const double& tipDi
                 }
             }
 
-            float output;
-            if (totalWeight > 0.0) output = tempHeight / totalWeight;
+            double output;
+            if (totalWeight > 0.0001) output = tempHeight / totalWeight;
+            else if (!isnan(tipDifference)) output = tipDifference;
             else output = 0.0;
 
             float addingWeight = fmax(1 - (addingDistance / radius), 0.0);
@@ -3950,7 +3957,7 @@ bool ElevationMap::simpleSinkageDepthLayer(std::string& tip, const double& tipDi
 }
 
 
-// Put them together atsome time..
+// Put them together at some time..
 bool ElevationMap::simpleTerrainContinuityLayer(std::string& tip, const double& tipDifference){
 
     if (leftStanceVector_.size() > 0 && rightStanceVector_.size() > 0){
@@ -3967,6 +3974,7 @@ bool ElevationMap::simpleTerrainContinuityLayer(std::string& tip, const double& 
         if (tip == "left") footTip = tipLeftPos3;
         if (tip == "right") footTip = tipRightPos3;
         footTipHistoryGP_.push_back(footTip);
+        if (footTipHistoryGP_.size() > maxSizeFootTipHistory) footTipHistoryGP_.erase(footTipHistoryGP_.begin()); // This was missing, should speed things up..
 
         Position center(footTip(0), footTip(1));
 
@@ -3999,7 +4007,7 @@ bool ElevationMap::simpleTerrainContinuityLayer(std::string& tip, const double& 
                 }
             }
 
-            float output;
+            double output;
             if (totalWeight > 0.0001) output = tempHeight / totalWeight;
             else output = footTip(2); // Here is a problem, get it very neat!!! TODO! -> does this solve it????
 
@@ -4141,8 +4149,6 @@ bool ElevationMap::sampleContinuityPlaneToTrainingData(const Position& cellPos, 
     return insertPlaneHeightAtCell;
 }
 
-
-
 bool ElevationMap::setQuadrupedBaseVelocity(const Eigen::Vector3f& lowPassFilteredBaseVelocity){
     lowPassFilteredBaseVelocity_ = lowPassFilteredBaseVelocity;
     return true;
@@ -4172,6 +4178,12 @@ double ElevationMap::evaluatePlaneFromCoefficients(const Eigen::Vector4f& coeffi
     double planeElevation =  -(coefficients(0) * cellPos(0) + coefficients(1) * cellPos(1)
                                + coefficients(3)) / coefficients(2);
     return planeElevation;
+}
+
+double ElevationMap::gazeboPerformanceAssessment(){
+
+    //if ..
+
 }
 
 } /* namespace */

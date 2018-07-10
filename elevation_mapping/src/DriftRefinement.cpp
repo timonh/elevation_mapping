@@ -79,7 +79,6 @@ DriftRefinement::DriftRefinement(ros::NodeHandle nodeHandle)
   nodeHandle_.param("ki", ki_, 0.67);
   nodeHandle_.param("kd", kd_, -0.07);
   nodeHandle_.param("weight_factor", weightingFactor_, 1.0);
-  nodeHandle_.param("run_support_surface_estimation", runSupportSurfaceEstimation_, false);
   nodeHandle_.param("run_high_grass_detection", runHighGrassDetection_, false);
   nodeHandle_.param("run_support_surface_estimation", runSupportSurfaceEstimation_, false);
 
@@ -135,13 +134,6 @@ bool DriftRefinement::footTipElevationMapComparison(std::string tip, Eigen::Vect
     // Horizontal position of the foot tip.
     Position tipPosition(xTip, yTip);
 
-    // New here, check what isInside does..
-    if (runSupportSurfaceEstimation_){
-        //! TODO: uncomment these
-        //if(rawMap_.isInside(tipPosition)) updateSupportSurfaceEstimation(tip); // NEW !!!!!
-        //else std::cout << "FOOT TIP CONSIDERED NOT TO BE INSIDE!!!!! \n \n \n \n " << std::endl;
-    }
-
     std::cout << "is it inside????? " << rawMap.isInside(tipPosition) << std::endl;
 
     // Make sure that the state is 1 and the foot tip is inside area covered by the elevation map.
@@ -192,9 +184,6 @@ bool DriftRefinement::footTipElevationMapComparison(std::string tip, Eigen::Vect
 
            // std::cout << "weightedVerticalDifferenceIncrement " << weightedVerticalDifferenceIncrement << std::endl;
 
-            //! TODO: uncomment - > move to support surface estimation.
-            //bool runPenetrationDepthVarianceEstimation = true;
-            //if (runPenetrationDepthVarianceEstimation) penetrationDepthVarianceEstimation(tip, verticalDifference);
 
             // TODO: Switch ON and OFF
             publishFusedMapBoundMarkers(xTip, yTip, elevationFused, upperBoundFused, lowerBoundFused);
