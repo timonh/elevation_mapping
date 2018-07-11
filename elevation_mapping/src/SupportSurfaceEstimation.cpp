@@ -76,8 +76,6 @@ SupportSurfaceEstimation::SupportSurfaceEstimation(ros::NodeHandle nodeHandle)
       //        "support_surface", "support_surface_smooth", "support_surface_added"}),//, "support_surface_smooth_inpainted", "support_surface_added"}),
       //fusedMap_({"elevation", "upper_bound", "lower_bound", "color"}),
       //supportMap_({"elevation", "variance", "elevation_gp", "elevation_gp_added"}), // New
-      supportMapGP_({"elevation_gp", "variance_gp", "elevation_gp_added", "sinkage_depth_gp",
-                    "terrain_continuity_gp", "smoothed_top_layer_gp"}),
       //hasUnderlyingMap_(false),
       //visibilityCleanupDuration_(0.0),
       filterChain_("grid_map::GridMap"), // New
@@ -87,7 +85,7 @@ SupportSurfaceEstimation::SupportSurfaceEstimation(ros::NodeHandle nodeHandle)
   //rawMap_.setBasicLayers({"elevation", "variance"});
   //fusedMap_.setBasicLayers({"elevation", "upper_bound", "lower_bound"});
   //supportMap_.setBasicLayers({"elevation", "variance", "elevation_gp", "elevation_gp_added"}); // New
-  supportMapGP_.setBasicLayers({"elevation_gp", "variance_gp", "elevation_gp_added", "elevation_gp_tip", "sinkage_depth_gp"}); // New
+  //supportMapGP_.setBasicLayers({"elevation_gp", "variance_gp", "elevation_gp_added", "elevation_gp_tip", "sinkage_depth_gp"}); // New
 
   //! uncomment!!
   //clear();
@@ -131,19 +129,71 @@ SupportSurfaceEstimation::~SupportSurfaceEstimation()
 {
 }
 
-bool SupportSurfaceEstimation::updateSupportSurfaceEstimation(std::string tip, GridMap& rawMap){
+bool SupportSurfaceEstimation::updateSupportSurfaceEstimation(std::string tip, GridMap& rawMap,
+                                                              GridMap& supportMap, Eigen::Vector3f& stance){
+    Position tipPosition(stance(0), stance(1));
+    if(rawMap.isInside(tipPosition)) {
 
-    // Uncertainty Estimation based on low pass filtered error between foot tip height and predicted support Surface.
-    setSupportSurfaceUncertaintyEstimation(tip);
+
+        //! TODO: make function out of this:
+        //! TODO: uncomment - > move to support surface estimation.
+        //!
+        bool runProprioceptiveRoughnessEstimation = true;
+        if(runProprioceptiveRoughnessEstimation) proprioceptiveRoughnessEstimation(tip, stance);
+
+        if (tip != "lefthind" && tip != "righthind") {
+
+            // At som point: divide into 2 fcts.. TODO
+
+            // Run only if stance vectors are initialized..
+            if (leftStanceVector_.size() > 0 && rightStanceVector_.size() > 0) {
+
+
+                setSmoothedTopLayer(tip, rawMap, supportMap);
+                double verticalDifference = getFootTipElevationMapDifferenceGP(tip, supportMap);
+
+                bool runPenetrationDepthVarianceEstimation = true;
+                if (runPenetrationDepthVarianceEstimation) penetrationDepthVarianceEstimation(tip, verticalDifference);
+                //! Yes all this!
+
+                // Uncertainty Estimation based on low pass filtered error between foot tip height and predicted support Surface.
+                setSupportSurfaceUncertaintyEstimation(tip); //! TODO: uncomment whats inside of this function.
+
+
+                // TODO: these params into config file.
+                double tileResolution = 0.08;
+                double tileDiameter = 0.23;
+                double sideLengthAddingPatch = 1.3;
+                mainGPRegression(tileResolution, tileDiameter, sideLengthAddingPatch, tip, verticalDifference);
+
+                // RQT message publisher.
+                geometry_msgs::TwistStamped adaptationMsg;
+
+                // Set message values.
+                adaptationMsg.header.stamp = ros::Time::now();
+                adaptationMsg.twist.linear.x = getTerrainVariance();
+                //adaptationMsg.twist.linear.y = lowPassFilteredTerrainContinuityValue_;
+                //adaptationMsg.twist.angular.x = supportSurfaceUncertaintyEstimation;
+                //adaptationMsg.twist.angular.y = cumulativeSupportSurfaceUncertaintyEstimation;
+                adaptationMsg.twist.angular.z = getPenetrationDepthVariance();
+                adaptationMsg.twist.linear.z = getDifferentialPenetrationDepthVariance();
+
+                // Publish adaptation Parameters
+                varianceTwistPublisher_.publish(adaptationMsg);
+
+
+            }
+
+        }
+    }
+
+
+
 
     // Set coefficients spun by three of the foot tips.
     //terrainContinuityBiasing(tip);
 
-    // TODO: these params into config file.
-    double tileResolution = 0.08;
-    double tileDiameter = 0.23; // HAcked larger, if slow, change this here
-    double sideLengthAddingPatch = 1.3;
-    //mainGPRegression(tileResolution, tileDiameter, sideLengthAddingPatch, tip);
+    //else std::cout << "FOOT TIP CONSIDERED NOT TO BE INSIDE!!!!! \n \n \n \n " << std::endl;
     return true;
 }
 
@@ -181,7 +231,7 @@ bool SupportSurfaceEstimation::setSupportSurfaceUncertaintyEstimation(std::strin
     return true;
 }
 
-double SupportSurfaceEstimation::getFootTipElevationMapDifferenceGP(std::string tip){
+double SupportSurfaceEstimation::getFootTipElevationMapDifferenceGP(std::string tip, GridMap& supportMap){
 
     double radius = 0.1; // Maximum search radius for spiralling search in order to find the closest map element in case if nan is present..
     Position3 footTip3;
@@ -189,15 +239,15 @@ double SupportSurfaceEstimation::getFootTipElevationMapDifferenceGP(std::string 
     if (tip == "right") footTip3 = getFrontRightFootTipPosition();
     Position footTipHorizontal(footTip3(0), footTip3(1));
     double verticalDifference;
-    std::cout << "exists ?" << footTipHorizontal(0) << std::endl;
-    if (supportMapGP_.exists("smoothed_top_layer_gp")) { // New Check!!!
+    std::cout << "exists ? foot Tip3 (2)" << footTip3(2) << std::endl;
+    if (supportMap.exists("smoothed_top_layer_gp")) { // New Check!!!
         std::cout << "exists !" << std::endl;
-        if(supportMapGP_.isInside(footTipHorizontal)){
+        if(supportMap.isInside(footTipHorizontal)){
             std::cout << "went inside here check 1 " << std::endl;
-            if (!isnan(supportMapGP_.atPosition("smoothed_top_layer_gp", footTipHorizontal))){
-                verticalDifference = footTip3(2) - supportMapGP_.atPosition("smoothed_top_layer_gp", footTipHorizontal); // Hacked to rawMap_
+            if (!isnan(supportMap.atPosition("smoothed_top_layer_gp", footTipHorizontal))){
+                verticalDifference = footTip3(2) - supportMap.atPosition("smoothed_top_layer_gp", footTipHorizontal); // Hacked to rawMap_
             }
-            else verticalDifference = getClosestMapValueUsingSpiralIteratorElevation(supportMapGP_, footTipHorizontal, radius, footTip3(2)); // New experiment.. Wrong, not difference yet!!!
+            else verticalDifference = getClosestMapValueUsingSpiralIteratorElevation(supportMap, footTipHorizontal, radius, footTip3(2)); // New experiment.. Wrong, not difference yet!!!
         }
     }
     else verticalDifference = std::numeric_limits<double>::quiet_NaN();
@@ -205,7 +255,7 @@ double SupportSurfaceEstimation::getFootTipElevationMapDifferenceGP(std::string 
     return verticalDifference;
 }
 
-double SupportSurfaceEstimation::getClosestMapValueUsingSpiralIteratorElevation(grid_map::GridMap& MapReference, Position footTip, double radius, double tipHeight){
+double SupportSurfaceEstimation::getClosestMapValueUsingSpiralIteratorElevation(GridMap& MapReference, Position footTip, double radius, double tipHeight){
 
     int counter = 0;
     for (grid_map::SpiralIterator iterator(MapReference, footTip, radius);
@@ -273,7 +323,7 @@ void SupportSurfaceEstimation::setDifferentialPenetrationDepthVariance(double di
     if (!isnan(differentialPenetrationDepthVariance)) differentialPenetrationDepthVariance_ = differentialPenetrationDepthVariance;
 }
 
-bool SupportSurfaceEstimation::setSmoothenedTopLayer(std::string tip, GridMap& rawMap){
+bool SupportSurfaceEstimation::setSmoothedTopLayer(std::string tip, GridMap& rawMap, GridMap& supportMap){
 
     // Smoothing radius of area considered for sinkage depth calculation
     double smoothingRadius = 0.15;
@@ -291,14 +341,14 @@ bool SupportSurfaceEstimation::setSmoothenedTopLayer(std::string tip, GridMap& r
     smoothedTopLayerGPR.SetHyperParams(2.0, 0.1, 0.001);
 
     // Iterate around the foot tip position to add Data
-    for (CircleIterator iterator(supportMapGP_, footTipPosition, smoothingRadius); !iterator.isPastEnd(); ++iterator) {
+    for (CircleIterator iterator(supportMap, footTipPosition, smoothingRadius); !iterator.isPastEnd(); ++iterator) {
         const Index index(*iterator);
         // Loop Here for adding data..
         Eigen::VectorXf trainInput(inputDim);
         Eigen::VectorXf trainOutput(outputDim);
 
         Position inputPosition;
-        supportMapGP_.getPosition(index, inputPosition);
+        supportMap.getPosition(index, inputPosition);
         trainInput(0) = inputPosition(0);
         trainInput(1) = inputPosition(1);
         trainOutput(0) = rawMap.at("elevation", index);
@@ -309,20 +359,20 @@ bool SupportSurfaceEstimation::setSmoothenedTopLayer(std::string tip, GridMap& r
     }
 
     if (smoothedTopLayerGPR.get_n_data() > 0){
-        for (CircleIterator iterator(supportMapGP_, footTipPosition, smoothingRadius); !iterator.isPastEnd(); ++iterator) {
+        for (CircleIterator iterator(supportMap, footTipPosition, smoothingRadius); !iterator.isPastEnd(); ++iterator) {
             const Index index(*iterator);
 
             Eigen::VectorXf testInput(inputDim);
             Eigen::VectorXf testOutput(outputDim);
             Position testPosition;
-            supportMapGP_.getPosition(index, testPosition);
+            supportMap.getPosition(index, testPosition);
             testInput(0) = testPosition(0);
             testInput(1) = testPosition(1);
 
             double outputHeight = smoothedTopLayerGPR.DoRegression(testInput)(0);
 
             if (!isnan(outputHeight)){
-                supportMapGP_.at("smoothed_top_layer_gp", index) = outputHeight;
+                supportMap.at("smoothed_top_layer_gp", index) = outputHeight;
             }
         }
     }
@@ -533,6 +583,334 @@ double SupportSurfaceEstimation::getPenetrationDepthVariance(){
 
 double SupportSurfaceEstimation::getDifferentialPenetrationDepthVariance(){
     return differentialPenetrationDepthVariance_;
+}
+
+bool SupportSurfaceEstimation::mainGPRegression(double tileResolution, double tileDiameter,
+                                                double sideLengthAddingPatch, std::string tip, const double tipDifference){
+
+    // Todo: set tile resolution and tile size as config file params
+    if (2.0 * tileResolution > tileDiameter) { // TODO: make this double, as using circle iterator
+        std::cout << "tile size for gaussian process model tiling must be higher than twice the tile Resolution" << std::endl;
+        return false;
+    }
+
+    //if (leftStanceVector_.size() > 0 && rightStanceVector_.size() > 0){
+
+    // Get the difference of the foot tip vs the elevation map to vertically translate the smoothened map..
+
+    std::cout << "tipDifference: " << tipDifference << std::endl;
+
+    // Update sinkage depth Layer.
+    //sinkageDepthMapLayerGP(tip, tipDifference);
+
+    // ****************************************************************************************************************************************************************Here i was
+    simpleSinkageDepthLayer(tip, tipDifference); // Alternative
+    simpleTerrainContinuityLayer(tip, tipDifference);
+
+    // Visualization in Rviz.
+    visualization_msgs::Marker tileMarkerList;
+    tileMarkerList.header.frame_id = "odom";
+    tileMarkerList.header.stamp = ros::Time();
+    tileMarkerList.ns = "elevation_mapping";
+    tileMarkerList.id = 0;
+    tileMarkerList.type = visualization_msgs::Marker::SPHERE_LIST;
+    tileMarkerList.action = visualization_msgs::Marker::ADD;
+    tileMarkerList.pose.orientation.x = 0.0;
+    tileMarkerList.pose.orientation.y = 0.0;
+    tileMarkerList.pose.orientation.z = 0.0;
+    tileMarkerList.pose.orientation.w = 1.0;
+    tileMarkerList.scale.x = 0.1;
+    tileMarkerList.scale.y = 0.1;
+    tileMarkerList.scale.z = 0.1;
+
+    tileMarkerList.color.a = 1.0; // Don't forget to set the alpha!
+    tileMarkerList.color.r = 1.0;
+    tileMarkerList.color.g = 0.1;
+    tileMarkerList.color.b = 0.1;
+
+    Eigen::Vector3f tipLeftVec = getLatestLeftStance();
+    Eigen::Vector3f tipRightVec = getLatestRightStance();
+    Position tipLeft(tipLeftVec(0), tipLeftVec(1));
+    Position tipRight(tipRightVec(0), tipRightVec(1));
+    int noOfTilesPerHalfSide = floor((sideLengthAddingPatch / 2.0) / tileResolution);
+    double radius = (sideLengthAddingPatch - 0.15) / 2.0;
+
+    // RQT message publisher.
+    geometry_msgs::TwistStamped adaptationMsg;
+
+    // Get uncertainty measures.
+    double terrainVariance = getTerrainVariance();
+    double supportSurfaceUncertaintyEstimation = getSupportSurfaceUncertaintyEstimation();
+    double cumulativeSupportSurfaceUncertaintyEstimation = getCumulativeSupportSurfaceUncertaintyEstimation();
+    std::cout << "CumulativeSupportSurfaceUncertaintyEstimation: " << cumulativeSupportSurfaceUncertaintyEstimation << std::endl;
+
+    // Set lengthscale as function of terrain variance (assessed by foot tips only).
+    double factor = 120.0;
+    double lengthscale = 5.0 * fmax(5.0 - (terrainVariance * factor), 0.7);
+    // Set the weight of the adding procedure as a function of the support surface uncertainty (i.e. difference between foot tip and support surface)
+    double weightFactor = 0.0;
+    if (!isnan(supportSurfaceUncertaintyEstimation)) weightFactor = supportSurfaceUncertaintyEstimation * 0.0001; // Hacked to practically nothing
+
+    double sinkageVariance = getPenetrationDepthVariance();
+    double differentialSinkageVariance = getDifferentialPenetrationDepthVariance();
+
+    // TODO: conept for relevance between these two -> two tuning params -> relevance factor AND weightFactor for exp.
+    double characteristicValue = (weightTerrainContinuity_ * terrainVariance) / pow((1.0 * sinkageVariance + 0.0 * differentialSinkageVariance), exponentCharacteristicValue_);
+
+
+    // TODO: reason about this functionality, anything with sqrt?? -> test and learn?
+
+
+
+    lowPassFilteredTerrainContinuityValue_ =  fmin(fmax(continuityFilterGain_ * lowPassFilteredTerrainContinuityValue_ + (1 - continuityFilterGain_)
+                                                        * characteristicValue, 0.2), 7.0); // TODO: reason about bounding.
+
+    // Set message values.
+    adaptationMsg.header.stamp = ros::Time::now();
+    adaptationMsg.twist.linear.x = terrainVariance;
+    adaptationMsg.twist.linear.y = lowPassFilteredTerrainContinuityValue_;
+    adaptationMsg.twist.angular.x = supportSurfaceUncertaintyEstimation;
+    adaptationMsg.twist.angular.y = cumulativeSupportSurfaceUncertaintyEstimation;
+    adaptationMsg.twist.angular.z = sinkageVariance;
+    adaptationMsg.twist.linear.z = differentialSinkageVariance;
+
+    Position footTip;
+    if (tip == "left") footTip = tipLeft;
+    if (tip == "right") footTip = tipRight;
+
+    // Get the foot tip plane coefficients.
+    //Eigen::Vector4f planeCoefficients = getFootTipPlaneCoefficients(tip);
+    //if (footTipHistoryGP_.size() >= 3) planeCoefficients = getFootTipPlaneCoefficientsFrontOnly(tip); // Testing if it makes a difference.
+
+    for (int i = -noOfTilesPerHalfSide; i <= noOfTilesPerHalfSide; ++i){
+        for (int j = -noOfTilesPerHalfSide; j <= noOfTilesPerHalfSide; ++j){
+            if (sqrt(pow(i * tileResolution,2) + pow(j * tileResolution,2)) < radius){
+
+                int inputDim = 2;
+                int outputDim = 1;
+                GaussianProcessRegression<float> myGPR(inputDim, outputDim);
+                myGPR.SetHyperParams(GPLengthscale_, GPSigmaN_, GPSigmaF_); // Hacked a factor * 5 remove soon
+
+                Eigen::Vector2f posTile;
+                posTile(0) = footTip(0) + i * tileResolution;
+                posTile(1) = footTip(1) + j * tileResolution;
+
+                Position posTilePosition(posTile(0), posTile(1));
+
+                // Loop to add training data to GP regression.
+                for (CircleIterator iterator(supportMapGP_, posTilePosition, tileDiameter/2.0); !iterator.isPastEnd(); ++iterator) {
+                    const Index index(*iterator);
+                    Eigen::VectorXf trainInput(inputDim);
+                    Eigen::VectorXf trainOutput(outputDim);
+
+                    Position cellPos;
+                    supportMapGP_.getPosition(index, cellPos); // This is wrong!!!!!!!!
+                    trainInput(0) = cellPos(0);
+                    trainInput(1) = cellPos(1);
+
+                    trainOutput(0) = rawMap_.at("elevation", index) - supportMapGP_.at("sinkage_depth_gp", index); //! New as part of major changes
+
+                    // SomeTests
+                    Eigen::VectorXf trainOutput2(outputDim);
+                    trainOutput2(0) = supportMapGP_.at("elevation_gp_added", index);
+
+
+                    // Probability sampling and replace the training data by plane value
+                    // Else do all the following in this loop.
+
+                    bool insert = sampleContinuityPlaneToTrainingData(cellPos, footTip, lowPassFilteredTerrainContinuityValue_);
+                    if (insert) {
+                        //if (scalarProduct > 0.0) {
+                        trainOutput(0) = supportMapGP_.at("terrain_continuity_gp", index);
+                        //trainOutput(0) = evaluatePlaneFromCoefficients(planeCoefficients, cellPos);
+                        //}
+                        // In this case add the old training data, not to influence the past by the continuity assumptions
+                        //else {
+                        //    trainOutput(0) = supportMapGP_.at("elevation_gp_added", index); // Check, if this is the right way round.
+                        //}
+                        if (!isnan(trainOutput(0))) myGPR.AddTrainingData(trainInput, trainOutput);
+                    }
+                    else if (!isnan(trainOutput(0))){  // Removed validation argument here..
+                        // Studies for terrain continuity techniques..
+                        myGPR.AddTrainingData(trainInput, trainOutput);
+                        //if (addFootTipPositionsToGPTraining_){
+                        //    myGPR.AddtrainingData()
+                        //}
+
+
+                        // TODO: if continuity assumption: when scalar product is negative: add old data instead of plane data.
+
+                        //if (addOldSupportSurfaceDataToGPTraining_ && i % 3 == 0 && j % 3 == 0){  // Hacked trying some stuff..
+                        //    myGPR.AddTrainingData(trainInput, trainOutput2);
+                        //}
+                    }
+                }
+
+                //std::cout << "The Number of Data in this tile is: " << myGPR.get_n_data() << std::endl;
+
+                //myGPR.PrepareRegression(false); // Testing..
+
+
+                // Only perform regression if no. of Data is sufficiently high.
+                if (myGPR.get_n_data() > 1){
+
+                    // Loop here to get test output
+                    for (CircleIterator iterator(supportMapGP_, posTilePosition, tileDiameter/2.0); !iterator.isPastEnd(); ++iterator) { // HAcked to raw map for testing..
+                        const Index index(*iterator);
+
+                        auto& supportMapElevationGP = supportMapGP_.at("elevation_gp", index);
+                        //auto& supportMapVarianceGP = supportMapGP_.at("variance_gp", index);
+
+                        //auto& supportMapElevation = supportMap_.at("elevation", index);
+                        //auto& supportMapVariance = supportMap_.at("variance", index);
+                        //auto& rawMapElevation = rawMap_.at("elevation", index);
+                        //auto& mapSupSurfaceSmooth = mapSmooth.at("support_surface_smooth", index);
+
+
+                       // if (!supportMap_.isValid(index)) {
+                            //supportMapElevationGP = 0.0;
+                        //    supportMapElevation = mapSupSurfaceSmooth; // HAcked for testing..
+                        //    supportMapVariance = 0.0; // Hacked -> trust less those layers that are new
+                       // }
+                      //  else{
+
+
+
+                        // Todo, consider hole filling for better hole filling
+                        Eigen::VectorXf testInput(inputDim);
+                        Eigen::VectorXf testOutput(outputDim);
+                        Position inputPosition;
+                        supportMapGP_.getPosition(index, inputPosition);
+
+                        testInput(0) = inputPosition(0);
+                        testInput(1) = inputPosition(1);
+
+                        // TODO: cleanly separate the weighting due to
+
+                        // Calculate weight. (as function of distance from foot tip)
+                        // inputPosition vs. foot tip / radius
+//                            double radius = (sideLengthAddingPatch - 0.2) / 2.0;
+//                            double weight = min(1.2 - (sqrt(pow(inputPosition(0) - footTip(0), 2) +
+//                                                     pow(inputPosition(1) - footTip(1), 2)) / radius), 1.0);
+                        //if (weight > 0.9) std::cout << "weight: " << weight << std::endl;
+
+                        //if (!isnan(tipDifference)){ // Only update if finite tipDifference is found
+                            // Low pass filter method if ther is already data. (TEST this!!)
+                            //if (isnan(supportMap_.at("elevation_gp", index))){
+
+
+                        float regressionOutput = myGPR.DoRegression(testInput)(0);
+                        //float regressionOutputVariance = myGPR.GetVariance()(0);
+
+                        if (!isnan(regressionOutput)){
+                            if (!supportMapGP_.isValid(index)){
+                                supportMapElevationGP = regressionOutput;
+                                //supportMapVarianceGP = regressionOutputVariance;
+                            }
+                            else {
+//                                if (supportMapElevationGP == 0.0) std::cout << "ATTENTION!! ZERO BIAS" << std::endl;
+                                supportMapElevationGP = 0.5 *  supportMapElevationGP +
+                                        (regressionOutput) * 0.5;
+                               // supportMapVarianceGP = 0.5 *  supportMapVarianceGP +
+                               //         (regressionOutputVariance) * 0.5;
+                                //supportMapElevationGP = regressionOutput; // Test!!
+                                //supportMapElevationGP = myGPR.DoRegression(testInput)(0) + tipDifference; // Hacked to test!
+                            }
+                        }
+                        //}
+
+                       // if (supportMapElevationGP == 0.0) supportMap_.isValid(index) = false;
+
+                    }
+
+                }
+
+                // Debug:
+            //    Eigen::VectorXf testInput(inputDim);
+            //    testInput(0) = posTilePosition(0);
+            //    testInput(1) = posTilePosition(1);
+            //    Eigen::VectorXf testOutput(outputDim);
+            //    testOutput(0) =  myGPR.DoRegression(testInput)(0);
+                //if (!isnan(testOutput(0))) supportMap_.atPosition("elevation_gp", posTilePosition) = testOutput(0);
+                //supportMap_.atPosition("elevation_gp", posTilePosition) = myGPR.DoRegression(testInput)(0);
+                // End Debug
+
+                // Visualization:
+
+                geometry_msgs::Point p;
+                p.x = posTile(0);
+                p.y = posTile(1);
+                p.z = 0.0; // Foot tip Plan visualization.. (otherwise set to 0.0)
+                tileMarkerList.points.push_back(p);
+
+                supportSurfaceAddingAreaPublisher_.publish(tileMarkerList);
+               // myGPR.ClearTrainingData();
+            }
+
+        }
+    }
+
+    // Weight for tiles against each others.
+    double intraGPWeight = 0.8;
+
+    for (CircleIterator iterator(supportMapGP_, footTip, radius); !iterator.isPastEnd(); ++iterator) { // HAcked to raw map for testing..
+        const Index index(*iterator);
+
+        Position addingPosition;
+        supportMapGP_.getPosition(index, addingPosition);
+
+        double distance = sqrt(pow(addingPosition(0) - footTip(0), 2) +
+                               pow(addingPosition(1) - footTip(1), 2));
+        double distanceFactor = sqrt(pow(addingPosition(0) - footTip(0), 2) +
+                                           pow(addingPosition(1) - footTip(1), 2)) / radius;
+
+
+        // TODO: here, add only if scalar product is above negative threshold.
+
+        // New weighting scheme here:
+        double weight;
+        if (distance <= 0.2 * radius) weight = 1.0 - (distance / radius);
+        else if (distance >= 0.2 * radius && distance <= weightDecayThreshold_ * radius) weight = 0.8;
+        else weight = weightDecayThreshold_ - weightDecayThreshold_ * (distance - weightDecayThreshold_ * radius)
+                / ((1.0 - weightDecayThreshold_) * radius);
+        // End of new weighting scheme
+
+        auto& supportMapElevationGP = supportMapGP_.at("elevation_gp", index);
+        auto& supportMapElevationGPAdded = supportMapGP_.at("elevation_gp_added", index);
+        auto& supportMapVarianceGP = supportMapGP_.at("variance_gp", index);
+        //auto& supportMapSinkageDepthGP = supportMapGP_.at("sinkage_depth_gp", index);
+        auto& rawMapElevationGP = rawMap_.at("elevation_gp_added_raw", index);
+        auto& fusedMapElevationGP = fusedMap_.at("elevation_gp_added_raw", index);
+
+        if (supportMapGP_.isValid(index) && !isnan(supportMapElevationGP)){
+            supportMapElevationGPAdded = (1 - weight) * supportMapElevationGPAdded + (supportMapElevationGP) * weight;
+            // Naive approach to variance calculation:
+            supportMapVarianceGP = 0.5 * supportMapVarianceGP + 0.5 * pow((supportMapElevationGPAdded - supportMapElevationGP), 2);
+        }
+        else if (!isnan(supportMapElevationGP)){
+            supportMapElevationGPAdded = supportMapElevationGP;
+            supportMapVarianceGP = 0.0;
+        }
+        if (!isnan(supportMapElevationGPAdded)) rawMapElevationGP = supportMapElevationGPAdded; // Test
+        if (!isnan(supportMapElevationGPAdded)) fusedMapElevationGP = supportMapElevationGPAdded; // Test
+    }
+
+    // Publish adaptation Parameters
+    varianceTwistPublisher_.publish(adaptationMsg);
+    //}
+
+    //footTipElevationMapLayerGP(tip);
+    supportSurfaceUpperBoundingGP(rawMap_, supportMapGP_);
+
+   // rawMap_["elevation_gp_added_raw"] = supportMapGP_["elevation_gp_added"]; // REMOVE IF SLOW
+
+    // Publish map
+    grid_map_msgs::GridMap mapMessageGP;
+    GridMapRosConverter::toMessage(supportMapGP_, mapMessageGP);
+    mapMessageGP.info.header.frame_id = "odom";
+    elevationMapGPPublisher_.publish(mapMessageGP);
+
+    return true;
 }
 
 } /* namespace */

@@ -82,7 +82,7 @@ public:
 
  // New Stuff public
  //! TODO: Description:
- bool updateSupportSurfaceEstimation(std::string tip, grid_map::GridMap& rawMap);
+ bool updateSupportSurfaceEstimation(std::string tip, grid_map::GridMap& rawMap, grid_map::GridMap& supportMap, Eigen::Vector3f& stance);
 
 
  /*!
@@ -475,10 +475,11 @@ private:
  bool gaussianProcessSmoothing(std::string tip);
 
  //! TODO: Description:
- bool setSmoothingTiles(double tileResolution, double tileSize, double sideLengthAddingPatch, std::string tip);
+ bool mainGPRegression(double tileResolution, double tileDiameter,
+                       double sideLengthAddingPatch, std::string tip, const double tipDifference);
 
  //! TODO: Description:
- double getFootTipElevationMapDifferenceGP(std::string tip);
+ double getFootTipElevationMapDifferenceGP(std::string tip, grid_map::GridMap& supportMap);
 
  //! TODO: Description:
  double getClosestMapValueUsingSpiralIteratorElevation(grid_map::GridMap& MapReference, grid_map::Position footTip, double radius, double tipHeight);
@@ -504,7 +505,7 @@ private:
  //! TODO: Description:
  bool sinkageDepthMapLayerGP(std::string tip, double& tipDifference);
 
- bool setSmoothenedTopLayer(std::string tip, grid_map::GridMap& rawMap);
+ bool setSmoothedTopLayer(std::string tip, grid_map::GridMap& rawMap, grid_map::GridMap& supportMap);
 
 
  //! ROS nodehandle.
