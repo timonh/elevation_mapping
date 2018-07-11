@@ -48,6 +48,9 @@
 #include "tf/transform_listener.h"
 #include "tf/transform_broadcaster.h"
 
+// GP Regression
+#include <gaussian_process_regression/gaussian_process_regression.h>
+
 //// ROS msgs
 ////#include <elevation_mapping/PerformanceAssessment.h>
 
@@ -418,7 +421,10 @@ private:
  Eigen::Vector3f getLatestRightStance();
 
  //! TODO: Description:
- void setPenetrationDepthVariance(double verticalDifference);
+ void setPenetrationDepthVariance(double penetrationDepthVariance);
+
+ //! TODO: Description:
+ void setDifferentialPenetrationDepthVariance(double differentialPenetrationDepthVariance);
 
  //! TODO: Description:
  double getPenetrationDepthVariance();
@@ -437,6 +443,12 @@ private:
 
  //! TODO: Description:
  grid_map::Position3 getFrontRightFootTipPosition();
+
+ //! TODO: Description:
+ grid_map::Position3 getHindLeftFootTipPosition();
+
+ //! TODO: Description:
+ grid_map::Position3 getHindRightFootTipPosition();
 
  //! TODO: Description:
  double getClosestMapValueUsingSpiralIterator(grid_map::GridMap& MapReference, grid_map::Position footTip, double radius, double tipHeight);
@@ -488,6 +500,9 @@ private:
 
  //! TODO: Description:
  bool sinkageDepthMapLayerGP(std::string tip, double& tipDifference);
+
+ bool setSmoothenedTopLayer(std::string tip, grid_map::GridMap& rawMap);
+
 
  //! ROS nodehandle.
  ros::NodeHandle nodeHandle_;

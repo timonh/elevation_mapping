@@ -489,7 +489,7 @@ private:
  //! TODO: Description:
  bool sinkageDepthMapLayerGP(std::string tip, double& tipDifference);
 
- void setFootTipComparisonTrigger(std::string tip);
+ void setFootTipTrigger(std::string tip);
 
 
  //! ROS nodehandle.
@@ -684,7 +684,7 @@ private:
  std::string stanceDetectionMethod_;
  bool useBag_;
  bool runSupportSurfaceEstimation_;
- bool footTipComparisonTrigger_;
+ bool footTipTrigger_;
  std::string tipTrigger_;
 
 

@@ -531,12 +531,12 @@ bool DriftRefinement::publishAveragedFootTipPositionMarkers(const GridMap& rawMa
 
     bool hind = false;
     if (tip == "lefthind" || tip == "righthind") hind = true;
-    //! TODO: uncomment this!!
     if(hind){
         c.g = 1;
         c.b = 1;
         c.r = 1;
         c.a = 1;
+        std::cout << "Hind!!!" << std::endl;
     }
 
     //boost::recursive_mutex::scoped_lock scopedLock(rawMapMutex_);

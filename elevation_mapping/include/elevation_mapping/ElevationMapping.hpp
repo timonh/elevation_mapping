@@ -188,7 +188,7 @@ class ElevationMapping
 
   bool frameCorrection();
 
-  bool getFootTipComparisonTrigger();
+  bool getFootTipTrigger();
 
   std::string getTriggeredTip();
 
@@ -276,8 +276,8 @@ class ElevationMapping
 
   // Foot Tip Elevation Map Enhancment Objects.
   //!Object of Stance Processor
-  //StanceProcessor stanceProcessor_;
-  //SupportSurfaceEstimation supportSurfaceEstimation_;
+  StanceProcessor stanceProcessor_;
+  SupportSurfaceEstimation supportSurfaceEstimation_;
 
   // Params.
   bool useBag_;
@@ -291,7 +291,8 @@ class ElevationMapping
   // Transform Broadcaster for drift adjustment.
   tf::TransformBroadcaster mapCorrectedOdomTransformBroadcaster_;
 
-
+  // ROS publisher for adaptation data.
+  ros::Publisher varianceTwistPublisher_;
 
 };
 
