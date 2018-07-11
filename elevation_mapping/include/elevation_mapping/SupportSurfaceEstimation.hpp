@@ -373,7 +373,7 @@ private:
  bool writeFootTipStatisticsToFile(double& footTipVal, std::string filename);
 
  //! TODO: Description:
- bool proprioceptiveRoughnessEstimation(std::string tip);
+ bool proprioceptiveRoughnessEstimation(std::string tip, Eigen::Vector3f meanStance);
 
  //! TODO: Description:
  bool proprioceptiveVariance(std::string tip);
@@ -428,6 +428,9 @@ private:
 
  //! TODO: Description:
  double getPenetrationDepthVariance();
+
+ //! TODO: Description:
+ double getDifferentialPenetrationDepthVariance();
 
  //! TODO: Description:
  bool penetrationDepthContinuityProcessing(std::string tip);

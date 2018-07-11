@@ -76,7 +76,8 @@ SupportSurfaceEstimation::SupportSurfaceEstimation(ros::NodeHandle nodeHandle)
       //        "support_surface", "support_surface_smooth", "support_surface_added"}),//, "support_surface_smooth_inpainted", "support_surface_added"}),
       //fusedMap_({"elevation", "upper_bound", "lower_bound", "color"}),
       //supportMap_({"elevation", "variance", "elevation_gp", "elevation_gp_added"}), // New
-      supportMapGP_({"elevation_gp", "variance_gp", "elevation_gp_added", "elevation_gp_tip", "sinkage_depth_gp"}), // New
+      supportMapGP_({"elevation_gp", "variance_gp", "elevation_gp_added", "sinkage_depth_gp",
+                    "terrain_continuity_gp", "smoothed_top_layer_gp"}),
       //hasUnderlyingMap_(false),
       //visibilityCleanupDuration_(0.0),
       filterChain_("grid_map::GridMap"), // New
@@ -188,8 +189,11 @@ double SupportSurfaceEstimation::getFootTipElevationMapDifferenceGP(std::string 
     if (tip == "right") footTip3 = getFrontRightFootTipPosition();
     Position footTipHorizontal(footTip3(0), footTip3(1));
     double verticalDifference;
+    std::cout << "exists ?" << footTipHorizontal(0) << std::endl;
     if (supportMapGP_.exists("smoothed_top_layer_gp")) { // New Check!!!
+        std::cout << "exists !" << std::endl;
         if(supportMapGP_.isInside(footTipHorizontal)){
+            std::cout << "went inside here check 1 " << std::endl;
             if (!isnan(supportMapGP_.atPosition("smoothed_top_layer_gp", footTipHorizontal))){
                 verticalDifference = footTip3(2) - supportMapGP_.atPosition("smoothed_top_layer_gp", footTipHorizontal); // Hacked to rawMap_
             }
@@ -281,12 +285,10 @@ bool SupportSurfaceEstimation::setSmoothenedTopLayer(std::string tip, GridMap& r
     Position footTipPosition(tipVec(0), tipVec(1));
 
     // Gaussian Process Regression Parameters.
-    int inputDim = 1;
-    int outputDim = 2;
+    int inputDim = 2;
+    int outputDim = 1;
     GaussianProcessRegression<float> smoothedTopLayerGPR(inputDim, outputDim);
     smoothedTopLayerGPR.SetHyperParams(2.0, 0.1, 0.001);
-
-    std::cout << "just some check...... 0" << std::endl;
 
     // Iterate around the foot tip position to add Data
     for (CircleIterator iterator(supportMapGP_, footTipPosition, smoothingRadius); !iterator.isPastEnd(); ++iterator) {
@@ -295,24 +297,16 @@ bool SupportSurfaceEstimation::setSmoothenedTopLayer(std::string tip, GridMap& r
         Eigen::VectorXf trainInput(inputDim);
         Eigen::VectorXf trainOutput(outputDim);
 
-        std::cout << "just some check...... 1" << std::endl;
-
         Position inputPosition;
         supportMapGP_.getPosition(index, inputPosition);
-        std::cout << "just some check...... 3" << std::endl;
         trainInput(0) = inputPosition(0);
         trainInput(1) = inputPosition(1);
-        std::cout << "just some check...... 4" << std::endl;
         trainOutput(0) = rawMap.at("elevation", index);
-        std::cout << "just some check...... 2" << std::endl;
 
         if (!isnan(trainOutput(0)) && rawMap.isValid(index)){
-            std::cout << "just some check...... 5" << std::endl;
             smoothedTopLayerGPR.AddTrainingData(trainInput, trainOutput);
         }
     }
-
-    std::cout << "just some check......" << std::endl;
 
     if (smoothedTopLayerGPR.get_n_data() > 0){
         for (CircleIterator iterator(supportMapGP_, footTipPosition, smoothingRadius); !iterator.isPastEnd(); ++iterator) {
@@ -343,26 +337,35 @@ Eigen::Vector3f SupportSurfaceEstimation::getLatestRightStance(){
     return rightStanceVector_[rightStanceVector_.size()-1];
 }
 
-bool SupportSurfaceEstimation::proprioceptiveRoughnessEstimation(std::string tip){
+bool SupportSurfaceEstimation::proprioceptiveRoughnessEstimation(std::string tip, Eigen::Vector3f meanStance){
 
     //! TODO: make function: update stance vectors.
     if (tip == "left"){
-        leftStanceVector_.push_back(meanStance_);
+        leftStanceVector_.push_back(meanStance);
         if (leftStanceVector_.size() > 2) leftStanceVector_.erase(leftStanceVector_.begin());
     }
     if (tip == "right"){
-        rightStanceVector_.push_back(meanStance_);
+        rightStanceVector_.push_back(meanStance);
         if (rightStanceVector_.size() > 2) rightStanceVector_.erase(rightStanceVector_.begin());
     }
     if (tip == "lefthind"){
-        leftHindStanceVector_.push_back(meanStance_);
+        leftHindStanceVector_.push_back(meanStance);
         if (leftHindStanceVector_.size() > 2) leftHindStanceVector_.erase(leftHindStanceVector_.begin());
     }
     if (tip == "righthind"){
-        rightHindStanceVector_.push_back(meanStance_);
+        rightHindStanceVector_.push_back(meanStance);
         if (rightHindStanceVector_.size() > 2) rightHindStanceVector_.erase(rightHindStanceVector_.begin());
     }
 
+    // Save the mean tip positions for simple foot tip embedding into high grass detection
+    //! TODO: merge these two into one, unnecessary..
+    if (tip == "left") frontLeftFootTip_ = meanStance;
+    if (tip == "right") frontRightFootTip_ = meanStance;
+    if (tip == "lefthind") hindLeftFootTip_ = meanStance;
+    if (tip == "righthind") hindRightFootTip_ = meanStance;
+
+
+    std::cout << "tip inside proprioceptive: " << tip << std::endl;
 
     bool writeHorizontalFootTipEstimationStatisticsToFile = false;
     if(writeHorizontalFootTipEstimationStatisticsToFile){
@@ -403,8 +406,13 @@ bool SupportSurfaceEstimation::proprioceptiveVariance(std::string tip){
         diff = double((rightHindStanceVector_[1](0) - rightHindStanceVector_[0](0)));
     }
 
+    std::cout << "tip: " << tip << " diff: " << diff << std::endl;
+
     feetUnseenVarianceVector_.push_back(diff);
     if (feetUnseenVarianceVector_.size() > 12) feetUnseenVarianceVector_.erase(feetUnseenVarianceVector_.begin());
+
+
+
 
     // Calculate Variance.
     double total = 0.0;
@@ -415,6 +423,8 @@ bool SupportSurfaceEstimation::proprioceptiveVariance(std::string tip){
     }
     double varianceConsecutiveFootTipPositions = totalSquared / (double)feetUnseenVarianceVector_.size() - pow(total/(double)feetUnseenVarianceVector_.size(), 2);
     double mean = total/(double)feetUnseenVarianceVector_.size();
+
+    std::cout << "varianceConsecutiveFootTipPositions: " << varianceConsecutiveFootTipPositions << std::endl;
 
     // TODO: add 4 feet plane fit variance calculation..
     // TODO: think about what slope is adding to roughness estimate..
@@ -496,7 +506,7 @@ bool SupportSurfaceEstimation::proprioceptiveVariance(std::string tip){
     varianceMsg.linear.z = varianceConsecutiveFootTipPositions;// + variancePlaneFit;
 
     // set function..
-    setTerrainVariance(varianceMsg.linear.z);
+    setTerrainVariance(varianceConsecutiveFootTipPositions);
 
     //varianceMsg.angular.x = getPenetrationDepthVariance();
            // footTipPlaneFitVisualization_.action = visualization_msgs::Marker::;
@@ -515,6 +525,14 @@ bool SupportSurfaceEstimation::setTerrainVariance(double& terrainVariance){
 
 double SupportSurfaceEstimation::getTerrainVariance(){
     return terrainVariance_;
+}
+
+double SupportSurfaceEstimation::getPenetrationDepthVariance(){
+    return penetrationDepthVariance_;
+}
+
+double SupportSurfaceEstimation::getDifferentialPenetrationDepthVariance(){
+    return differentialPenetrationDepthVariance_;
 }
 
 } /* namespace */
