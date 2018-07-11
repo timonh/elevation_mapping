@@ -82,7 +82,7 @@ public:
 
  // New Stuff public
  //! TODO: Description:
- bool updateSupportSurfaceEstimation(std::string tip, grid_map::GridMap& rawMap, grid_map::GridMap& supportMap, Eigen::Vector3f& stance);
+ bool updateSupportSurfaceEstimation(std::string tip, grid_map::GridMap& rawMap, grid_map::GridMap& supportMap, grid_map::GridMap& fusedMap, Eigen::Vector3f& stance);
 
 
  /*!
@@ -476,7 +476,8 @@ private:
 
  //! TODO: Description:
  bool mainGPRegression(double tileResolution, double tileDiameter,
-                       double sideLengthAddingPatch, std::string tip, const double tipDifference);
+                       double sideLengthAddingPatch, std::string tip, const double tipDifference,
+                       grid_map::GridMap& rawMap, grid_map::GridMap& supportMap, grid_map::GridMap& fusedMap);
 
  //! TODO: Description:
  double getFootTipElevationMapDifferenceGP(std::string tip, grid_map::GridMap& supportMap);
@@ -505,7 +506,25 @@ private:
  //! TODO: Description:
  bool sinkageDepthMapLayerGP(std::string tip, double& tipDifference);
 
+ //! TODO: Description:
  bool setSmoothedTopLayer(std::string tip, grid_map::GridMap& rawMap, grid_map::GridMap& supportMap);
+
+ //! TODO: Description:
+ bool simpleSinkageDepthLayer(std::string& tip, const double& tipDifference, grid_map::GridMap& supportMap);
+
+ //! TODO: Description:
+ bool simpleTerrainContinuityLayer(std::string& tip, const double& tipDifference, grid_map::GridMap& supportMap);
+
+ //! TODO: Description:
+ bool sampleContinuityPlaneToTrainingData(const grid_map::Position& cellPos, const grid_map::Position& center, const double& terrainContinuityValue);
+
+ //! TODO: Description:
+ Eigen::Vector4f getPlaneCoeffsFromThreePoints(const grid_map::Position3& Point1, const grid_map::Position3& Point2, const grid_map::Position3& Point3);
+
+ //! TODO: Description:
+ double evaluatePlaneFromCoefficients(const Eigen::Vector4f& coefficients, grid_map::Position& cellPos);
+
+
 
 
  //! ROS nodehandle.
@@ -728,6 +747,12 @@ private:
  // Bools for sinkage depth history storage.
  bool initializedLeftSinkageDepth_, initializedRightSinkageDepth_;
  std::vector<grid_map::Position3> sinkageFootTipHistoryGP_;
+
+ // GP Hyperparameters.
+ double GPLengthscale_;
+ double GPSigmaN_;
+ double GPSigmaF_;
+
 };
 
 } /* namespace */

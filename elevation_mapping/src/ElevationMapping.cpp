@@ -557,7 +557,7 @@ void ElevationMapping::footTipStanceCallback(const quadruped_msgs::QuadrupedStat
 
       // Support Surface Estimation.
       if (runSupportSurfaceEstimation_){
-          supportSurfaceEstimation_.updateSupportSurfaceEstimation(tip, map_.getRawGridMap(), map_.supportMapGP_, stanceProcessor_.meanStance_);
+          supportSurfaceEstimation_.updateSupportSurfaceEstimation(tip, map_.getRawGridMap(), map_.supportMapGP_, map_.getFusedGridMap(), stanceProcessor_.meanStance_);
       }
 
   }
