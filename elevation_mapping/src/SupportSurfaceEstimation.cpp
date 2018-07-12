@@ -105,6 +105,10 @@ SupportSurfaceEstimation::SupportSurfaceEstimation(ros::NodeHandle nodeHandle)
   nodeHandle_.param("gp_lengthscale", GPLengthscale_, 10.0); // SS
   nodeHandle_.param("gp_sigma_n", GPSigmaN_, 0.1); // SS
   nodeHandle_.param("gp_sigma_f", GPSigmaF_, 0.001); // SS
+  nodeHandle_.param("tile_resolution", tileResolution_, 0.08); // SS
+  nodeHandle_.param("tile_diameter", tileDiameter_, 0.23); // SS
+  nodeHandle_.param("side_length_adding_patch", sideLengthAddingPatch_, 1.3); // SS
+
 
   // For filter chain. // SS
   nodeHandle_.param("filter_chain_parameter_name", filterChainParametersName_, std::string("/grid_map_filter_chain_one"));
@@ -160,7 +164,7 @@ bool SupportSurfaceEstimation::updateSupportSurfaceEstimation(std::string tip, G
                 //! Yes all this!
 
                 // Uncertainty Estimation based on low pass filtered error between foot tip height and predicted support Surface.
-                setSupportSurfaceUncertaintyEstimation(tip); //! TODO: uncomment whats inside of this function.
+                setSupportSurfaceUncertaintyEstimation(tip, supportMap); //! TODO: uncomment whats inside of this function.
 
 
                 // TODO: these params into config file.
@@ -221,17 +225,17 @@ Position3 SupportSurfaceEstimation::getHindRightFootTipPosition(){
     return tipPos;
 }
 
-bool SupportSurfaceEstimation::setSupportSurfaceUncertaintyEstimation(std::string tip){
+bool SupportSurfaceEstimation::setSupportSurfaceUncertaintyEstimation(std::string tip, GridMap& supportMap){
 
-//    Eigen::Vector3f latestTip;
-//    if (tip == "left") latestTip = getLatestLeftStance();
-//    if (tip == "right") latestTip = getLatestRightStance();
+    Eigen::Vector3f latestTip;
+    if (tip == "left") latestTip = getLatestLeftStance();
+    if (tip == "right") latestTip = getLatestRightStance();
 
-//    // So far not low pass filtered!! -> create Vector for that (TODO)
-//    grid_map::Position latestTipPosition(latestTip(0), latestTip(1));
-//    double diff = fabs(latestTip(2) - supportMap.atPosition("elevation_gp_added", latestTipPosition));
-//    supportSurfaceUncertaintyEstimation_ = diff;
-//    if (!isnan(diff)) cumulativeSupportSurfaceUncertaintyEstimation_ += diff;
+    // So far not low pass filtered!! -> create Vector for that (TODO)
+    grid_map::Position latestTipPosition(latestTip(0), latestTip(1));
+    double diff = fabs(latestTip(2) - supportMap.atPosition("elevation_gp_added", latestTipPosition));
+    supportSurfaceUncertaintyEstimation_ = diff;
+    if (!isnan(diff)) cumulativeSupportSurfaceUncertaintyEstimation_ += diff;
     return true;
 }
 
@@ -614,7 +618,7 @@ bool SupportSurfaceEstimation::mainGPRegression(double tileResolution, double ti
 
     // Visualization in Rviz.
     visualization_msgs::Marker tileMarkerList;
-    tileMarkerList.header.frame_id = "odom";
+    tileMarkerList.header.frame_id = "odom_drift_adjusted";
     tileMarkerList.header.stamp = ros::Time();
     tileMarkerList.ns = "elevation_mapping";
     tileMarkerList.id = 0;
@@ -645,8 +649,8 @@ bool SupportSurfaceEstimation::mainGPRegression(double tileResolution, double ti
 
     // Get uncertainty measures.
     double terrainVariance = getTerrainVariance();
-    //double supportSurfaceUncertaintyEstimation = getSupportSurfaceUncertaintyEstimation(); //! TODO: uncomment !!!!
-    //double cumulativeSupportSurfaceUncertaintyEstimation = getCumulativeSupportSurfaceUncertaintyEstimation();
+    double supportSurfaceUncertaintyEstimation = getSupportSurfaceUncertaintyEstimation(); //! TODO: uncomment !!!!
+    double cumulativeSupportSurfaceUncertaintyEstimation = getCumulativeSupportSurfaceUncertaintyEstimation();
     //std::cout << "CumulativeSupportSurfaceUncertaintyEstimation: " << cumulativeSupportSurfaceUncertaintyEstimation << std::endl;
 
     // Set lengthscale as function of terrain variance (assessed by foot tips only).
@@ -674,8 +678,8 @@ bool SupportSurfaceEstimation::mainGPRegression(double tileResolution, double ti
     adaptationMsg.header.stamp = ros::Time::now();
     adaptationMsg.twist.linear.x = terrainVariance;
     adaptationMsg.twist.linear.y = lowPassFilteredTerrainContinuityValue_;
-    //adaptationMsg.twist.angular.x = supportSurfaceUncertaintyEstimation;
-    //adaptationMsg.twist.angular.y = cumulativeSupportSurfaceUncertaintyEstimation;
+    adaptationMsg.twist.angular.x = supportSurfaceUncertaintyEstimation;
+    adaptationMsg.twist.angular.y = cumulativeSupportSurfaceUncertaintyEstimation;
     adaptationMsg.twist.angular.z = sinkageVariance;
     adaptationMsg.twist.linear.z = differentialSinkageVariance;
 
@@ -764,7 +768,7 @@ bool SupportSurfaceEstimation::mainGPRegression(double tileResolution, double ti
                         const Index index(*iterator);
 
                         auto& supportMapElevationGP = supportMap.at("elevation_gp", index);
-                        //auto& supportMapVarianceGP = supportMap.at("variance_gp", index);
+                        auto& supportMapVarianceGP = supportMap.at("variance_gp", index);
 
                         //auto& supportMapElevation = supportMap_.at("elevation", index);
                         //auto& supportMapVariance = supportMap_.at("variance", index);
@@ -790,34 +794,23 @@ bool SupportSurfaceEstimation::mainGPRegression(double tileResolution, double ti
                         testInput(0) = inputPosition(0);
                         testInput(1) = inputPosition(1);
 
-                        // TODO: cleanly separate the weighting due to
-
-                        // Calculate weight. (as function of distance from foot tip)
-                        // inputPosition vs. foot tip / radius
-//                            double radius = (sideLengthAddingPatch - 0.2) / 2.0;
-//                            double weight = min(1.2 - (sqrt(pow(inputPosition(0) - footTip(0), 2) +
-//                                                     pow(inputPosition(1) - footTip(1), 2)) / radius), 1.0);
-                        //if (weight > 0.9) std::cout << "weight: " << weight << std::endl;
-
-                        //if (!isnan(tipDifference)){ // Only update if finite tipDifference is found
-                            // Low pass filter method if ther is already data. (TEST this!!)
-                            //if (isnan(supportMap_.at("elevation_gp", index))){
-
-
                         float regressionOutput = myGPR.DoRegression(testInput)(0);
+                       // myGPR.DoRegressionVariance(testInput)(0);
                         //float regressionOutputVariance = myGPR.GetVariance()(0);
+
+
 
                         if (!isnan(regressionOutput)){
                             if (!supportMap.isValid(index)){
                                 supportMapElevationGP = regressionOutput;
-                                //supportMapVarianceGP = regressionOutputVariance;
+                                //if (!isnan(regressionOutputVariance)) supportMapVarianceGP = regressionOutputVariance;
                             }
                             else {
 //                                if (supportMapElevationGP == 0.0) std::cout << "ATTENTION!! ZERO BIAS" << std::endl;
                                 supportMapElevationGP = 0.5 *  supportMapElevationGP +
                                         (regressionOutput) * 0.5;
-                               // supportMapVarianceGP = 0.5 *  supportMapVarianceGP +
-                               //         (regressionOutputVariance) * 0.5;
+                                //if (!isnan(regressionOutputVariance)) supportMapVarianceGP = 0.5 *  supportMapVarianceGP +
+                                //        (regressionOutputVariance) * 0.5;
                                 //supportMapElevationGP = regressionOutput; // Test!!
                                 //supportMapElevationGP = myGPR.DoRegression(testInput)(0) + tipDifference; // Hacked to test!
                             }
@@ -912,7 +905,7 @@ bool SupportSurfaceEstimation::mainGPRegression(double tileResolution, double ti
     // Publish map
     grid_map_msgs::GridMap mapMessageGP;
     GridMapRosConverter::toMessage(supportMap, mapMessageGP);
-    mapMessageGP.info.header.frame_id = "odom";
+    mapMessageGP.info.header.frame_id = "odom_drift_adjusted";
     elevationMapGPPublisher_.publish(mapMessageGP);
 
     return true;
@@ -1141,6 +1134,16 @@ bool SupportSurfaceEstimation::supportSurfaceUpperBoundingGP(GridMap& upperBound
     dataSup = dataUpper.cwiseMin(dataSup);
     //dataTip = dataUpper.cwiseMin(dataTip); // Hacked for testing
     return true;
+}
+
+double SupportSurfaceEstimation::getSupportSurfaceUncertaintyEstimation(){
+    if(!isnan(supportSurfaceUncertaintyEstimation_)) return supportSurfaceUncertaintyEstimation_;
+    else return 0.0;
+}
+
+double SupportSurfaceEstimation::getCumulativeSupportSurfaceUncertaintyEstimation(){
+    if (!isnan(cumulativeSupportSurfaceUncertaintyEstimation_)) return cumulativeSupportSurfaceUncertaintyEstimation_;
+    else return 0.0;
 }
 
 } /* namespace */

@@ -495,10 +495,13 @@ private:
  double getTerrainVariance();
 
  //! TODO: Description:
- bool setSupportSurfaceUncertaintyEstimation(std::string tip);
+ bool setSupportSurfaceUncertaintyEstimation(std::string tip, grid_map::GridMap& supportMap);
 
  //! TODO: Description:
  double getSupportSurfaceUncertaintyEstimation();
+
+ //! TODO: Description:
+ double getCumulativeSupportSurfaceUncertaintyEstimation();
 
  //! TODO: Description:
  bool footTipElevationMapLayerGP(std::string std);
@@ -752,6 +755,11 @@ private:
  double GPLengthscale_;
  double GPSigmaN_;
  double GPSigmaF_;
+
+ // GP tiling Parameters.
+ double tileResolution_;
+ double tileDiameter_;
+ double sideLengthAddingPatch_;
 
 };
 
