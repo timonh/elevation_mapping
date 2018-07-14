@@ -9,60 +9,6 @@
 #include "elevation_mapping/SupportSurfaceEstimation.hpp"
 #include "elevation_mapping/ElevationMap.hpp"
 
-// Elevation Mapping
-//#include "elevation_mapping/ElevationMapFunctors.hpp"
-//#include "elevation_mapping/WeightedEmpiricalCumulativeDistributionFunction.hpp"
-//#include "elevation_mapping/HighGrassElevationMapping.hpp"
-
-//// Grid Map
-//#include <grid_map_msgs/GridMap.h>
-//#include <grid_map_core/grid_map_core.hpp> // New for high grass
-//#include <grid_map_filters/BufferNormalizerFilter.hpp>
-//#include <grid_map_cv/grid_map_cv.hpp> // New for high grass
-
-//#include <grid_map_cv/InpaintFilter.hpp> // New for high grass
-//#include <opencv/cv.h>
-//#include <grid_map_filters/ThresholdFilter.hpp>
-
-//#include <grid_map_cv/InpaintFilter.hpp>
-//#include <pluginlib/class_list_macros.h>
-//#include <ros/ros.h>
-
-//#include <grid_map_cv/GridMapCvConverter.hpp>
-//#include <grid_map_cv/GridMapCvProcessing.hpp>
-
-//// TEST
-//#include <any_msgs/State.h>
-
-//// GP Regression
-//#include <gaussian_process_regression/gaussian_process_regression.h>
-
-//// Math
-//#include <math.h>
-
-//// ROS Logging
-//#include <ros/ros.h>
-
-//// Eigen
-//#include <Eigen/Dense>
-
-//// TEST thread
-//#include <thread>
-
-//// PCL conversions
-//#include <pcl_conversions/pcl_conversions.h>
-//#include <pcl_ros/transforms.h>
-
-//// PCL normal estimation
-//#include <pcl/features/normal_3d.h>
-
-// ROS msgs
-//#include <elevation_mapping/PerformanceAssessment.h>
-
-// File IO
-//#include <iostream>
-//#include <fstream>
-
 using namespace std;
 using namespace grid_map;
 
@@ -70,70 +16,60 @@ namespace elevation_mapping {
 
 SupportSurfaceEstimation::SupportSurfaceEstimation(ros::NodeHandle nodeHandle)
     : nodeHandle_(nodeHandle),
-      //rawMap({"elevation", "variance", "horizontal_variance_x", "horizontal_variance_y", "horizontal_variance_xy",
-      //        "color", "time", "lowest_scan_point", "sensor_x_at_lowest_scan", "sensor_y_at_lowest_scan",
-      //        "sensor_z_at_lowest_scan", "foot_tip_elevation", "support_surface", "elevation_inpainted", "elevation_smooth", "vegetation_height", "vegetation_height_smooth",
-      //        "support_surface", "support_surface_smooth", "support_surface_added"}),//, "support_surface_smooth_inpainted", "support_surface_added"}),
-      //fusedMap_({"elevation", "upper_bound", "lower_bound", "color"}),
-      //supportMap_({"elevation", "variance", "elevation_gp", "elevation_gp_added"}), // New
-      //hasUnderlyingMap_(false),
-      //visibilityCleanupDuration_(0.0),
       filterChain_("grid_map::GridMap"), // New
       filterChain2_("grid_map::GridMap")
 {
-    // Timon added foot_tip_elevation layer
-  //rawMap.setBasicLayers({"elevation", "variance"});
-  //fusedMap_.setBasicLayers({"elevation", "upper_bound", "lower_bound"});
-  //supportMap_.setBasicLayers({"elevation", "variance", "elevation_gp", "elevation_gp_added"}); // New
-  //supportMap.setBasicLayers({"elevation_gp", "variance_gp", "elevation_gp_added", "elevation_gp_tip", "sinkage_depth_gp"}); // New
 
-  //! uncomment!!
-  //clear();
+  // Publisher for support surface map.
+  elevationMapGPPublisher_ = nodeHandle_.advertise<grid_map_msgs::GridMap>("support_surface_gp", 1);
 
-  elevationMapSupportPublisher_ = nodeHandle_.advertise<grid_map_msgs::GridMap>("support_added", 1); // SS
-  elevationMapInpaintedPublisher_ = nodeHandle_.advertise<grid_map_msgs::GridMap>("support_surface", 1); // SS
-  elevationMapGPPublisher_ = nodeHandle_.advertise<grid_map_msgs::GridMap>("support_surface_gp", 1); // SS
+  // Publisher for plotting dynamic values, such as terrain variance, characteristic value and sinkage depth variance.
+  varianceTwistPublisher_ = nodeHandle_.advertise<geometry_msgs::TwistStamped>("variances", 1000);
 
-  nodeHandle_.param("add_old_support_surface_data_to_gp_training", addOldSupportSurfaceDataToGPTraining_, false); // SS
-  nodeHandle_.param("weight_terrain_continuity", weightTerrainContinuity_, 1.0); // SS
-  nodeHandle_.param("run_terrain_continuity_biasing", runTerrainContinuityBiasing_, true); // SS
-  nodeHandle_.param("exponent_sinkage_depth_weight", exponentSinkageDepthWeight_, 2.0); // SS
-  nodeHandle_.param("exponent_terrain_continuity_weight", exponentTerrainContinuityWeight_, 2.0); // SS
-  nodeHandle_.param("weight_decay_threshold", weightDecayThreshold_, 0.4); // SS
-  nodeHandle_.param("exponent_characteristic_value", exponentCharacteristicValue_, 1.0); // SS
-  nodeHandle_.param("continuity_filter_gain", continuityFilterGain_, 0.3); // SS
-  nodeHandle_.param("gp_lengthscale", GPLengthscale_, 10.0); // SS
-  nodeHandle_.param("gp_sigma_n", GPSigmaN_, 0.1); // SS
-  nodeHandle_.param("gp_sigma_f", GPSigmaF_, 0.001); // SS
-  nodeHandle_.param("tile_resolution", tileResolution_, 0.08); // SS
-  nodeHandle_.param("tile_diameter", tileDiameter_, 0.23); // SS
-  nodeHandle_.param("side_length_adding_patch", sideLengthAddingPatch_, 1.3); // SS
+  // Publisher for visualization of tile centers for gaussian process regression.
+  supportSurfaceAddingAreaPublisher_ = nodeHandle_.advertise<visualization_msgs::Marker>("adding_area", 1000);
 
-
-  // For filter chain. // SS
+  // Filter chain initialization.
   nodeHandle_.param("filter_chain_parameter_name", filterChainParametersName_, std::string("/grid_map_filter_chain_one"));
   if(!filterChain_.configure("/grid_map_filter_chain_one", nodeHandle_)){
       std::cout << "Could not configure the filter chain!!" << std::endl;
       return;
   }
   if(!filterChain2_.configure("/grid_map_filter_chain_two", nodeHandle_)){
-      std::cout << "INBETWEEN Prob" << std::endl;
       std::cout << "Could not configure the filter chain!!" << std::endl;
       return;
   }
 
-  varianceTwistPublisher_ = nodeHandle_.advertise<geometry_msgs::TwistStamped>("variances", 1000);
-  supportSurfaceAddingAreaPublisher_ = nodeHandle_.advertise<visualization_msgs::Marker>("adding_area", 1000);
+  setParameters();
 
-
-  supportSurfaceInitializationTrigger_ = false; // SS
-  cumulativeSupportSurfaceUncertaintyEstimation_ = 0.0; // SS
-
-  initialTime_ = ros::Time::now();
+  //initialTime_ = ros::Time::now();
 }
 
 SupportSurfaceEstimation::~SupportSurfaceEstimation()
 {
+}
+
+void SupportSurfaceEstimation::setParameters(){
+
+    // Config Parameters.
+    nodeHandle_.param("add_old_support_surface_data_to_gp_training", addOldSupportSurfaceDataToGPTraining_, false);
+    nodeHandle_.param("weight_terrain_continuity", weightTerrainContinuity_, 1.0);
+    nodeHandle_.param("run_terrain_continuity_biasing", runTerrainContinuityBiasing_, true);
+    nodeHandle_.param("exponent_sinkage_depth_weight", exponentSinkageDepthWeight_, 2.0);
+    nodeHandle_.param("exponent_terrain_continuity_weight", exponentTerrainContinuityWeight_, 2.0);
+    nodeHandle_.param("weight_decay_threshold", weightDecayThreshold_, 0.4);
+    nodeHandle_.param("exponent_characteristic_value", exponentCharacteristicValue_, 1.0);
+    nodeHandle_.param("continuity_filter_gain", continuityFilterGain_, 0.3);
+    nodeHandle_.param("gp_lengthscale", GPLengthscale_, 10.0);
+    nodeHandle_.param("gp_sigma_n", GPSigmaN_, 0.1);
+    nodeHandle_.param("gp_sigma_f", GPSigmaF_, 0.001);
+    nodeHandle_.param("tile_resolution", tileResolution_, 0.08);
+    nodeHandle_.param("tile_diameter", tileDiameter_, 0.23);
+    nodeHandle_.param("side_length_adding_patch", sideLengthAddingPatch_, 1.3);
+
+    // Initializations.
+    supportSurfaceInitializationTrigger_ = false;
+    cumulativeSupportSurfaceUncertaintyEstimation_ = 0.0;
 }
 
 bool SupportSurfaceEstimation::updateSupportSurfaceEstimation(std::string tip, GridMap& rawMap,
@@ -141,10 +77,7 @@ bool SupportSurfaceEstimation::updateSupportSurfaceEstimation(std::string tip, G
     Position tipPosition(stance(0), stance(1));
     if(rawMap.isInside(tipPosition)) {
 
-
         //! TODO: make function out of this:
-        //! TODO: uncomment - > move to support surface estimation.
-        //!
         bool runProprioceptiveRoughnessEstimation = true;
         if(runProprioceptiveRoughnessEstimation) proprioceptiveRoughnessEstimation(tip, stance);
 
@@ -154,7 +87,6 @@ bool SupportSurfaceEstimation::updateSupportSurfaceEstimation(std::string tip, G
 
             // Run only if stance vectors are initialized..
             if (leftStanceVector_.size() > 0 && rightStanceVector_.size() > 0) {
-
 
                 setSmoothedTopLayer(tip, rawMap, supportMap);
                 double verticalDifference = getFootTipElevationMapDifferenceGP(tip, supportMap);
@@ -166,42 +98,14 @@ bool SupportSurfaceEstimation::updateSupportSurfaceEstimation(std::string tip, G
                 // Uncertainty Estimation based on low pass filtered error between foot tip height and predicted support Surface.
                 setSupportSurfaceUncertaintyEstimation(tip, supportMap); //! TODO: uncomment whats inside of this function.
 
-
-                // TODO: these params into config file.
-                double tileResolution = 0.08;
-                double tileDiameter = 0.23;
-                double sideLengthAddingPatch = 1.3;
-                mainGPRegression(tileResolution, tileDiameter, sideLengthAddingPatch,
+                // Main gaussian process regression.
+                mainGPRegression(tileResolution_, tileDiameter_, sideLengthAddingPatch_,
                                  tip, verticalDifference, rawMap, supportMap, fusedMap);
-
-//                // RQT message publisher.
-//                geometry_msgs::TwistStamped adaptationMsg;
-
-//                // Set message values.
-//                adaptationMsg.header.stamp = ros::Time::now();
-//                adaptationMsg.twist.linear.x = getTerrainVariance();
-//                //adaptationMsg.twist.linear.y = lowPassFilteredTerrainContinuityValue_;
-//                //adaptationMsg.twist.angular.x = supportSurfaceUncertaintyEstimation;
-//                //adaptationMsg.twist.angular.y = cumulativeSupportSurfaceUncertaintyEstimation;
-//                adaptationMsg.twist.angular.z = getPenetrationDepthVariance();
-//                adaptationMsg.twist.linear.z = getDifferentialPenetrationDepthVariance();
-
-//                // Publish adaptation Parameters
-//                varianceTwistPublisher_.publish(adaptationMsg);
-
-
             }
-
         }
     }
 
-
-
-
-    // Set coefficients spun by three of the foot tips.
-    //terrainContinuityBiasing(tip);
-
-    //else std::cout << "FOOT TIP CONSIDERED NOT TO BE INSIDE!!!!! \n \n \n \n " << std::endl;
+    ROS_WARN("Foot tip considered not to be inside the valid area of the elevation map. \n");
     return true;
 }
 
@@ -794,27 +698,36 @@ bool SupportSurfaceEstimation::mainGPRegression(double tileResolution, double ti
                         testInput(0) = inputPosition(0);
                         testInput(1) = inputPosition(1);
 
-                        float regressionOutput = myGPR.DoRegression(testInput)(0);
+                        double regressionOutput = myGPR.DoRegressionVariance(testInput)(0);
                        // myGPR.DoRegressionVariance(testInput)(0);
-                        //float regressionOutputVariance = myGPR.GetVariance()(0);
+                        double regressionOutputVariance = fabs(myGPR.GetVariance()(0));
 
-
+                        // Why can this be negative?
+                        //std::cout << "regoutVariance :::: ->->->: " << regressionOutputVariance << std::endl;
 
                         if (!isnan(regressionOutput)){
                             if (!supportMap.isValid(index)){
                                 supportMapElevationGP = regressionOutput;
-                                //if (!isnan(regressionOutputVariance)) supportMapVarianceGP = regressionOutputVariance;
                             }
                             else {
 //                                if (supportMapElevationGP == 0.0) std::cout << "ATTENTION!! ZERO BIAS" << std::endl;
                                 supportMapElevationGP = 0.5 *  supportMapElevationGP +
                                         (regressionOutput) * 0.5;
-                                //if (!isnan(regressionOutputVariance)) supportMapVarianceGP = 0.5 *  supportMapVarianceGP +
-                                //        (regressionOutputVariance) * 0.5;
                                 //supportMapElevationGP = regressionOutput; // Test!!
                                 //supportMapElevationGP = myGPR.DoRegression(testInput)(0) + tipDifference; // Hacked to test!
                             }
                         }
+
+
+//                        if (!isnan(regressionOutputVariance)){
+//                            if (!supportMap.isValid(index)){
+//                                supportMapVarianceGP = regressionOutputVariance;
+//                            }
+//                            else {
+//                                    supportMapVarianceGP = 0.5 * supportMapVarianceGP +
+//                                        (regressionOutputVariance) * 0.5;
+//                            }
+//                        }
                         //}
 
                        // if (supportMapElevationGP == 0.0) supportMap_.isValid(index) = false;
@@ -876,6 +789,7 @@ bool SupportSurfaceEstimation::mainGPRegression(double tileResolution, double ti
         auto& supportMapElevationGP = supportMap.at("elevation_gp", index);
         auto& supportMapElevationGPAdded = supportMap.at("elevation_gp_added", index);
         auto& supportMapVarianceGP = supportMap.at("variance_gp", index);
+        //auto& supportMapVarianceGPAdded = supportMap.at("variance_gp_added", index);
         //auto& supportMapSinkageDepthGP = supportMap.at("sinkage_depth_gp", index);
         auto& rawMapElevationGP = rawMap.at("elevation_gp_added_raw", index);
         auto& fusedMapElevationGP = fusedMap.at("elevation_gp_added_raw", index);
@@ -891,7 +805,19 @@ bool SupportSurfaceEstimation::mainGPRegression(double tileResolution, double ti
         }
         if (!isnan(supportMapElevationGPAdded)) rawMapElevationGP = supportMapElevationGPAdded; // Test
         if (!isnan(supportMapElevationGPAdded)) fusedMapElevationGP = supportMapElevationGPAdded; // Test
+
+
+//        if (supportMap.isValid(index) && !isnan(supportMapVarianceGP)){
+//            supportMapVarianceGPAdded = (1 - weight) * supportMapVarianceGPAdded + (supportMapVarianceGP) * weight;
+//        }
+//        else if (!isnan(supportMapElevationGP)){
+//            supportMapVarianceGPAdded = supportMapVarianceGP;
+//        }
+
     }
+
+
+
 
     // Publish adaptation Parameters
     varianceTwistPublisher_.publish(adaptationMsg);

@@ -90,7 +90,7 @@ ElevationMap::ElevationMap(ros::NodeHandle nodeHandle)
 
   // Timon added foot_tip_elevation layer
   rawMap_.setBasicLayers({"elevation", "variance"});
-  fusedMap_.setBasicLayers({"elevation", "upper_bound", "lower_bound"});
+  fusedMap_.setBasicLayers({"elevation_gp_added_raw", "upper_bound", "lower_bound"});  // Hacked here..
   supportMap_.setBasicLayers({"elevation", "variance", "elevation_gp", "elevation_gp_added"}); // SS
   supportMapGP_.setBasicLayers({"elevation_gp", "variance_gp"}); // SS
 

@@ -527,6 +527,8 @@ private:
  //! TODO: Description:
  double evaluatePlaneFromCoefficients(const Eigen::Vector4f& coefficients, grid_map::Position& cellPos);
 
+ //! TODO: Description:
+ void setParameters();
 
 
 
