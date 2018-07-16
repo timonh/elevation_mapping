@@ -16,7 +16,7 @@ namespace elevation_mapping {
 
 SupportSurfaceEstimation::SupportSurfaceEstimation(ros::NodeHandle nodeHandle)
     : nodeHandle_(nodeHandle),
-      filterChain_("grid_map::GridMap"), // New
+      filterChain_("grid_map::GridMap"),
       filterChain2_("grid_map::GridMap")
 {
 
@@ -66,10 +66,22 @@ void SupportSurfaceEstimation::setParameters(){
     nodeHandle_.param("tile_resolution", tileResolution_, 0.08);
     nodeHandle_.param("tile_diameter", tileDiameter_, 0.23);
     nodeHandle_.param("side_length_adding_patch", sideLengthAddingPatch_, 1.3);
+    nodeHandle_.param("use_bag", useBag_, false);
 
     // Initializations.
     supportSurfaceInitializationTrigger_ = false;
     cumulativeSupportSurfaceUncertaintyEstimation_ = 0.0;
+    leftFrontSinkageDepth_ = 0.0;
+    rightFrontSinkageDepth_ = 0.0;
+
+    // Initializations for ground truth comparison in simulation.
+    if (!useBag_) {
+        std::cout << "useBag_: " << useBag_ << std::endl;
+        overallConsideredStanceCounter_ = 0;
+        overallSummedMeanElevationDifference_ = 0.0;
+        overallMeanElevationDifference_ = 0.0;
+
+    }
 }
 
 bool SupportSurfaceEstimation::updateSupportSurfaceEstimation(std::string tip, GridMap& rawMap,
@@ -82,6 +94,7 @@ bool SupportSurfaceEstimation::updateSupportSurfaceEstimation(std::string tip, G
         if(runProprioceptiveRoughnessEstimation) proprioceptiveRoughnessEstimation(tip, stance);
 
         if (tip != "lefthind" && tip != "righthind") {
+
 
             // At som point: divide into 2 fcts.. TODO
 
@@ -103,6 +116,9 @@ bool SupportSurfaceEstimation::updateSupportSurfaceEstimation(std::string tip, G
                                  tip, verticalDifference, rawMap, supportMap, fusedMap);
             }
         }
+
+        if (false) if (!useBag_) testTrackMeanSupportErrorEvaluation(supportMap);
+        std::cout << "useBag_: " << useBag_ << std::endl;
     }
 
     ROS_WARN("Foot tip considered not to be inside the valid area of the elevation map. \n");
@@ -170,7 +186,7 @@ double SupportSurfaceEstimation::getFootTipElevationMapDifferenceGP(std::string 
 double SupportSurfaceEstimation::getClosestMapValueUsingSpiralIteratorElevation(GridMap& MapReference, Position footTip, double radius, double tipHeight){
 
     int counter = 0;
-    for (grid_map::SpiralIterator iterator(MapReference, footTip, radius);
+    for (SpiralIterator iterator(MapReference, footTip, radius);
          !iterator.isPastEnd(); ++iterator) {   // Hacked to is inside..
         Index index(*iterator);
         Position pos;
@@ -583,7 +599,7 @@ bool SupportSurfaceEstimation::mainGPRegression(double tileResolution, double ti
     adaptationMsg.twist.linear.x = terrainVariance;
     adaptationMsg.twist.linear.y = lowPassFilteredTerrainContinuityValue_;
     adaptationMsg.twist.angular.x = supportSurfaceUncertaintyEstimation;
-    adaptationMsg.twist.angular.y = cumulativeSupportSurfaceUncertaintyEstimation;
+    adaptationMsg.twist.angular.y = getMeanGroundTruthDifference();
     adaptationMsg.twist.angular.z = sinkageVariance;
     adaptationMsg.twist.linear.z = differentialSinkageVariance;
 
@@ -854,6 +870,7 @@ bool SupportSurfaceEstimation::simpleSinkageDepthLayer(std::string& tip, const d
         if (initializedLeftSinkageDepth_ && leftFrontSinkageDepth_ < 0.0) std::cout << "Attention, negative leftfrontsd found!!: " << leftFrontSinkageDepth_ << std::endl;
         if (initializedRightSinkageDepth_ && rightFrontSinkageDepth_ < 0.0) std::cout << "Attention, negative rightfrontsd found!!: " << rightFrontSinkageDepth_ << std::endl;
 
+        if (isnan(leftFrontSinkageDepth_)) std::cout << " NANANANANANANAANNNNNNNNNNNNANNNNNNNAAAAAAAAAAAAAANNNNNNNNNNNNNN" << std::endl;
 
 
         // Do history vector.
@@ -894,7 +911,7 @@ bool SupportSurfaceEstimation::simpleSinkageDepthLayer(std::string& tip, const d
 
         Position center(footTip(0), footTip(1));
 
-        for (CircleIterator iterator(supportMap, center, radius); !iterator.isPastEnd(); ++iterator) {
+        for (grid_map::CircleIterator iterator(supportMap, center, radius); !iterator.isPastEnd(); ++iterator) {
 
             const Index index(*iterator);
             auto& supportMapElevationGPSinkage = supportMap.at("sinkage_depth_gp", index);
@@ -1070,6 +1087,107 @@ double SupportSurfaceEstimation::getSupportSurfaceUncertaintyEstimation(){
 double SupportSurfaceEstimation::getCumulativeSupportSurfaceUncertaintyEstimation(){
     if (!isnan(cumulativeSupportSurfaceUncertaintyEstimation_)) return cumulativeSupportSurfaceUncertaintyEstimation_;
     else return 0.0;
+}
+
+bool SupportSurfaceEstimation::testTrackMeanSupportErrorEvaluation(GridMap& supportMap){
+
+//    // Counter for cells to get the mean.
+//    int localCellCounter = 0;
+//    double localTotalDifference = 0.0;
+//    for (GridMapIterator iterator(supportMap); !iterator.isPastEnd(); ++iterator) {
+//        Index index = *iterator;
+//        Position cellPosition;
+//        supportMap.getPosition(index, cellPosition);
+//        auto& supportMapElevation = supportMap.at("elevation_gp_added", index);
+//        double elevationDifference;
+
+//        if (cellPosition(1) <= 1.0 && cellPosition(1) >= -1.0) {
+//            if (!isnan(supportMapElevation)) {
+//                elevationDifference = getGroundTruthDifference(supportMap, cellPosition, index);
+//                localCellCounter++;
+//                localTotalDifference += elevationDifference;
+//            }
+//            if (isnan(supportMap.at("ground_truth", index))) supportMap.at("ground_truth", index) = 0.0; // TODO: Not sound!!
+//            std::cout << "supportMap.isvalid inside the updater!!!: " << supportMap.at("ground_truth", index) << std::endl;
+//        }
+//        else supportMap.at("ground_truth", index) = 0.0;
+//    }
+//    if (localCellCounter > 0) {
+//        double meanElevationDifference = localTotalDifference / localCellCounter;
+//        overallConsideredStanceCounter_++;
+//        std::cout << "global cell counter: " << overallConsideredStanceCounter_ << std::endl;
+//        overallSummedMeanElevationDifference_ += meanElevationDifference;
+//        std::cout << "overall Deviance: " << overallSummedMeanElevationDifference_ << std::endl;
+//        if (overallConsideredStanceCounter_ > 0) overallMeanElevationDifference_ =
+//                overallSummedMeanElevationDifference_ / overallConsideredStanceCounter_;
+//    }
+    return true;
+}
+
+double SupportSurfaceEstimation::getGroundTruthDifference(GridMap& supportMap, Position cellPosition, Index index){
+    double Difference = 0.0;
+//    double heightGroundTruth = 0.0;
+
+//    auto& supGroundTruth = supportMap.at("ground_truth", index);
+
+//    if (cellPosition(0) < 4.978663502) heightGroundTruth = 0.0;
+
+//    // First slope up.
+//    if (cellPosition(0) < 5.93200946738 && cellPosition(0) >= 4.978663502)  // Probably here is an error.. double chack!!!
+//        heightGroundTruth = (cellPosition(0) - 4.978663502) / (5.93200946738 - 4.978663502) * 0.1957601 + 0.004;
+
+//    // First Plane Horizontal.
+//    if (cellPosition(0) < 6.93200946738 && cellPosition(0) >= 5.93200946738)
+//        heightGroundTruth = 0.1957601 + 0.005;
+
+//    // Second slope down.
+//    if (cellPosition(0) < 7.452009511 && cellPosition(0) >= 6.93200946738)
+//        heightGroundTruth = 0.1957601 - ((cellPosition(0) - 6.93200946738) / (7.452009511 - 6.93200946738) * 0.0917601) + 0.004;
+
+//    // Third slope up
+//    if (cellPosition(0) < 7.96200946738 && cellPosition(0) >= 7.452009511)
+//        heightGroundTruth = (0.1957601 - 0.0917601) + ((cellPosition(0) - 7.452009511) / (7.96200946738 - 7.452009511) * 0.0917601) + 0.004;
+
+//    // Second Plane Horizontal.
+//    if (cellPosition(0) < 8.96200946738 && cellPosition(0) >= 7.96200946738)
+//        heightGroundTruth = 0.1957601 + 0.005;
+
+//    // Fourth slope down.
+//    if (cellPosition(0) < 9.914009467 && cellPosition(0) >= 8.96200946738)  // Here is definitely an error, double the distance
+//        heightGroundTruth = 0.1957601 - (cellPosition(0) - 8.96200946738) / (9.914009467 - 8.96200946738) * 0.1957601 + 0.004;
+
+//    if (cellPosition(0) < 11.0 - 0.005 && cellPosition(0) >= 9.450009467)
+//        heightGroundTruth = 0.0;
+
+//    if (cellPosition(0) < 12.0 + 0.005 && cellPosition(0) >= 11.0 - 0.005)
+//        heightGroundTruth = 0.1 + 0.005;
+
+//    if (cellPosition(0) < 13.0 - 0.005 && cellPosition(0) >= 12.0 + 0.005)
+//        heightGroundTruth = 0.0;
+
+//    if (cellPosition(0) < 14.0 - 0.005 && cellPosition(0) >= 13.0 - 0.005)
+//        heightGroundTruth = 0.1 + 0.005;
+
+//    if (cellPosition(0) < 15.0 && cellPosition(0) >= 13.0 - 0.005)
+//        heightGroundTruth = 0.0;
+
+
+//    if (!isnan(heightGroundTruth)) supGroundTruth = (double)heightGroundTruth;
+//    //supGroundTruth = 0.001 * (index(0) + index(1));
+//    std::cout << "supportMap.isvalid: " << supportMap.at("ground_truth", index) << std::endl;
+
+//    Difference = fabs(supportMap.atPosition("elevation_gp_added", cellPosition) - heightGroundTruth);
+
+//    if (cellPosition(0) > 15.0) {
+//        Difference = 0.0;
+//        std::cout << "EVALUATION GOALLINE REACHED!!!!!!" << std::endl;
+//    }
+
+    return Difference;
+}
+
+double SupportSurfaceEstimation::getMeanGroundTruthDifference(){
+    return overallMeanElevationDifference_;
 }
 
 } /* namespace */

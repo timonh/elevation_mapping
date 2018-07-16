@@ -530,6 +530,15 @@ private:
  //! TODO: Description:
  void setParameters();
 
+ //! TODO: Description:
+ bool testTrackMeanSupportErrorEvaluation(grid_map::GridMap& supportMap);
+
+ //! TODO: Description:
+ double getGroundTruthDifference(grid_map::GridMap& supportMap, grid_map::Position cellPosition, grid_map::Index index);
+
+ //! TODO: Description:
+ double getMeanGroundTruthDifference();
+
 
 
  //! ROS nodehandle.
@@ -763,6 +772,10 @@ private:
  double tileDiameter_;
  double sideLengthAddingPatch_;
 
+ // Variables to assess the mean difference per stance of the predicted support map vs the ground truth.
+ int overallConsideredStanceCounter_;
+ double overallMeanElevationDifference_;
+ double overallSummedMeanElevationDifference_;
 };
 
 } /* namespace */
