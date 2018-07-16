@@ -3255,7 +3255,7 @@ bool ElevationMap::mainGPRegression(double tileResolution, double tileDiameter, 
                             const Index index(*iterator);
 
                             auto& supportMapElevationGP = supportMapGP_.at("elevation_gp", index);
-                            //auto& supportMapVarianceGP = supportMapGP_.at("variance_gp", index);
+                            auto& supportMapVarianceGP = supportMapGP_.at("variance_gp", index);
 
                             //auto& supportMapElevation = supportMap_.at("elevation", index);
                             //auto& supportMapVariance = supportMap_.at("variance", index);

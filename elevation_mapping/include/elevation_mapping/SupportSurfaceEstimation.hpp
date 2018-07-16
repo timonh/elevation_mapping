@@ -516,7 +516,7 @@ private:
  bool simpleSinkageDepthLayer(std::string& tip, const double& tipDifference, grid_map::GridMap& supportMap);
 
  //! TODO: Description:
- bool simpleTerrainContinuityLayer(std::string& tip, const double& tipDifference, grid_map::GridMap& supportMap);
+ bool simpleTerrainContinuityLayer(std::string& tip, grid_map::GridMap& supportMap);
 
  //! TODO: Description:
  bool sampleContinuityPlaneToTrainingData(const grid_map::Position& cellPos, const grid_map::Position& center, const double& terrainContinuityValue);

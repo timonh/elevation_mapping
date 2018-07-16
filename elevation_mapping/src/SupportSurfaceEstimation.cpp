@@ -94,9 +94,12 @@ bool SupportSurfaceEstimation::updateSupportSurfaceEstimation(std::string tip, G
         bool runProprioceptiveRoughnessEstimation = true;
         if(runProprioceptiveRoughnessEstimation) proprioceptiveRoughnessEstimation(tip, stance);
 
+
+
         if (tip != "lefthind" && tip != "righthind" || runHindLegSupportSurfaceEstimation_
                 && leftHindStanceVector_.size() > 0 && rightHindStanceVector_.size() > 0) {
 
+            simpleTerrainContinuityLayer(tip, supportMap);
 
             // At som point: divide into 2 fcts.. TODO
 
@@ -208,7 +211,7 @@ double SupportSurfaceEstimation::getClosestMapValueUsingSpiralIteratorElevation(
             return tipHeight - MapReference.at("smoothed_top_layer_gp", index); // && MapReference.isValid(index)
         }
         counter++;
-        if (counter > 9) break;
+        if (counter > 15) break;
     }
     return std::numeric_limits<double>::quiet_NaN();
 }
@@ -266,7 +269,7 @@ void SupportSurfaceEstimation::setDifferentialPenetrationDepthVariance(double di
 bool SupportSurfaceEstimation::setSmoothedTopLayer(std::string tip, GridMap& rawMap, GridMap& supportMap){
 
     // Smoothing radius of area considered for sinkage depth calculation
-    double smoothingRadius = 0.05;
+    double smoothingRadius = 0.07;
 
     // Get the foot tip position.
     Eigen::Vector3f tipVec;
@@ -288,7 +291,7 @@ bool SupportSurfaceEstimation::setSmoothedTopLayer(std::string tip, GridMap& raw
     int inputDim = 2;
     int outputDim = 1;
     GaussianProcessRegression<float> smoothedTopLayerGPR(inputDim, outputDim);
-    smoothedTopLayerGPR.SetHyperParams(2.0, 0.1, 0.001);
+    smoothedTopLayerGPR.SetHyperParams(1.0, 0.1, 0.001);
 
     // Iterate around the foot tip position to add Data
     for (CircleIterator iterator(supportMap, footTipPosition, smoothingRadius); !iterator.isPastEnd(); ++iterator) {
@@ -556,7 +559,7 @@ bool SupportSurfaceEstimation::mainGPRegression(double tileResolution, double ti
 
     // ****************************************************************************************************************************************************************Here i was
     simpleSinkageDepthLayer(tip, tipDifference, supportMap); // Alternative
-    simpleTerrainContinuityLayer(tip, tipDifference, supportMap);
+    //simpleTerrainContinuityLayer(tip, supportMap);
 
     // Visualization in Rviz.
     visualization_msgs::Marker tileMarkerList;
@@ -674,6 +677,7 @@ bool SupportSurfaceEstimation::mainGPRegression(double tileResolution, double ti
                     // SomeTests
                     Eigen::VectorXf trainOutput2(outputDim);
                     trainOutput2(0) = supportMap.at("elevation_gp_added", index);
+
 
 
                     // Probability sampling and replace the training data by plane value
@@ -856,13 +860,18 @@ bool SupportSurfaceEstimation::mainGPRegression(double tileResolution, double ti
         if (!isnan(supportMapElevationGPAdded)) fusedMapElevationGP = supportMapElevationGPAdded; // Test
 
 
-//        if (supportMap.isValid(index) && !isnan(supportMapVarianceGP)){
+        if (isnan(supportMap.at("smoothed_top_layer_gp", index))) supportMap.at("smoothed_top_layer_gp", index) = 0.0;
+
+//        if (supportMap.isValid(index) && !isnan(supportMapVarianceGP) && !isnan(supportMapVarianceGPAdded)){
 //            supportMapVarianceGPAdded = (1 - weight) * supportMapVarianceGPAdded + (supportMapVarianceGP) * weight;
 //        }
-//        else if (!isnan(supportMapElevationGP)){
+//        else if (!isnan(supportMapVarianceGP)){
 //            supportMapVarianceGPAdded = supportMapVarianceGP;
 //        }
+//        else supportMapVarianceGPAdded = 0.0;  // not sound!!!
 
+//        if (isnan(supportMap.at("variance_gp_added", index))) supportMap.at("variance_gp_added", index) = 0.0; // Check if sound!!!!!
+//        if (isnan(supportMap.at("variance_gp", index))) supportMap.at("variance_gp", index) = 0.0; // Check if sound!!!!!
     }
 
 
@@ -952,7 +961,9 @@ bool SupportSurfaceEstimation::simpleSinkageDepthLayer(std::string& tip, const d
                 double distance = sqrt(pow(sinkageFootTipHistoryGP_[i](0) - footTip(0), 2) + pow(sinkageFootTipHistoryGP_[i](1) - footTip(1), 2));
                 if (distance < radius) {
                     float localDistance = sqrt(pow(sinkageFootTipHistoryGP_[i](0) - pos(0), 2) + pow(sinkageFootTipHistoryGP_[i](1) - pos(1), 2));
-                    float weight = 1 / pow(localDistance, exponentSinkageDepthWeight_); // Hacking here to test the range of the power.
+                    float weight;
+                    if (localDistance > 0.0001) weight = 1 / pow(localDistance, exponentSinkageDepthWeight_); // Hacking here to test the range of the power.
+                    else weight = 0.0;
                     totalWeight += weight;
                     if (!isnan(sinkageDepthHistory_[i])) tempHeight += sinkageDepthHistory_[i] * weight;
                 }
@@ -969,7 +980,8 @@ bool SupportSurfaceEstimation::simpleSinkageDepthLayer(std::string& tip, const d
                     supportMapElevationGPSinkage = output;
                 }
                 else{
-                    if (!isnan(supportMapElevationGPSinkage)) supportMapElevationGPSinkage = addingWeight * output + (1 - addingWeight) * supportMapElevationGPSinkage;
+                    if (!isnan(supportMapElevationGPSinkage))  // Hacked away, attention!!
+                        supportMapElevationGPSinkage = addingWeight * output + (1 - addingWeight) * supportMapElevationGPSinkage;
                 }
             }
             //else std::cout << "Output would have been NANANANANANANANANANANA" << std::endl;
@@ -981,7 +993,7 @@ bool SupportSurfaceEstimation::simpleSinkageDepthLayer(std::string& tip, const d
 
 
 // Put them together at some time..
-bool SupportSurfaceEstimation::simpleTerrainContinuityLayer(std::string& tip, const double& tipDifference, GridMap& supportMap){
+bool SupportSurfaceEstimation::simpleTerrainContinuityLayer(std::string& tip, GridMap& supportMap){
 
     if (leftStanceVector_.size() > 0 && rightStanceVector_.size() > 0){
 
@@ -989,6 +1001,9 @@ bool SupportSurfaceEstimation::simpleTerrainContinuityLayer(std::string& tip, co
         Eigen::Vector3f tipRightVec = getLatestRightStance();
         Position3 tipLeftPos3(tipLeftVec(0), tipLeftVec(1), tipLeftVec(2));
         Position3 tipRightPos3(tipRightVec(0), tipRightVec(1), tipRightVec(2));
+
+
+
         double radius = 0.65;
         int maxSizeFootTipHistory = 15;
 
@@ -996,51 +1011,59 @@ bool SupportSurfaceEstimation::simpleTerrainContinuityLayer(std::string& tip, co
         Position3 footTip;
         if (tip == "left") footTip = tipLeftPos3;
         if (tip == "right") footTip = tipRightPos3;
-        footTipHistoryGP_.push_back(footTip);
-        if (footTipHistoryGP_.size() > maxSizeFootTipHistory) footTipHistoryGP_.erase(footTipHistoryGP_.begin()); // This was missing, should speed things up..
-
-        Position center(footTip(0), footTip(1));
-
-        for (CircleIterator iterator(supportMap, center, radius); !iterator.isPastEnd(); ++iterator) {
-
-            const Index index(*iterator);
-            auto& supportMapElevationGPContinuity = supportMap.at("terrain_continuity_gp", index);
-            Position pos;
-            supportMap.getPosition(index, pos);
-            float addingDistance = sqrt(pow(pos(0) - footTip(0), 2) + pow(pos(1) - footTip(1), 2));
-
-            // Keep track of total weight and temporary height value.
-            float totalWeight = 0.0;
-            float tempHeight = 0.0;
-
-            for (unsigned int i = 0; i < footTipHistoryGP_.size(); ++i) {
-                double distance = sqrt(pow(footTipHistoryGP_[i](0) - footTip(0), 2) + pow(footTipHistoryGP_[i](1) - footTip(1), 2));
-                if (distance < radius) {
-                    if (i > 2) {
-                        Eigen::Vector4f coeffs = getPlaneCoeffsFromThreePoints(footTipHistoryGP_[i-2], footTipHistoryGP_[i-1], footTipHistoryGP_[i]);
-                        double planeHeight = evaluatePlaneFromCoefficients(coeffs, pos);
-                        // TODO: Evaluate Plane spun by three points and get do the same, but with the point value, that would have been gained by the plane
 
 
-                        float localDistance = sqrt(pow(footTipHistoryGP_[i](0) - pos(0), 2) + pow(footTipHistoryGP_[i](1) - pos(1), 2));
-                        float weight = 1 / pow(localDistance, exponentTerrainContinuityWeight_); // Hacking here to test the range of the power.
-                        totalWeight += weight;
-                        if (!isnan(planeHeight)) tempHeight += planeHeight * weight; // Hackin around in here, make clean
+        if (!isnan(tipLeftVec(2)) && !isnan(tipRightVec(2))) {
+            footTipHistoryGP_.push_back(footTip);
+            if (footTipHistoryGP_.size() > maxSizeFootTipHistory) footTipHistoryGP_.erase(footTipHistoryGP_.begin()); // This was missing, should speed things up..
+
+            Position center(footTip(0), footTip(1));
+
+            for (CircleIterator iterator(supportMap, center, radius); !iterator.isPastEnd(); ++iterator) {
+
+                const Index index(*iterator);
+                auto& supportMapElevationGPContinuity = supportMap.at("terrain_continuity_gp", index);
+                Position pos;
+                supportMap.getPosition(index, pos);
+                float addingDistance = sqrt(pow(pos(0) - footTip(0), 2) + pow(pos(1) - footTip(1), 2));
+
+                // Keep track of total weight and temporary height value.
+                float totalWeight = 0.0;
+                float tempHeight = 0.0;
+
+                for (unsigned int i = 0; i < footTipHistoryGP_.size(); ++i) {
+                    double distance = sqrt(pow(footTipHistoryGP_[i](0) - footTip(0), 2) + pow(footTipHistoryGP_[i](1) - footTip(1), 2));
+                    if (distance < radius) {
+                        if (i > 2) {
+                            Eigen::Vector4f coeffs = getPlaneCoeffsFromThreePoints(footTipHistoryGP_[i-2], footTipHistoryGP_[i-1], footTipHistoryGP_[i]);
+                            double planeHeight = evaluatePlaneFromCoefficients(coeffs, pos);
+                            // TODO: Evaluate Plane spun by three points and get do the same, but with the point value, that would have been gained by the plane
+
+                            // An issue is here if trotting on the spot!! then may get very steep!!
+                            // TODO TODO TODO!!!
+
+                            float localDistance = sqrt(pow(footTipHistoryGP_[i](0) - pos(0), 2) + pow(footTipHistoryGP_[i](1) - pos(1), 2));
+                            float weight;
+                            if (localDistance > 0.0001) weight = 1.0 / pow(localDistance, exponentTerrainContinuityWeight_); // Hacking here to test the range of the power.
+                            else weight = 0.0;
+                            totalWeight += weight;
+                            if (!isnan(planeHeight)) tempHeight += planeHeight * weight; // Hackin around in here, make clean
+                        }
                     }
                 }
-            }
 
-            double output;
-            if (totalWeight > 0.0001) output = tempHeight / totalWeight;
-            else output = footTip(2); // Here is a problem, get it very neat!!! TODO! -> does this solve it????
+                double output;
+                if (totalWeight > 0.0001) output = tempHeight / totalWeight;
+                else output = footTip(2); // Here is a problem, get it very neat!!! TODO! -> does this solve it????
 
-            float addingWeight = fmin(fmax(1 - (addingDistance / radius), 0.0), 1.0);
-            if (!isnan(output)){
-                if (!supportMap.isValid(index)){
-                    supportMapElevationGPContinuity = output;
-                }
-                else{
-                    if (!isnan(supportMapElevationGPContinuity)) supportMapElevationGPContinuity = addingWeight * output + (1 - addingWeight) * supportMapElevationGPContinuity;
+                float addingWeight = fmin(fmax(1 - (addingDistance / radius), 0.0), 1.0);
+                if (!isnan(output)){
+                    if (!supportMap.isValid(index)){
+                        supportMapElevationGPContinuity = output;
+                    }
+                    else{
+                        if (!isnan(supportMapElevationGPContinuity)) supportMapElevationGPContinuity = addingWeight * output + (1 - addingWeight) * supportMapElevationGPContinuity;
+                    }
                 }
             }
         }
