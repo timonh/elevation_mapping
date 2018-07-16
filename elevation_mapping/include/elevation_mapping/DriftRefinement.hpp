@@ -580,6 +580,7 @@ private:
  bool driftAdjustment_;
  bool applyFrameCorrection_;
  bool runHindLegStanceDetection_;
+ bool frameCorrectionSwitching_;
 
  //! Bool to specify wheather in high grass or not:
  bool highGrassMode_;

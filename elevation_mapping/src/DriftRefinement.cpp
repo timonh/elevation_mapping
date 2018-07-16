@@ -81,6 +81,8 @@ DriftRefinement::DriftRefinement(ros::NodeHandle nodeHandle)
   nodeHandle_.param("weight_factor", weightingFactor_, 1.0);
   nodeHandle_.param("run_high_grass_detection", runHighGrassDetection_, false);
   nodeHandle_.param("run_support_surface_estimation", runSupportSurfaceEstimation_, false);
+  nodeHandle_.param("frame_correction_switching", frameCorrectionSwitching_, false);
+
 
   //planeFitVisualizationPublisher_ = nodeHandle_.advertise<visualization_msgs::Marker>("plane_fit_visualization_marker_list", 1000); // DR
   footContactPublisher_ = nodeHandle_.advertise<visualization_msgs::Marker>("mean_foot_contact_markers_rviz", 1000);
@@ -410,16 +412,18 @@ float DriftRefinement::gaussianWeightedDifferenceIncrement(double lowerBound, do
         triggerSum += n;
     }
 
-    // DEBugging:
-    if (triggerSum > 3 && runHighGrassDetection_){
-      //  std::cout << "<<<<<<<<>>>>>>>>> \n" << "<<<<<<<<<<>>>>>>>> \n" << "<<<<<<<<<<>>>>>>>>> \n";
-        highGrassMode_ = true; // Hacked!!!!
-        applyFrameCorrection_ = false; // Hacked here!!!!!!
-    }
-    else{
-      //  std::cout << "!!!! \n" << "!!!! \n" << "!!!! \n";
-        highGrassMode_ = false;
-        applyFrameCorrection_ = true;
+    if (frameCorrectionSwitching_) {
+        // DEBugging:
+        if (triggerSum > 3 && runHighGrassDetection_){
+          //  std::cout << "<<<<<<<<>>>>>>>>> \n" << "<<<<<<<<<<>>>>>>>> \n" << "<<<<<<<<<<>>>>>>>>> \n";
+            highGrassMode_ = true; // Hacked!!!!
+            applyFrameCorrection_ = false; // Hacked here!!!!!!
+        }
+        else{
+          //  std::cout << "!!!! \n" << "!!!! \n" << "!!!! \n";
+            highGrassMode_ = false;
+            applyFrameCorrection_ = true;
+        }
     }
 
     double footTipVal;

@@ -81,7 +81,7 @@ ElevationMap::ElevationMap(ros::NodeHandle nodeHandle)
       fusedMap_({"elevation", "upper_bound", "lower_bound", "color", "elevation_gp_added_raw"}),
       supportMap_({"elevation", "variance", "elevation_gp", "elevation_gp_added"}),
       supportMapGP_({"elevation_gp", "variance_gp", "elevation_gp_added", "sinkage_depth_gp",
-                    "terrain_continuity_gp", "smoothed_top_layer_gp"}),
+                    "terrain_continuity_gp", "smoothed_top_layer_gp", "ground_truth"}),
       hasUnderlyingMap_(false),
       visibilityCleanupDuration_(0.0),
       filterChain_("grid_map::GridMap"), // New

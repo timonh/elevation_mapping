@@ -649,6 +649,7 @@ private:
  bool runTerrainContinuityBiasing_;
  double exponentSinkageDepthWeight_, exponentTerrainContinuityWeight_, exponentCharacteristicValue_;
  double weightDecayThreshold_;
+ bool runHindLegSupportSurfaceEstimation_;
 
  //! Bool to specify wheather in high grass or not:
  bool highGrassMode_;
