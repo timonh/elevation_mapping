@@ -92,14 +92,16 @@ bool SupportSurfaceEstimation::updateSupportSurfaceEstimation(std::string tip, G
 
         //! TODO: make function out of this:
         bool runProprioceptiveRoughnessEstimation = true;
+        //if (tip != "lefthind" && tip != "righthind")
         if(runProprioceptiveRoughnessEstimation) proprioceptiveRoughnessEstimation(tip, stance);
+
 
 
 
         if (tip != "lefthind" && tip != "righthind" || runHindLegSupportSurfaceEstimation_
                 && leftHindStanceVector_.size() > 0 && rightHindStanceVector_.size() > 0) {
 
-            simpleTerrainContinuityLayer(tip, supportMap);
+            if (tip != "lefthind" && tip != "righthind") simpleTerrainContinuityLayer(tip, supportMap);
 
             // At som point: divide into 2 fcts.. TODO
 
@@ -110,11 +112,11 @@ bool SupportSurfaceEstimation::updateSupportSurfaceEstimation(std::string tip, G
                 double verticalDifference = getFootTipElevationMapDifferenceGP(tip, supportMap);
 
                 bool runPenetrationDepthVarianceEstimation = true;
-                if (runPenetrationDepthVarianceEstimation) penetrationDepthVarianceEstimation(tip, verticalDifference);
+                if (tip != "lefthind" && tip != "righthind") if (runPenetrationDepthVarianceEstimation) penetrationDepthVarianceEstimation(tip, verticalDifference);
                 //! Yes all this!
 
                 // Uncertainty Estimation based on low pass filtered error between foot tip height and predicted support Surface.
-                setSupportSurfaceUncertaintyEstimation(tip, supportMap); //! TODO: uncomment whats inside of this function.
+                if (tip == "left" || tip == "right") setSupportSurfaceUncertaintyEstimation(tip, supportMap); //! TODO: uncomment whats inside of this function.
 
                 // Main gaussian process regression.
                 mainGPRegression(tileResolution_, tileDiameter_, sideLengthAddingPatch_,
@@ -886,7 +888,7 @@ bool SupportSurfaceEstimation::mainGPRegression(double tileResolution, double ti
 
 bool SupportSurfaceEstimation::simpleSinkageDepthLayer(std::string& tip, const double& tipDifference, GridMap& supportMap){
 
-    if (leftStanceVector_.size() > 0 && rightStanceVector_.size() > 0){
+    if (leftStanceVector_.size() > 0 && rightStanceVector_.size() > 0 && leftHindStanceVector_.size() > 0 && rightHindStanceVector_.size() > 0){
 
         Eigen::Vector3f tipLeftVec = getLatestLeftStance();
         Eigen::Vector3f tipRightVec = getLatestRightStance();
