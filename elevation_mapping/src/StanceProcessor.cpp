@@ -347,23 +347,23 @@ bool StanceProcessor::processStance(std::string tip)
 bool StanceProcessor::deleteFirstEntriesOfStances(std::string tip)
 {
     // All stance entries are deleted except the last 3 ones are stored -> this gives start detection
-    if (tip == "left" && LFTipStance_.size() < 3){
+    if (tip == "left" && LFTipStance_.size() < 7){
         std::cout << "WARNING: LEFT STANCE PHASE HAS TOO LITTLE ENTRIES TO BE PROCESSED" << std::endl;
     }
-    else if (tip == "right" && RFTipStance_.size() < 3){
+    else if (tip == "right" && RFTipStance_.size() < 7){
         std::cout << "WARNING: RIGHT STANCE PHASE HAS TOO LITTLE ENTRIES TO BE PROCESSED" << std::endl;
     }
-    else if (tip == "lefthind" && LHTipStance_.size() < 3){
+    else if (tip == "lefthind" && LHTipStance_.size() < 7){
         std::cout << "WARNING: LEFT HIND STANCE PHASE HAS TOO LITTLE ENTRIES TO BE PROCESSED" << std::endl;
     }
-    else if (tip == "righthind" && RHTipStance_.size() < 3){
+    else if (tip == "righthind" && RHTipStance_.size() < 7){
         std::cout << "WARNING: RIGHT HIND STANCE PHASE HAS TOO LITTLE ENTRIES TO BE PROCESSED" << std::endl;
     }
     else{
         if (tip == "left"){
             std::vector<Eigen::Vector3f> newLFTipStance;
-            for (unsigned int j = 1; j <= 3; ++j) {
-                newLFTipStance.push_back(LFTipStance_[LFTipStance_.size() - j]);     // Probably an additional -1 is needed
+            for (unsigned int j = 1; j <= 6; ++j) {
+                newLFTipStance.push_back(LFTipStance_[LFTipStance_.size() - j]);     // Probably an additional -1 is needed -> hacked 3 to 10..
             }
             LFTipStance_.clear();
             LFTipStance_ = newLFTipStance;
@@ -371,7 +371,7 @@ bool StanceProcessor::deleteFirstEntriesOfStances(std::string tip)
         }
         if (tip == "right"){
             std::vector<Eigen::Vector3f> newRFTipStance;
-            for (unsigned int j = 1; j <= 3; ++j) {
+            for (unsigned int j = 1; j <= 6; ++j) {
                 newRFTipStance.push_back(RFTipStance_[RFTipStance_.size() - j]);     // Probably an additional -1 is needed
             }
             RFTipStance_.clear();
@@ -379,7 +379,7 @@ bool StanceProcessor::deleteFirstEntriesOfStances(std::string tip)
         }
         if (tip == "lefthind"){
             std::vector<Eigen::Vector3f> newLHTipStance;
-            for (unsigned int j = 1; j <= 3; ++j) {
+            for (unsigned int j = 1; j <= 6; ++j) {
                 newLHTipStance.push_back(LHTipStance_[LHTipStance_.size() - j]);     // Probably an additional -1 is needed
             }
             LHTipStance_.clear();
@@ -387,7 +387,7 @@ bool StanceProcessor::deleteFirstEntriesOfStances(std::string tip)
         }
         if (tip == "righthind"){
             std::vector<Eigen::Vector3f> newRHTipStance;
-            for (unsigned int j = 1; j <= 3; ++j) {
+            for (unsigned int j = 1; j <= 6; ++j) {
                 newRHTipStance.push_back(RHTipStance_[RHTipStance_.size() - j]);     // Probably an additional -1 is needed
             }
             RHTipStance_.clear();

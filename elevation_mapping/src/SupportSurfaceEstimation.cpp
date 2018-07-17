@@ -176,7 +176,7 @@ bool SupportSurfaceEstimation::setSupportSurfaceUncertaintyEstimation(std::strin
 
 double SupportSurfaceEstimation::getFootTipElevationMapDifferenceGP(std::string tip, GridMap& supportMap){
 
-    double radius = 0.1; // Maximum search radius for spiralling search in order to find the closest map element in case if nan is present..
+    double radius = 0.7; // Maximum search radius for spiralling search in order to find the closest map element in case if nan is present..
     Position3 footTip3;
     if (tip == "left") footTip3 = getFrontLeftFootTipPosition();
     if (tip == "right") footTip3 = getFrontRightFootTipPosition();
@@ -211,7 +211,7 @@ double SupportSurfaceEstimation::getClosestMapValueUsingSpiralIteratorElevation(
             return tipHeight - MapReference.at("smoothed_top_layer_gp", index); // && MapReference.isValid(index)
         }
         counter++;
-        if (counter > 15) break;
+        if (counter > 11) break;
     }
     return std::numeric_limits<double>::quiet_NaN();
 }
@@ -269,7 +269,7 @@ void SupportSurfaceEstimation::setDifferentialPenetrationDepthVariance(double di
 bool SupportSurfaceEstimation::setSmoothedTopLayer(std::string tip, GridMap& rawMap, GridMap& supportMap){
 
     // Smoothing radius of area considered for sinkage depth calculation
-    double smoothingRadius = 0.07;
+    double smoothingRadius = 0.09;
 
     // Get the foot tip position.
     Eigen::Vector3f tipVec;
@@ -860,7 +860,7 @@ bool SupportSurfaceEstimation::mainGPRegression(double tileResolution, double ti
         if (!isnan(supportMapElevationGPAdded)) fusedMapElevationGP = supportMapElevationGPAdded; // Test
 
 
-        if (isnan(supportMap.at("smoothed_top_layer_gp", index))) supportMap.at("smoothed_top_layer_gp", index) = 0.0;
+        //if (isnan(supportMap.at("smoothed_top_layer_gp", index))) supportMap.at("smoothed_top_layer_gp", index) = 0.0;
 
 //        if (supportMap.isValid(index) && !isnan(supportMapVarianceGP) && !isnan(supportMapVarianceGPAdded)){
 //            supportMapVarianceGPAdded = (1 - weight) * supportMapVarianceGPAdded + (supportMapVarianceGP) * weight;
@@ -896,6 +896,8 @@ bool SupportSurfaceEstimation::simpleSinkageDepthLayer(std::string& tip, const d
         int maxSizeFootTipHistory = 15; // See what this does..
 
 
+
+        std::cout << "TIP DIFFERENCE::::::::::::::::::::::::::::::::::::::::::::::: " << -tipDifference << std::endl;
         // DEBUG:
         if (-tipDifference < 0.0) std::cout << "Attention, negative tip DIfference found!!: " << -tipDifference << std::endl;
         if (initializedLeftSinkageDepth_ && leftFrontSinkageDepth_ < 0.0) std::cout << "Attention, negative leftfrontsd found!!: " << leftFrontSinkageDepth_ << std::endl;
@@ -1056,7 +1058,7 @@ bool SupportSurfaceEstimation::simpleTerrainContinuityLayer(std::string& tip, Gr
                 if (totalWeight > 0.0001) output = tempHeight / totalWeight;
                 else output = footTip(2); // Here is a problem, get it very neat!!! TODO! -> does this solve it????
 
-                float addingWeight = fmin(fmax(1 - (addingDistance / radius), 0.0), 1.0);
+                float addingWeight = fmin(fmax(1.0 - (addingDistance / radius), 0.0), 1.0);
                 if (!isnan(output)){
                     if (!supportMap.isValid(index)){
                         supportMapElevationGPContinuity = output;
