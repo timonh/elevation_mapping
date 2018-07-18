@@ -101,8 +101,8 @@ bool SupportSurfaceEstimation::updateSupportSurfaceEstimation(std::string tip, G
         if (tip != "lefthind" && tip != "righthind" || runHindLegSupportSurfaceEstimation_
                 && leftHindStanceVector_.size() > 0 && rightHindStanceVector_.size() > 0) {
 
-            if (tip != "lefthind" && tip != "righthind") simpleTerrainContinuityLayer(tip, supportMap);
-
+            //if (tip != "lefthind" && tip != "righthind") simpleTerrainContinuityLayer(tip, supportMap);
+            if (tip != "lefthind" && tip != "righthind") terrainContinuityLayerGP(tip, supportMap);
             // At som point: divide into 2 fcts.. TODO
 
             // Run only if stance vectors are initialized..
@@ -897,16 +897,12 @@ bool SupportSurfaceEstimation::simpleSinkageDepthLayer(std::string& tip, const d
         double radius = 0.65;
         int maxSizeFootTipHistory = 15; // See what this does..
 
-
-
         std::cout << "TIP DIFFERENCE::::::::::::::::::::::::::::::::::::::::::::::: " << -tipDifference << std::endl;
         // DEBUG:
         if (-tipDifference < 0.0) std::cout << "Attention, negative tip DIfference found!!: " << -tipDifference << std::endl;
         if (initializedLeftSinkageDepth_ && leftFrontSinkageDepth_ < 0.0) std::cout << "Attention, negative leftfrontsd found!!: " << leftFrontSinkageDepth_ << std::endl;
         if (initializedRightSinkageDepth_ && rightFrontSinkageDepth_ < 0.0) std::cout << "Attention, negative rightfrontsd found!!: " << rightFrontSinkageDepth_ << std::endl;
-
         if (isnan(leftFrontSinkageDepth_)) std::cout << " NANANANANANANAANNNNNNNNNNNNANNNNNNNAAAAAAAAAAAAAANNNNNNNNNNNNNN" << std::endl;
-
 
         // Do history vector.
         Position3 footTip;
@@ -995,7 +991,6 @@ bool SupportSurfaceEstimation::simpleSinkageDepthLayer(std::string& tip, const d
     return true;
 }
 
-
 // Put them together at some time..
 bool SupportSurfaceEstimation::simpleTerrainContinuityLayer(std::string& tip, GridMap& supportMap){
 
@@ -1068,6 +1063,83 @@ bool SupportSurfaceEstimation::simpleTerrainContinuityLayer(std::string& tip, Gr
                     else{
                         if (!isnan(supportMapElevationGPContinuity)) supportMapElevationGPContinuity = addingWeight * output + (1 - addingWeight) * supportMapElevationGPContinuity;
                     }
+                }
+            }
+        }
+    }
+    return true;
+}
+
+bool SupportSurfaceEstimation::terrainContinuityLayerGP(std::string& tip, GridMap& supportMap){
+
+    if (leftStanceVector_.size() > 0 && rightStanceVector_.size() > 0){
+        Position3 posFrontRight3 = getFrontRightFootTipPosition();
+        Position3 posHindLeft3 = getHindLeftFootTipPosition();
+        Position3 posHindRight3 = getHindRightFootTipPosition();
+
+        Position3 tipPos3;
+        if (tip == "left") tipPos3 = getFrontLeftFootTipPosition();
+        if (tip == "right") tipPos3 = getFrontRightFootTipPosition();
+        if (tip == "lefthind") tipPos3 = getHindLeftFootTipPosition();
+        if (tip == "righthind") tipPos3 = getHindRightFootTipPosition();
+
+        Position tipPos(tipPos3(0), tipPos3(1));
+
+        int maxSizeFootTipHistory = 15;
+
+        footTipHistoryGP_.push_back(tipPos3);
+        if (footTipHistoryGP_.size() > maxSizeFootTipHistory)
+            footTipHistoryGP_.erase(footTipHistoryGP_.begin());
+
+        int inputDim = 2;
+        int outputDim = 1;
+        float radius = 0.65;
+
+        Eigen::VectorXf trainInput(inputDim);
+        Eigen::VectorXf trainOutput(outputDim);
+
+        GaussianProcessRegression<float> continuityGPR(inputDim, outputDim);
+        double gpLengthscale = 3.0;
+        double gpSigmaN = 0.1;
+        double gpSigmaF = 0.001;
+
+        continuityGPR.SetHyperParams(gpLengthscale, gpSigmaN, gpSigmaF);
+
+        for (unsigned int j = 0; j < footTipHistoryGP_.size(); ++j) {
+
+            Position cellPos(footTipHistoryGP_[j](0), footTipHistoryGP_[j](1));
+            trainInput(0) = cellPos(0);
+            trainInput(1) = cellPos(1);
+            trainOutput(0) = footTipHistoryGP_[j](2);
+
+            continuityGPR.AddTrainingData(trainInput, trainOutput);
+        }
+
+        for (CircleIterator iterator(supportMap, tipPos, radius); !iterator.isPastEnd(); ++iterator) {
+            const Index index(*iterator);
+            Eigen::VectorXf testInput(inputDim);
+
+            auto& supportMapContinuityGP = supportMap.at("terrain_continuity_gp", index);
+
+            Position cellPos;
+            supportMap.getPosition(index, cellPos);
+            testInput(0) = cellPos(0);
+            testInput(1) = cellPos(1);
+
+            double outputHeight = continuityGPR.DoRegression(testInput)(0);  // Hope this shouldnt be testOutput(0)
+            double localDistance = sqrt(pow(cellPos(0) - tipPos(0), 2) + pow(cellPos(1) - tipPos(1), 2));
+
+            float addingWeight;
+            if (localDistance > 0.0001) addingWeight = fabs(fmax(1.0 - (localDistance / radius), 1.0));
+            else addingWeight = 0.0;
+
+            if (!isnan(outputHeight)){
+                if (isnan(supportMapContinuityGP) || !supportMap.isValid(index)){
+                    supportMapContinuityGP = outputHeight;
+                }
+                else{
+                    if (!isnan(supportMapContinuityGP))  // Hacked away, attention!!
+                        supportMapContinuityGP = addingWeight * outputHeight + (1.0 - addingWeight) * supportMapContinuityGP;
                 }
             }
         }

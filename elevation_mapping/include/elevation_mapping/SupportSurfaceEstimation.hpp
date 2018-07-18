@@ -539,6 +539,9 @@ private:
  //! TODO: Description:
  double getMeanGroundTruthDifference();
 
+ //! TODO: Description:
+ bool terrainContinuityLayerGP(std::string& tip, grid_map::GridMap& supportMap);
+
 
 
  //! ROS nodehandle.
