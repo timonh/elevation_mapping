@@ -528,6 +528,9 @@ private:
  double evaluatePlaneFromCoefficients(const Eigen::Vector4f& coefficients, grid_map::Position& cellPos);
 
  //! TODO: Description:
+ double get2DTriangleArea(const grid_map::Position3& Point1, const grid_map::Position3& Point2, const grid_map::Position3& Point3);
+
+ //! TODO: Description:
  void setParameters();
 
  //! TODO: Description:
@@ -780,6 +783,11 @@ private:
  int overallConsideredStanceCounter_;
  double overallMeanElevationDifference_;
  double overallSummedMeanElevationDifference_;
+
+ // GP parameters for terrain continuity layer.
+ double continuityGPLengthscale_;
+ double continuityGPSigmaN_;
+ double continuityGPSigmaF_;
 };
 
 } /* namespace */

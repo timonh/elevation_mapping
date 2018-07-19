@@ -68,6 +68,9 @@ void SupportSurfaceEstimation::setParameters(){
     nodeHandle_.param("side_length_adding_patch", sideLengthAddingPatch_, 1.3);
     nodeHandle_.param("use_bag", useBag_, false);
     nodeHandle_.param("run_hind_leg_support_surface_estimation", runHindLegSupportSurfaceEstimation_, false);
+    nodeHandle_.param("continuity_gp_lengthscale", continuityGPLengthscale_, 10.0);
+    nodeHandle_.param("continuity_gp_sigma_n", continuityGPSigmaN_, 0.1);
+    nodeHandle_.param("continuity_gp_sigma_f", continuityGPSigmaF_, 0.001);
 
     // Initializations.
     supportSurfaceInitializationTrigger_ = false;
@@ -1036,6 +1039,11 @@ bool SupportSurfaceEstimation::simpleTerrainContinuityLayer(std::string& tip, Gr
                         if (i > 2) {
                             Eigen::Vector4f coeffs = getPlaneCoeffsFromThreePoints(footTipHistoryGP_[i-2], footTipHistoryGP_[i-1], footTipHistoryGP_[i]);
                             double planeHeight = evaluatePlaneFromCoefficients(coeffs, pos);
+
+
+                            double triangleArea = get2DTriangleArea(footTipHistoryGP_[i-2], footTipHistoryGP_[i-1], footTipHistoryGP_[i]);
+
+                            std::cout << "Crazy triangle area overflow:!! " << triangleArea << std::endl;
                             // TODO: Evaluate Plane spun by three points and get do the same, but with the point value, that would have been gained by the plane
 
                             // An issue is here if trotting on the spot!! then may get very steep!!
@@ -1045,6 +1053,8 @@ bool SupportSurfaceEstimation::simpleTerrainContinuityLayer(std::string& tip, Gr
                             float weight;
                             if (localDistance > 0.0001) weight = 1.0 / pow(localDistance, exponentTerrainContinuityWeight_); // Hacking here to test the range of the power.
                             else weight = 0.0;
+                            weight = weight * triangleArea; // Test, weigh according to projected triangle area..
+
                             totalWeight += weight;
                             if (!isnan(planeHeight)) tempHeight += planeHeight * weight; // Hackin around in here, make clean
                         }
@@ -1073,9 +1083,6 @@ bool SupportSurfaceEstimation::simpleTerrainContinuityLayer(std::string& tip, Gr
 bool SupportSurfaceEstimation::terrainContinuityLayerGP(std::string& tip, GridMap& supportMap){
 
     if (leftStanceVector_.size() > 0 && rightStanceVector_.size() > 0){
-        Position3 posFrontRight3 = getFrontRightFootTipPosition();
-        Position3 posHindLeft3 = getHindLeftFootTipPosition();
-        Position3 posHindRight3 = getHindRightFootTipPosition();
 
         Position3 tipPos3;
         if (tip == "left") tipPos3 = getFrontLeftFootTipPosition();
@@ -1085,7 +1092,7 @@ bool SupportSurfaceEstimation::terrainContinuityLayerGP(std::string& tip, GridMa
 
         Position tipPos(tipPos3(0), tipPos3(1));
 
-        int maxSizeFootTipHistory = 15;
+        int maxSizeFootTipHistory = 9;
 
         footTipHistoryGP_.push_back(tipPos3);
         if (footTipHistoryGP_.size() > maxSizeFootTipHistory)
@@ -1099,11 +1106,7 @@ bool SupportSurfaceEstimation::terrainContinuityLayerGP(std::string& tip, GridMa
         Eigen::VectorXf trainOutput(outputDim);
 
         GaussianProcessRegression<float> continuityGPR(inputDim, outputDim);
-        double gpLengthscale = 3.0;
-        double gpSigmaN = 0.1;
-        double gpSigmaF = 0.001;
-
-        continuityGPR.SetHyperParams(gpLengthscale, gpSigmaN, gpSigmaF);
+        continuityGPR.SetHyperParams(continuityGPLengthscale_, continuityGPSigmaN_, continuityGPSigmaF_);
 
         for (unsigned int j = 0; j < footTipHistoryGP_.size(); ++j) {
 
@@ -1130,10 +1133,14 @@ bool SupportSurfaceEstimation::terrainContinuityLayerGP(std::string& tip, GridMa
             double localDistance = sqrt(pow(cellPos(0) - tipPos(0), 2) + pow(cellPos(1) - tipPos(1), 2));
 
             float addingWeight;
-            if (localDistance > 0.0001) addingWeight = fabs(fmax(1.0 - (localDistance / radius), 1.0));
+
+            if (localDistance > 0.0001) addingWeight = fabs(fmax(1.0 - (localDistance / radius), 0.0));
             else addingWeight = 0.0;
 
+            //std::cout << "adding weight : " << addingWeight << std::endl;
+
             if (!isnan(outputHeight)){
+                //if (true) {
                 if (isnan(supportMapContinuityGP) || !supportMap.isValid(index)){
                     supportMapContinuityGP = outputHeight;
                 }
@@ -1315,6 +1322,11 @@ double SupportSurfaceEstimation::getGroundTruthDifference(GridMap& supportMap, P
 
 double SupportSurfaceEstimation::getMeanGroundTruthDifference(){
     return overallMeanElevationDifference_;
+}
+
+double SupportSurfaceEstimation::get2DTriangleArea(const grid_map::Position3& Point1, const grid_map::Position3& Point2, const grid_map::Position3& Point3){
+
+    return fabs(((Point2(0) - Point1(0))*(Point3(1) - Point1(1)) - (Point3(0) - Point1(0))*(Point2(1) - Point1(1)))/2.0);
 }
 
 } /* namespace */
