@@ -382,7 +382,7 @@ private:
  bool penetrationDepthEstimation(std::string tip);
 
  //! TODO: Description:
- bool penetrationDepthVarianceEstimation(std::string tip, double verticalDifference);
+ bool sinkageDepthVarianceEstimation(std::string tip, double verticalDifference);
 
  //! TODO: Description:
  bool writeDataFileForParameterLearning();
@@ -440,6 +440,9 @@ private:
 
  //! TODO: Description:
  bool footTipEmbeddingSimple();
+
+ //! TODO: Description:
+ grid_map::Position3 getFootTipPosition3(std::string tip);
 
  //! TODO: Description:
  grid_map::Position3 getFrontLeftFootTipPosition();
@@ -683,7 +686,7 @@ private:
  std::vector<Eigen::Vector3f> leftStanceVector_, rightStanceVector_, leftHindStanceVector_, rightHindStanceVector_;
 
  //! Life Variance Calculation for roughness characterization in unseen terrain.
- std::vector<double> feetUnseenVarianceVector_;
+ std::vector<double> proprioceptiveDiffVector_, proprioceptiveDiffVectorFront_, proprioceptiveDiffVectorHind_;
 
  //! Message to publish performance assessment values
  //elevation_mapping::PerformanceAssessment performance_assessment_msg_;

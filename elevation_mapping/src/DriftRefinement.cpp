@@ -446,6 +446,11 @@ float DriftRefinement::gaussianWeightedDifferenceIncrement(double lowerBound, do
 
     // Error difference weighted as (1 - gaussian), s.t. intervall from elevation map to bound contains two standard deviations
 
+
+    // Factor, where sigmoid drift correction dropoff starts (weight declines)
+    double dropoffFactor = 1.7;
+
+
     // Initialize
     double weight = 0.0;
 
@@ -475,6 +480,7 @@ float DriftRefinement::gaussianWeightedDifferenceIncrement(double lowerBound, do
     if(weight > 1.0) weight = 1.0; // For security, basically not necessary (as the weighting term is left away in the normalDistribution function)
 
     usedWeight_ = (1.0 - weight);
+
 
     // TOOD: code function that does sigmoid droppoff between 1.5 and 2 times the confidence bound -> no weight in this case -> no correction (Marco Hutters comment..)
 

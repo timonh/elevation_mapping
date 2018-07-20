@@ -93,29 +93,25 @@ bool SupportSurfaceEstimation::updateSupportSurfaceEstimation(std::string tip, G
     Position tipPosition(stance(0), stance(1));
     if(rawMap.isInside(tipPosition)) {
 
-        //! TODO: make function out of this:
-        bool runProprioceptiveRoughnessEstimation = true;
-        //if (tip != "lefthind" && tip != "righthind")
-        if(runProprioceptiveRoughnessEstimation) proprioceptiveRoughnessEstimation(tip, stance);
-
-
-
+    proprioceptiveRoughnessEstimation(tip, stance);
 
         if (tip != "lefthind" && tip != "righthind" || runHindLegSupportSurfaceEstimation_
                 && leftHindStanceVector_.size() > 0 && rightHindStanceVector_.size() > 0) {
 
             //if (tip != "lefthind" && tip != "righthind") simpleTerrainContinuityLayer(tip, supportMap);
-            if (tip != "lefthind" && tip != "righthind") terrainContinuityLayerGP(tip, supportMap);
+            //if (tip != "lefthind" && tip != "righthind")
+            terrainContinuityLayerGP(tip, supportMap);
             // At som point: divide into 2 fcts.. TODO
 
             // Run only if stance vectors are initialized..
             if (leftStanceVector_.size() > 0 && rightStanceVector_.size() > 0) {
 
+                // Smoothed Top Layer to get vertical Difference between top layer and foot tip position (sinkage depth)
                 setSmoothedTopLayer(tip, rawMap, supportMap);
                 double verticalDifference = getFootTipElevationMapDifferenceGP(tip, supportMap);
 
-                bool runPenetrationDepthVarianceEstimation = true;
-                if (tip != "lefthind" && tip != "righthind") if (runPenetrationDepthVarianceEstimation) penetrationDepthVarianceEstimation(tip, verticalDifference);
+                // Sinkage depth variance estimation.
+                if (tip != "lefthind" && tip != "righthind") sinkageDepthVarianceEstimation(tip, verticalDifference);
                 //! Yes all this!
 
                 // Uncertainty Estimation based on low pass filtered error between foot tip height and predicted support Surface.
@@ -127,6 +123,7 @@ bool SupportSurfaceEstimation::updateSupportSurfaceEstimation(std::string tip, G
             }
         }
 
+        // Ground truth difference evaluation for simulation environment.
         if (!useBag_) testTrackMeanSupportErrorEvaluation(supportMap);
         std::cout << "useBag_: " << useBag_ << std::endl;
     }
@@ -141,8 +138,16 @@ bool SupportSurfaceEstimation::updateSupportSurfaceEstimation(std::string tip, G
     GridMapRosConverter::toMessage(supportMap, mapMessageGP);
     mapMessageGP.info.header.frame_id = "odom_drift_adjusted";
     elevationMapGPPublisher_.publish(mapMessageGP);
-
     return true;
+}
+
+Position3 SupportSurfaceEstimation::getFootTipPosition3(std::string tip){
+    Position3 tipPos;
+    if (tip == "left") tipPos = {frontLeftFootTip_(0), frontLeftFootTip_(1), frontLeftFootTip_(2)};
+    if (tip == "right") tipPos = {frontRightFootTip_(0), frontRightFootTip_(1), frontRightFootTip_(2)};
+    if (tip == "lefthind") tipPos = {hindLeftFootTip_(0), hindLeftFootTip_(1), hindLeftFootTip_(2)};
+    if (tip == "righthind") tipPos = {hindRightFootTip_(0), hindRightFootTip_(1), hindRightFootTip_(2)};
+    return tipPos;
 }
 
 Position3 SupportSurfaceEstimation::getFrontLeftFootTipPosition(){
@@ -183,8 +188,8 @@ double SupportSurfaceEstimation::getFootTipElevationMapDifferenceGP(std::string 
 
     double radius = 0.7; // Maximum search radius for spiralling search in order to find the closest map element in case if nan is present..
     Position3 footTip3;
-    if (tip == "left") footTip3 = getFrontLeftFootTipPosition();
-    if (tip == "right") footTip3 = getFrontRightFootTipPosition();
+    footTip3 = getFootTipPosition3(tip);
+
     Position footTipHorizontal(footTip3(0), footTip3(1));
     double verticalDifference;
     std::cout << "exists ? foot Tip3 (2)" << footTip3(2) << std::endl;
@@ -221,7 +226,7 @@ double SupportSurfaceEstimation::getClosestMapValueUsingSpiralIteratorElevation(
     return std::numeric_limits<double>::quiet_NaN();
 }
 
-bool SupportSurfaceEstimation::penetrationDepthVarianceEstimation(std::string tip, double verticalDifference){
+bool SupportSurfaceEstimation::sinkageDepthVarianceEstimation(std::string tip, double verticalDifference){
 
     int maxHistory = 3;
 
@@ -416,21 +421,26 @@ bool SupportSurfaceEstimation::proprioceptiveVariance(std::string tip){
 
     std::cout << "tip: " << tip << " diff: " << diff << std::endl;
 
-    feetUnseenVarianceVector_.push_back(diff);
-    if (feetUnseenVarianceVector_.size() > 12) feetUnseenVarianceVector_.erase(feetUnseenVarianceVector_.begin());
 
+    if (tip == "left" || tip == "right") proprioceptiveDiffVectorFront_.push_back(diff);
+    if (proprioceptiveDiffVectorFront_.size() > 12) proprioceptiveDiffVectorFront_.erase(proprioceptiveDiffVectorFront_.begin());
+    if (tip == "lefthind" || tip == "righthind") proprioceptiveDiffVectorHind_.push_back(diff);
+    if (proprioceptiveDiffVectorHind_.size() > 12) proprioceptiveDiffVectorHind_.erase(proprioceptiveDiffVectorHind_.begin());
 
+    proprioceptiveDiffVector_.push_back(diff);
+    if (proprioceptiveDiffVector_.size() > 12) proprioceptiveDiffVector_.erase(proprioceptiveDiffVector_.begin());
 
+    std::vector<double>& varianceDiffVector = proprioceptiveDiffVector_;
 
     // Calculate Variance.
     double total = 0.0;
     double totalSquared = 0.0;
-    for (auto& n : feetUnseenVarianceVector_){
+    for (auto& n : varianceDiffVector){
         total += n;
         totalSquared += pow(n, 2);
     }
-    double varianceConsecutiveFootTipPositions = totalSquared / (double)feetUnseenVarianceVector_.size() - pow(total/(double)feetUnseenVarianceVector_.size(), 2);
-    double mean = total/(double)feetUnseenVarianceVector_.size();
+    double varianceConsecutiveFootTipPositions = totalSquared / (double)varianceDiffVector.size() - pow(total/(double)varianceDiffVector.size(), 2);
+    double mean = total/(double)varianceDiffVector.size();
 
     std::cout << "varianceConsecutiveFootTipPositions: " << varianceConsecutiveFootTipPositions << std::endl;
 
@@ -911,6 +921,8 @@ bool SupportSurfaceEstimation::simpleSinkageDepthLayer(std::string& tip, const d
         Position3 footTip;
         if (tip == "left") footTip = tipLeftPos3;
         if (tip == "right") footTip = tipRightPos3;
+        if (tip == "lefthind") footTip = getHindLeftFootTipPosition();
+        if (tip == "righthind") footTip = getHindRightFootTipPosition();
 
         if (isnan(tipDifference)) {
             if (tip == "left" && !isnan(leftFrontSinkageDepth_) && initializedLeftSinkageDepth_) {
@@ -1003,8 +1015,6 @@ bool SupportSurfaceEstimation::simpleTerrainContinuityLayer(std::string& tip, Gr
         Eigen::Vector3f tipRightVec = getLatestRightStance();
         Position3 tipLeftPos3(tipLeftVec(0), tipLeftVec(1), tipLeftVec(2));
         Position3 tipRightPos3(tipRightVec(0), tipRightVec(1), tipRightVec(2));
-
-
 
         double radius = 0.65;
         int maxSizeFootTipHistory = 15;
