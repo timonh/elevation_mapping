@@ -71,6 +71,8 @@ void SupportSurfaceEstimation::setParameters(){
     nodeHandle_.param("continuity_gp_lengthscale", continuityGPLengthscale_, 10.0);
     nodeHandle_.param("continuity_gp_sigma_n", continuityGPSigmaN_, 0.1);
     nodeHandle_.param("continuity_gp_sigma_f", continuityGPSigmaF_, 0.001);
+    nodeHandle_.param("use_sign_selective_continuity_filter", useSignSelectiveContinuityFilter_, true);
+    nodeHandle_.param("sign_selective_continuity_filter_gain", signSelectiveContinuityFilterGain_, 0.5);
 
     // Initializations.
     supportSurfaceInitializationTrigger_ = false;
@@ -92,6 +94,8 @@ bool SupportSurfaceEstimation::updateSupportSurfaceEstimation(std::string tip, G
                                                               GridMap& supportMap, GridMap& fusedMap, Eigen::Vector3f& stance){
     Position tipPosition(stance(0), stance(1));
     if(rawMap.isInside(tipPosition)) {
+
+
 
     proprioceptiveRoughnessEstimation(tip, stance);
 
@@ -278,24 +282,12 @@ void SupportSurfaceEstimation::setDifferentialPenetrationDepthVariance(double di
 
 bool SupportSurfaceEstimation::setSmoothedTopLayer(std::string tip, GridMap& rawMap, GridMap& supportMap){
 
-    // Smoothing radius of area considered for sinkage depth calculation
+    // Smoothing radius of area considered for sinkage depth calculation.
     double smoothingRadius = 0.09;
 
     // Get the foot tip position.
-    Eigen::Vector3f tipVec;
-    if (tip == "left") tipVec = getLatestLeftStance();
-    if (tip == "right") tipVec = getLatestRightStance();
-    Position footTipPosition(tipVec(0), tipVec(1));
-    if (tip == "lefthind") {
-        Position3 tipPos3 = getHindLeftFootTipPosition();
-        footTipPosition(0) = tipPos3(0);
-        footTipPosition(1) = tipPos3(1);
-    }
-    if (tip == "righthind") {
-        Position3 tipPos3 = getHindRightFootTipPosition();
-        footTipPosition(0) = tipPos3(0);
-        footTipPosition(1) = tipPos3(1);
-    }
+    Position3 tipPos3 = getFootTipPosition3(tip);
+    Position footTipPosition(tipPos3(0), tipPos3(1));
 
     // Gaussian Process Regression Parameters.
     int inputDim = 2;
@@ -306,7 +298,7 @@ bool SupportSurfaceEstimation::setSmoothedTopLayer(std::string tip, GridMap& raw
     // Iterate around the foot tip position to add Data
     for (CircleIterator iterator(supportMap, footTipPosition, smoothingRadius); !iterator.isPastEnd(); ++iterator) {
         const Index index(*iterator);
-        // Loop Here for adding data..
+
         Eigen::VectorXf trainInput(inputDim);
         Eigen::VectorXf trainOutput(outputDim);
 
@@ -597,10 +589,7 @@ bool SupportSurfaceEstimation::mainGPRegression(double tileResolution, double ti
     tileMarkerList.color.g = 0.1;
     tileMarkerList.color.b = 0.1;
 
-    Eigen::Vector3f tipLeftVec = getLatestLeftStance();
-    Eigen::Vector3f tipRightVec = getLatestRightStance();
-    Position tipLeft(tipLeftVec(0), tipLeftVec(1));
-    Position tipRight(tipRightVec(0), tipRightVec(1));
+
     int noOfTilesPerHalfSide = floor((sideLengthAddingPatch / 2.0) / tileResolution);
     double radius = (sideLengthAddingPatch - 0.15) / 2.0;
 
@@ -630,9 +619,17 @@ bool SupportSurfaceEstimation::mainGPRegression(double tileResolution, double ti
     // TODO: reason about this functionality, anything with sqrt?? -> test and learn?
 
 
+    if (useSignSelectiveContinuityFilter_) {
+        // Sign Selective low pass filter.
+        if (lowPassFilteredTerrainContinuityValue_ < characteristicValue) lowPassFilteredTerrainContinuityValue_ = fmin(fmax(continuityFilterGain_ * lowPassFilteredTerrainContinuityValue_ + (1 - continuityFilterGain_)
+                                                                * characteristicValue, 0.4), 5.0); // TODO: reason about bounding.
+        else lowPassFilteredTerrainContinuityValue_ = characteristicValue;
 
-    lowPassFilteredTerrainContinuityValue_ =  fmin(fmax(continuityFilterGain_ * lowPassFilteredTerrainContinuityValue_ + (1 - continuityFilterGain_)
-                                                        * characteristicValue, 0.05), 5.0); // TODO: reason about bounding.
+    }
+    else lowPassFilteredTerrainContinuityValue_ = fmin(fmax(continuityFilterGain_ * lowPassFilteredTerrainContinuityValue_ + (1 - continuityFilterGain_)
+                                                        * characteristicValue, 0.4), 5.0); // TODO: reason about bounding.
+
+
 
     // Set message values.
     adaptationMsg.header.stamp = ros::Time::now();
@@ -643,19 +640,9 @@ bool SupportSurfaceEstimation::mainGPRegression(double tileResolution, double ti
     adaptationMsg.twist.angular.z = sinkageVariance;
     adaptationMsg.twist.linear.z = differentialSinkageVariance;
 
-    Position footTip;
-    if (tip == "left") footTip = tipLeft;
-    if (tip == "right") footTip = tipRight;
-    if (tip == "lefthind") {
-        Position3 footTip3 = getHindLeftFootTipPosition();
-        footTip(0) = footTip3(0);
-        footTip(1) = footTip3(1);
-    }
-    if (tip == "righthind") {
-        Position3 footTip3 = getHindRightFootTipPosition();
-        footTip(0) = footTip3(0);
-        footTip(1) = footTip3(1);
-    }
+    // Get the foot Tip Position.
+    Position3 footTip3 = getFootTipPosition3(tip);
+    Position footTip(footTip3(0), footTip3(1));
 
     // Get the foot tip plane coefficients.
     //Eigen::Vector4f planeCoefficients = getFootTipPlaneCoefficients(tip);
@@ -1110,7 +1097,7 @@ bool SupportSurfaceEstimation::terrainContinuityLayerGP(std::string& tip, GridMa
 
         int inputDim = 2;
         int outputDim = 1;
-        float radius = 0.65;
+        float radius = 0.45;
 
         Eigen::VectorXf trainInput(inputDim);
         Eigen::VectorXf trainOutput(outputDim);

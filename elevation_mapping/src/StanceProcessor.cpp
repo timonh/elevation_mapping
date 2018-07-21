@@ -99,6 +99,9 @@ StanceProcessor::StanceProcessor(ros::NodeHandle nodeHandle)
   isInStanceRight_ = false;
   isInStanceRightHind_ = false;
   footTipTrigger_ = false;
+  // Parameters for more robust stance detection.
+  robustStanceTriggerLF_ = robustStanceTriggerRF_ = robustStanceTriggerLH_ = robustStanceTriggerRH_ = false;
+  robustStanceCounterLF_ = robustStanceCounterRF_ = robustStanceCounterLH_ = robustStanceCounterRH_ = 0;
 }
 
 StanceProcessor::~StanceProcessor()
@@ -213,11 +216,27 @@ bool StanceProcessor::detectStancePhase()
         LFTipStance_.push_back(LFTipPosition_);
     }
     // For start detection scheme.
-    else if (LFTipState_ && stanceDetectionMethod_ == "start") LFTipStance_.push_back(LFTipPosition_);
+    else if (LFTipState_ && (stanceDetectionMethod_ == "start" || stanceDetectionMethod_ == "robust"))
+        LFTipStance_.push_back(LFTipPosition_);
+    if (stanceDetectionMethod_ == "robust" && robustStanceTriggerLF_) {
+        robustStanceCounterLF_++;
+        if (robustStanceCounterLF_ > 40) {
+            robustStanceTriggerLF_ = false;
+            if(!processStance("left")) return false;
+        }
+    }
     if (RFTipState_ && isInStanceRight_) {
         RFTipStance_.push_back(RFTipPosition_);
     }
-    else if (RFTipState_ && stanceDetectionMethod_ == "start") RFTipStance_.push_back(RFTipPosition_);
+    else if (RFTipState_ && (stanceDetectionMethod_ == "start" || stanceDetectionMethod_ == "robust"))
+        RFTipStance_.push_back(RFTipPosition_);
+    if (stanceDetectionMethod_ == "robust" && robustStanceTriggerRF_) {
+        robustStanceCounterRF_++;
+        if (robustStanceCounterRF_ > 40) {
+            robustStanceTriggerRF_ = false;
+            if(!processStance("right")) return false;
+        }
+    }
 
     // Stance Detection
     templateMatchingForStanceDetection("left", processStanceTriggerLeft_);
@@ -242,12 +261,28 @@ bool StanceProcessor::detectStancePhase()
         if (LHTipState_ && isInStanceLeftHind_) {
             LHTipStance_.push_back(LHTipPosition_);
         }
-        else if (LHTipState_ && stanceDetectionMethod_ == "start") LHTipStance_.push_back(LHTipPosition_);
+        else if (RFTipState_ && (stanceDetectionMethod_ == "start" || stanceDetectionMethod_ == "robust"))
+            LHTipStance_.push_back(LHTipPosition_);
+        if (stanceDetectionMethod_ == "robust" && robustStanceTriggerLH_) {
+            robustStanceCounterLH_++;
+            if (robustStanceCounterLH_ > 40) {
+                robustStanceTriggerLH_ = false;
+                if(!processStance("lefthind")) return false;
+            }
+        }
 
         if (RHTipState_ && isInStanceRightHind_) {
             RHTipStance_.push_back(RHTipPosition_);
         }
-        else if (RHTipState_ && stanceDetectionMethod_ == "start") RHTipStance_.push_back(RHTipPosition_);
+        else if (RHTipState_ && (stanceDetectionMethod_ == "start" || stanceDetectionMethod_ == "robust"))
+            RHTipStance_.push_back(RHTipPosition_);
+        if (stanceDetectionMethod_ == "robust" && robustStanceTriggerRH_) {
+            robustStanceCounterRH_++;
+            if (robustStanceCounterRH_ > 40) {
+                robustStanceTriggerRH_ = false;
+                if(!processStance("righthind")) return false;
+            }
+        }
 
         // Stance Detection
         templateMatchingForStanceDetection("lefthind", processStanceTriggerLeftHind_);
@@ -264,24 +299,39 @@ bool StanceProcessor::templateMatchingForStanceDetection(std::string tip, std::v
             stateVector.end()[-6]+stateVector.end()[-7]+stateVector.end()[-8] >= 6 &&
             stateVector.end()[-9]+stateVector.end()[-10] +
             stateVector.end()[-11]+stateVector.end()[-12]+ stateVector.end()[-13]+
-            stateVector.end()[-14]+stateVector.end()[-15] <= 6){
+            stateVector.end()[-14]+stateVector.end()[-15] <= 4){  // Hacked from 6 to 4
         if(tip == "left" && !isInStanceLeft_){
            // std::cout << "Start of LEFT stance" << std::endl;
             isInStanceLeft_ = 1;
             if (stanceDetectionMethod_ == "start") if(!processStance(tip)) return false;
+            if (stanceDetectionMethod_ == "robust") {
+                robustStanceTriggerLF_ = true;
+                robustStanceCounterLF_ = 0;
+            }
         }
         if(tip == "lefthind" && !isInStanceLeftHind_){
             isInStanceLeftHind_ = 1;
             if (stanceDetectionMethod_ == "start") if(!processStance(tip)) return false;
+            if (stanceDetectionMethod_ == "robust") {
+                robustStanceTriggerRF_ = true;
+                robustStanceCounterRF_ = 0;
+            }
         }
         if(tip == "right" && !isInStanceRight_){
-           // std::cout << "Start of Right stance" << std::endl;
             isInStanceRight_ = 1;
             if (stanceDetectionMethod_ == "start") if(!processStance(tip)) return false;
+            if (stanceDetectionMethod_ == "robust") {
+                robustStanceTriggerLH_ = true;
+                robustStanceCounterLH_ = 0;
+            }
         }
         if(tip == "righthind" && !isInStanceRightHind_){
             isInStanceRightHind_ = 1;
             if (stanceDetectionMethod_ == "start") if(!processStance(tip)) return false;
+            if (stanceDetectionMethod_ == "robust") {
+                robustStanceTriggerRH_ = true;
+                robustStanceCounterRH_ = 0;
+            }
         }
     }
 
@@ -322,7 +372,7 @@ bool StanceProcessor::processStance(std::string tip)
 {
 
 //    // Delete the last 10 entries of the Foot Stance Position Vector, as these are used for transition detection
-    if (stanceDetectionMethod_ == "start") deleteFirstEntriesOfStances(tip);
+    if (stanceDetectionMethod_ == "start" || stanceDetectionMethod_ == "robust") deleteFirstEntriesOfStances(tip);
     if (stanceDetectionMethod_ == "average") deleteLastEntriesOfStances(tip);
 
     Eigen::Vector3f meanStance = getAverageFootTipPositions(tip);
@@ -346,23 +396,28 @@ bool StanceProcessor::processStance(std::string tip)
 
 bool StanceProcessor::deleteFirstEntriesOfStances(std::string tip)
 {
+
+    int consideredFootStepNumber;
+    if (stanceDetectionMethod_ == "start") consideredFootStepNumber = 6;
+    if (stanceDetectionMethod_ == "robust") consideredFootStepNumber = 42;
+
     // All stance entries are deleted except the last 3 ones are stored -> this gives start detection
-    if (tip == "left" && LFTipStance_.size() < 7){
+    if (tip == "left" && LFTipStance_.size() < consideredFootStepNumber + 1){
         std::cout << "WARNING: LEFT STANCE PHASE HAS TOO LITTLE ENTRIES TO BE PROCESSED" << std::endl;
     }
-    else if (tip == "right" && RFTipStance_.size() < 7){
+    else if (tip == "right" && RFTipStance_.size() < consideredFootStepNumber + 1){
         std::cout << "WARNING: RIGHT STANCE PHASE HAS TOO LITTLE ENTRIES TO BE PROCESSED" << std::endl;
     }
-    else if (tip == "lefthind" && LHTipStance_.size() < 7){
+    else if (tip == "lefthind" && LHTipStance_.size() < consideredFootStepNumber + 1){
         std::cout << "WARNING: LEFT HIND STANCE PHASE HAS TOO LITTLE ENTRIES TO BE PROCESSED" << std::endl;
     }
-    else if (tip == "righthind" && RHTipStance_.size() < 7){
+    else if (tip == "righthind" && RHTipStance_.size() < consideredFootStepNumber + 1){
         std::cout << "WARNING: RIGHT HIND STANCE PHASE HAS TOO LITTLE ENTRIES TO BE PROCESSED" << std::endl;
     }
     else{
         if (tip == "left"){
             std::vector<Eigen::Vector3f> newLFTipStance;
-            for (unsigned int j = 1; j <= 6; ++j) {
+            for (unsigned int j = 1; j <= consideredFootStepNumber; ++j) {
                 newLFTipStance.push_back(LFTipStance_[LFTipStance_.size() - j]);     // Probably an additional -1 is needed -> hacked 3 to 10..
             }
             LFTipStance_.clear();
@@ -371,7 +426,7 @@ bool StanceProcessor::deleteFirstEntriesOfStances(std::string tip)
         }
         if (tip == "right"){
             std::vector<Eigen::Vector3f> newRFTipStance;
-            for (unsigned int j = 1; j <= 6; ++j) {
+            for (unsigned int j = 1; j <= consideredFootStepNumber; ++j) {
                 newRFTipStance.push_back(RFTipStance_[RFTipStance_.size() - j]);     // Probably an additional -1 is needed
             }
             RFTipStance_.clear();
@@ -379,7 +434,7 @@ bool StanceProcessor::deleteFirstEntriesOfStances(std::string tip)
         }
         if (tip == "lefthind"){
             std::vector<Eigen::Vector3f> newLHTipStance;
-            for (unsigned int j = 1; j <= 6; ++j) {
+            for (unsigned int j = 1; j <= consideredFootStepNumber; ++j) {
                 newLHTipStance.push_back(LHTipStance_[LHTipStance_.size() - j]);     // Probably an additional -1 is needed
             }
             LHTipStance_.clear();
@@ -387,7 +442,7 @@ bool StanceProcessor::deleteFirstEntriesOfStances(std::string tip)
         }
         if (tip == "righthind"){
             std::vector<Eigen::Vector3f> newRHTipStance;
-            for (unsigned int j = 1; j <= 6; ++j) {
+            for (unsigned int j = 1; j <= consideredFootStepNumber; ++j) {
                 newRHTipStance.push_back(RHTipStance_[RHTipStance_.size() - j]);     // Probably an additional -1 is needed
             }
             RHTipStance_.clear();

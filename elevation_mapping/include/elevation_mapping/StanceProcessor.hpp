@@ -687,6 +687,10 @@ private:
  bool footTipTrigger_;
  std::string tipTrigger_;
 
+ //! Robust version of stance detection. (more robust against slippage.)
+ bool robustStanceTriggerLF_, robustStanceTriggerRF_, robustStanceTriggerLH_, robustStanceTriggerRH_;
+ int robustStanceCounterLF_, robustStanceCounterRF_, robustStanceCounterLH_, robustStanceCounterRH_;
+
 
 };
 

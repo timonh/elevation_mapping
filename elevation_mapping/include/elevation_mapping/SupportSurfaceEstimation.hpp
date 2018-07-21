@@ -761,6 +761,8 @@ private:
 
  // Config Parameter for low pass filter gain.
  double velocityLowPassFilterGain_;
+ bool useSignSelectiveContinuityFilter_;
+ double signSelectiveContinuityFilterGain_;
 
  double lowPassFilteredTerrainContinuityValue_;
  double continuityFilterGain_;
