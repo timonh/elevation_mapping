@@ -220,7 +220,7 @@ bool StanceProcessor::detectStancePhase()
         LFTipStance_.push_back(LFTipPosition_);
     if (stanceDetectionMethod_ == "robust" && robustStanceTriggerLF_) {
         robustStanceCounterLF_++;
-        if (robustStanceCounterLF_ > 45) {
+        if (robustStanceCounterLF_ > 65) {
             robustStanceTriggerLF_ = false;
             if(!processStance("left")) return false;
         }
@@ -232,7 +232,7 @@ bool StanceProcessor::detectStancePhase()
         RFTipStance_.push_back(RFTipPosition_);
     if (stanceDetectionMethod_ == "robust" && robustStanceTriggerRF_) {
         robustStanceCounterRF_++;
-        if (robustStanceCounterRF_ > 45) {
+        if (robustStanceCounterRF_ > 65) {
             robustStanceTriggerRF_ = false;
             if(!processStance("right")) return false;
         }
@@ -265,7 +265,7 @@ bool StanceProcessor::detectStancePhase()
             LHTipStance_.push_back(LHTipPosition_);
         if (stanceDetectionMethod_ == "robust" && robustStanceTriggerLH_) {
             robustStanceCounterLH_++;
-            if (robustStanceCounterLH_ > 45) {
+            if (robustStanceCounterLH_ > 65) {
                 robustStanceTriggerLH_ = false;
                 if(!processStance("lefthind")) return false;
             }
@@ -278,7 +278,7 @@ bool StanceProcessor::detectStancePhase()
             RHTipStance_.push_back(RHTipPosition_);
         if (stanceDetectionMethod_ == "robust" && robustStanceTriggerRH_) {
             robustStanceCounterRH_++;
-            if (robustStanceCounterRH_ > 45) {
+            if (robustStanceCounterRH_ > 65) {
                 robustStanceTriggerRH_ = false;
                 if(!processStance("righthind")) return false;
             }
