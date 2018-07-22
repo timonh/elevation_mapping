@@ -887,7 +887,7 @@ bool SupportSurfaceEstimation::mainGPRegression(double tileResolution, double ti
         if (!isnan(supportMapElevationGPAdded)) fusedMapElevationGP = supportMapElevationGPAdded; // Test
 
 
-        if (isnan(supportMap.at("smoothed_top_layer_gp", index))) supportMap.at("smoothed_top_layer_gp", index) = 0.0;
+        //if (isnan(supportMap.at("smoothed_top_layer_gp", index))) supportMap.at("smoothed_top_layer_gp", index) = 0.0;
 
 //        if (supportMap.isValid(index) && !isnan(supportMapVarianceGP) && !isnan(supportMapVarianceGPAdded)){
 //            supportMapVarianceGPAdded = (1 - weight) * supportMapVarianceGPAdded + (supportMapVarianceGP) * weight;
@@ -914,6 +914,9 @@ bool SupportSurfaceEstimation::mainGPRegression(double tileResolution, double ti
 bool SupportSurfaceEstimation::simpleSinkageDepthLayer(std::string& tip, const double& tipDifference, GridMap& supportMap){
 
     if (leftStanceVector_.size() > 0 && rightStanceVector_.size() > 0 && leftHindStanceVector_.size() > 0 && rightHindStanceVector_.size() > 0){
+
+
+
 
         double radius = 0.7;
         int maxSizeFootTipHistory = 15; // See what this does..
