@@ -548,6 +548,9 @@ private:
  //! TODO: Description:
  bool terrainContinuityLayerGP(std::string& tip, grid_map::GridMap& supportMap);
 
+ //! TODO: Description:
+ double signSelectiveLowPassFilter(double lowPassFilteredValue, double newValue, double filterGainDown, double filterGainUp);
+
 
 
  //! ROS nodehandle.
@@ -793,6 +796,10 @@ private:
  double continuityGPLengthscale_;
  double continuityGPSigmaN_;
  double continuityGPSigmaF_;
+
+ // Low pass filter Parameters for sinkage depth.
+ double lowPassFilteredSinkageDepthVariance_;
+ double sinkageDepthFilterGainUp_, sinkageDepthFilterGainDown_;
 };
 
 } /* namespace */

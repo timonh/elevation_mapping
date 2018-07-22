@@ -74,11 +74,16 @@ void SupportSurfaceEstimation::setParameters(){
     nodeHandle_.param("use_sign_selective_continuity_filter", useSignSelectiveContinuityFilter_, true);
     nodeHandle_.param("sign_selective_continuity_filter_gain", signSelectiveContinuityFilterGain_, 0.5);
 
+    nodeHandle_.param("sinkage_depth_filter_gain_up", sinkageDepthFilterGainUp_, 0.1);
+    nodeHandle_.param("sinkage_depth_filter_gain_down", sinkageDepthFilterGainDown_, 0.1);
+
     // Initializations.
     supportSurfaceInitializationTrigger_ = false;
     cumulativeSupportSurfaceUncertaintyEstimation_ = 0.0;
     leftFrontSinkageDepth_ = 0.0;
     rightFrontSinkageDepth_ = 0.0;
+    lowPassFilteredSinkageDepthVariance_ = 0.0;
+    terrainVariance_ = 0.0;
 
     // Initializations for ground truth comparison in simulation.
     if (!useBag_) {
@@ -262,10 +267,27 @@ bool SupportSurfaceEstimation::sinkageDepthVarianceEstimation(std::string tip, d
     double differentialPenetrationDepthVariance = squaredTotalVerticalDifferenceChange / double(count) -
             pow(totalVerticalDifferenceChange / double(count), 2);
 
-    setPenetrationDepthVariance(penetrationDepthVariance);
-    setDifferentialPenetrationDepthVariance(differentialPenetrationDepthVariance);
 
-    std::cout << "differentialPenetrationDepthVariance_: " << differentialPenetrationDepthVariance_ << std::endl;
+    // Sign selective low pass filter.
+    std::cout << "penetrationDepthVariance: " << penetrationDepthVariance << std::endl;
+
+    if (!isnan(penetrationDepthVariance)) {
+        lowPassFilteredSinkageDepthVariance_ = signSelectiveLowPassFilter(lowPassFilteredSinkageDepthVariance_,
+                                                                          penetrationDepthVariance, sinkageDepthFilterGainDown_, sinkageDepthFilterGainUp_);
+
+        std::cout << "lowPassFilteredSinkageDepthVariance_: " << lowPassFilteredSinkageDepthVariance_ << std::endl;
+
+        setPenetrationDepthVariance(lowPassFilteredSinkageDepthVariance_);
+
+
+
+        std::cout << "differentialPenetrationDepthVariance_: " << differentialPenetrationDepthVariance_ << std::endl;
+    }
+    else {
+        setPenetrationDepthVariance(penetrationDepthVariance);
+
+    }
+    setDifferentialPenetrationDepthVariance(differentialPenetrationDepthVariance);
 
     return true;
 }
@@ -293,7 +315,7 @@ bool SupportSurfaceEstimation::setSmoothedTopLayer(std::string tip, GridMap& raw
     int inputDim = 2;
     int outputDim = 1;
     GaussianProcessRegression<float> smoothedTopLayerGPR(inputDim, outputDim);
-    smoothedTopLayerGPR.SetHyperParams(1.0, 0.1, 0.001);
+    smoothedTopLayerGPR.SetHyperParams(0.2, 0.1, 0.0005);
 
     // Iterate around the foot tip position to add Data
     for (CircleIterator iterator(supportMap, footTipPosition, smoothingRadius); !iterator.isPastEnd(); ++iterator) {
@@ -622,12 +644,12 @@ bool SupportSurfaceEstimation::mainGPRegression(double tileResolution, double ti
     if (useSignSelectiveContinuityFilter_) {
         // Sign Selective low pass filter.
         if (lowPassFilteredTerrainContinuityValue_ < characteristicValue) lowPassFilteredTerrainContinuityValue_ = fmin(fmax(continuityFilterGain_ * lowPassFilteredTerrainContinuityValue_ + (1 - continuityFilterGain_)
-                                                                * characteristicValue, 0.4), 5.0); // TODO: reason about bounding.
+                                                                * characteristicValue, 0.5), 2.5); // TODO: reason about bounding.
         else lowPassFilteredTerrainContinuityValue_ = characteristicValue;
 
     }
     else lowPassFilteredTerrainContinuityValue_ = fmin(fmax(continuityFilterGain_ * lowPassFilteredTerrainContinuityValue_ + (1 - continuityFilterGain_)
-                                                        * characteristicValue, 0.4), 5.0); // TODO: reason about bounding.
+                                                        * characteristicValue, 0.5), 2.5); // TODO: reason about bounding.
 
 
 
@@ -773,6 +795,9 @@ bool SupportSurfaceEstimation::mainGPRegression(double tileResolution, double ti
                             }
                         }
 
+                        if (isnan(supportMap.at("terrain_continuity_gp",index))) supportMap.at("terrain_continuity_gp",index) = 0.0;
+                        if (isnan(supportMap.at("sinkage_depth_gp",index))) supportMap.at("sinkage_depth_gp",index) = 0.0;
+
 
 //                        if (!isnan(regressionOutputVariance)){
 //                            if (!supportMap.isValid(index)){
@@ -862,7 +887,7 @@ bool SupportSurfaceEstimation::mainGPRegression(double tileResolution, double ti
         if (!isnan(supportMapElevationGPAdded)) fusedMapElevationGP = supportMapElevationGPAdded; // Test
 
 
-        //if (isnan(supportMap.at("smoothed_top_layer_gp", index))) supportMap.at("smoothed_top_layer_gp", index) = 0.0;
+        if (isnan(supportMap.at("smoothed_top_layer_gp", index))) supportMap.at("smoothed_top_layer_gp", index) = 0.0;
 
 //        if (supportMap.isValid(index) && !isnan(supportMapVarianceGP) && !isnan(supportMapVarianceGPAdded)){
 //            supportMapVarianceGPAdded = (1 - weight) * supportMapVarianceGPAdded + (supportMapVarianceGP) * weight;
@@ -890,11 +915,7 @@ bool SupportSurfaceEstimation::simpleSinkageDepthLayer(std::string& tip, const d
 
     if (leftStanceVector_.size() > 0 && rightStanceVector_.size() > 0 && leftHindStanceVector_.size() > 0 && rightHindStanceVector_.size() > 0){
 
-        Eigen::Vector3f tipLeftVec = getLatestLeftStance();
-        Eigen::Vector3f tipRightVec = getLatestRightStance();
-        Position3 tipLeftPos3(tipLeftVec(0), tipLeftVec(1), tipLeftVec(2));
-        Position3 tipRightPos3(tipRightVec(0), tipRightVec(1), tipRightVec(2));
-        double radius = 0.65;
+        double radius = 0.7;
         int maxSizeFootTipHistory = 15; // See what this does..
 
         std::cout << "TIP DIFFERENCE::::::::::::::::::::::::::::::::::::::::::::::: " << -tipDifference << std::endl;
@@ -905,11 +926,7 @@ bool SupportSurfaceEstimation::simpleSinkageDepthLayer(std::string& tip, const d
         if (isnan(leftFrontSinkageDepth_)) std::cout << " NANANANANANANAANNNNNNNNNNNNANNNNNNNAAAAAAAAAAAAAANNNNNNNNNNNNNN" << std::endl;
 
         // Do history vector.
-        Position3 footTip;
-        if (tip == "left") footTip = tipLeftPos3;
-        if (tip == "right") footTip = tipRightPos3;
-        if (tip == "lefthind") footTip = getHindLeftFootTipPosition();
-        if (tip == "righthind") footTip = getHindRightFootTipPosition();
+        Position3 footTip = getFootTipPosition3(tip);
 
         if (isnan(tipDifference)) {
             if (tip == "left" && !isnan(leftFrontSinkageDepth_) && initializedLeftSinkageDepth_) {
@@ -988,6 +1005,7 @@ bool SupportSurfaceEstimation::simpleSinkageDepthLayer(std::string& tip, const d
             }
             //else std::cout << "Output would have been NANANANANANANANANANANA" << std::endl;
             // TODO: idea: exponent of distance proportionality as learning parameter.
+            //if (isnan(supportMap.at("terrain_continuity_gp", index)))
         }
     }
     return true;
@@ -1003,7 +1021,7 @@ bool SupportSurfaceEstimation::simpleTerrainContinuityLayer(std::string& tip, Gr
         Position3 tipLeftPos3(tipLeftVec(0), tipLeftVec(1), tipLeftVec(2));
         Position3 tipRightPos3(tipRightVec(0), tipRightVec(1), tipRightVec(2));
 
-        double radius = 0.65;
+        double radius = 0.7;
         int maxSizeFootTipHistory = 15;
 
         // Do history vector.
@@ -1081,12 +1099,7 @@ bool SupportSurfaceEstimation::terrainContinuityLayerGP(std::string& tip, GridMa
 
     if (leftStanceVector_.size() > 0 && rightStanceVector_.size() > 0){
 
-        Position3 tipPos3;
-        if (tip == "left") tipPos3 = getFrontLeftFootTipPosition();
-        if (tip == "right") tipPos3 = getFrontRightFootTipPosition();
-        if (tip == "lefthind") tipPos3 = getHindLeftFootTipPosition();
-        if (tip == "righthind") tipPos3 = getHindRightFootTipPosition();
-
+        Position3 tipPos3 = getFootTipPosition3(tip);
         Position tipPos(tipPos3(0), tipPos3(1));
 
         int maxSizeFootTipHistory = 9;
@@ -1097,7 +1110,7 @@ bool SupportSurfaceEstimation::terrainContinuityLayerGP(std::string& tip, GridMa
 
         int inputDim = 2;
         int outputDim = 1;
-        float radius = 0.45;
+        float radius = 0.7;
 
         Eigen::VectorXf trainInput(inputDim);
         Eigen::VectorXf trainOutput(outputDim);
@@ -1136,8 +1149,9 @@ bool SupportSurfaceEstimation::terrainContinuityLayerGP(std::string& tip, GridMa
 
             //std::cout << "adding weight : " << addingWeight << std::endl;
 
+            // TODO: avoid nans for visualization. e.g. isvalid = false approach??
+
             if (!isnan(outputHeight)){
-                //if (true) {
                 if (isnan(supportMapContinuityGP) || !supportMap.isValid(index)){
                     supportMapContinuityGP = outputHeight;
                 }
@@ -1324,6 +1338,18 @@ double SupportSurfaceEstimation::getMeanGroundTruthDifference(){
 double SupportSurfaceEstimation::get2DTriangleArea(const grid_map::Position3& Point1, const grid_map::Position3& Point2, const grid_map::Position3& Point3){
 
     return fabs(((Point2(0) - Point1(0))*(Point3(1) - Point1(1)) - (Point3(0) - Point1(0))*(Point2(1) - Point1(1)))/2.0);
+}
+
+double SupportSurfaceEstimation::signSelectiveLowPassFilter(double lowPassFilteredValue, double newValue, double filterGainDown, double filterGainUp){
+
+    std::cout << "lowPassFilteredValue:     ..........................: " << lowPassFilteredValue << std::endl;
+
+    // Low pass filter (sign selective.)
+    if (lowPassFilteredValue < newValue) lowPassFilteredValue = filterGainUp * lowPassFilteredValue + (1 - filterGainUp) * newValue;
+    else lowPassFilteredValue = filterGainDown * lowPassFilteredValue + (1 - filterGainDown) * newValue;
+
+    std::cout << "lowPassFilteredValue:     ..........................: " << lowPassFilteredValue << std::endl;
+    return lowPassFilteredValue;
 }
 
 } /* namespace */
