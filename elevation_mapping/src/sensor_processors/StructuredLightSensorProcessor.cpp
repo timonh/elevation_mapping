@@ -52,6 +52,7 @@ bool StructuredLightSensorProcessor::readParameters()
   nodeHandle_.param("sensor_processor/normal_factor_d", sensorParameters_["normal_factor_d"], 0.0);
   nodeHandle_.param("sensor_processor/normal_factor_e", sensorParameters_["normal_factor_e"], 0.0);
   nodeHandle_.param("sensor_processor/lateral_factor", sensorParameters_["lateral_factor"], 0.0);
+  sensorParameters_["cutoff_max_depth"] = 1.5;
   return true;
 }
 

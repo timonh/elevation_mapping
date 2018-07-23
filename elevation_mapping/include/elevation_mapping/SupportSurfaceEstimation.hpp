@@ -800,6 +800,9 @@ private:
  // Low pass filter Parameters for sinkage depth.
  double lowPassFilteredSinkageDepthVariance_;
  double sinkageDepthFilterGainUp_, sinkageDepthFilterGainDown_;
+
+ // Regression tile visualization
+ visualization_msgs::Marker tileMarkerList_;
 };
 
 } /* namespace */
