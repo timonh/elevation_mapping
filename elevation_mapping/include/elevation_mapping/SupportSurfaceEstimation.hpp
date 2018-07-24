@@ -549,6 +549,10 @@ private:
  bool terrainContinuityLayerGP(std::string& tip, grid_map::GridMap& supportMap);
 
  //! TODO: Description:
+ bool terrainContinuityLayerGPwhole(std::string& tip, grid_map::GridMap& supportMap);
+
+
+ //! TODO: Description:
  double signSelectiveLowPassFilter(double lowPassFilteredValue, double newValue, double filterGainDown, double filterGainUp);
 
 
