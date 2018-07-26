@@ -807,6 +807,9 @@ private:
 
  // Regression tile visualization
  visualization_msgs::Marker tileMarkerList_;
+
+ // GP Hyperparameters for terrain continuity layer with nn kernel.
+ double continuityGPNNLengthscale_, continuityGPNNSigmaN_, continuityGPNNSigmaF_, continuityGPNNBeta_;
 };
 
 } /* namespace */

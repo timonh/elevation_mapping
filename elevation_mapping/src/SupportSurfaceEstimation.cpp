@@ -69,6 +69,10 @@ void SupportSurfaceEstimation::setParameters(){
     nodeHandle_.param("continuity_gp_lengthscale", continuityGPLengthscale_, 10.0);
     nodeHandle_.param("continuity_gp_sigma_n", continuityGPSigmaN_, 0.1);
     nodeHandle_.param("continuity_gp_sigma_f", continuityGPSigmaF_, 0.001);
+    nodeHandle_.param("continuity_gp_nn_lengthscale", continuityGPNNLengthscale_, 10.0);
+    nodeHandle_.param("continuity_gp_nn_sigma_n", continuityGPNNSigmaN_, 0.1);
+    nodeHandle_.param("continuity_gp_nn_sigma_f", continuityGPNNSigmaF_, 0.001);
+    nodeHandle_.param("continuity_gp_nn_beta", continuityGPNNBeta_, 0.001);
     nodeHandle_.param("use_sign_selective_continuity_filter", useSignSelectiveContinuityFilter_, true);
     nodeHandle_.param("sign_selective_continuity_filter_gain", signSelectiveContinuityFilterGain_, 0.5);
     nodeHandle_.param("sinkage_depth_filter_gain_up", sinkageDepthFilterGainUp_, 0.1);
@@ -125,11 +129,9 @@ bool SupportSurfaceEstimation::updateSupportSurfaceEstimation(std::string tip, G
             if (leftStanceVector_.size() > 0 && rightStanceVector_.size() > 0) {
 
                 //simpleTerrainContinuityLayer(tip, supportMap);
-                //terrainContinuityLayerGP(tip, supportMap);
+                terrainContinuityLayerGP(tip, supportMap);
 
-                std::cout << " \n \n \n \n \n \n \n " << std::endl;
-
-                terrainContinuityLayerGPwhole(tip, supportMap);
+                //terrainContinuityLayerGPwhole(tip, supportMap);
 
                 // Smoothed Top Layer to get vertical Difference between top layer and foot tip position (sinkage depth)
                 setSmoothedTopLayer(tip, rawMap, supportMap);
@@ -944,10 +946,16 @@ bool SupportSurfaceEstimation::terrainContinuityLayerGP(std::string& tip, GridMa
 
     if (leftStanceVector_.size() > 0 && rightStanceVector_.size() > 0){
 
+
+
+        // Set start time for time calculation for continuity layer update.
+        const ros::WallTime continuityGPStartTime(ros::WallTime::now());
+
+
         Position3 tipPos3 = getFootTipPosition3(tip);
         Position tipPos(tipPos3(0), tipPos3(1));
 
-        int maxSizeFootTipHistory = 9;
+        int maxSizeFootTipHistory = 60;
 
         footTipHistoryGP_.push_back(tipPos3);
         if (footTipHistoryGP_.size() > maxSizeFootTipHistory)
@@ -961,16 +969,13 @@ bool SupportSurfaceEstimation::terrainContinuityLayerGP(std::string& tip, GridMa
         Eigen::VectorXf trainOutput(outputDim);
 
         GaussianProcessRegression<float> continuityGPR(inputDim, outputDim);
-        continuityGPR.SetHyperParamsNN(continuityGPLengthscale_, continuityGPSigmaN_, continuityGPSigmaF_, 0.3); // just set some beta here..
-
-
+        continuityGPR.SetHyperParamsNN(continuityGPNNLengthscale_, continuityGPNNSigmaN_, continuityGPNNSigmaF_, continuityGPNNBeta_); // just set some beta here..
 
         for (unsigned int j = 0; j < footTipHistoryGP_.size(); ++j) {
-
             Position tipPosLoc(footTipHistoryGP_[j](0), footTipHistoryGP_[j](1));
             double localDistance = sqrt(pow(tipPosLoc(0) - tipPos(0), 2) + pow(tipPosLoc(1) - tipPos(1), 2));
 
-            if (localDistance > radius) {
+            if (localDistance < radius + 0.3) {
                 trainInput(0) = tipPosLoc(0);
                 trainInput(1) = tipPosLoc(1);
                 trainOutput(0) = footTipHistoryGP_[j](2);
@@ -992,13 +997,23 @@ bool SupportSurfaceEstimation::terrainContinuityLayerGP(std::string& tip, GridMa
 
             double outputHeight = continuityGPR.DoRegressionNN(testInput)(0);  // Hope this shouldnt be testOutput(0)
 
-            double localDistance = sqrt(pow(cellPos(0) - tipPos(0), 2) + pow(cellPos(1) - tipPos(1), 2));
+            double distance = sqrt(pow(cellPos(0) - tipPos(0), 2) + pow(cellPos(1) - tipPos(1), 2));
 
 
-            float addingWeight;
+            //float addingWeight;
 
-            if (localDistance > 0.0001) addingWeight = fabs(fmax(1.0 - (localDistance / radius) - 0.2, 0.0));
-            else addingWeight = 0.0;
+            //addingWeight = fabs(fmax(1.0 - (localDistance / 3.0 * radius), 0.0));
+
+
+            double weight;
+            if (distance <= 0.2 * radius) weight = 1.0 - (distance / radius);
+            else if (distance >= 0.2 * radius && distance <= weightDecayThreshold_ * radius) weight = 0.8;
+            else weight = weightDecayThreshold_ - weightDecayThreshold_ * (distance - weightDecayThreshold_ * radius)
+                    / ((1.0 - weightDecayThreshold_) * radius);
+
+            //addingWeight = 1.0;
+            //addingWeight = exp(-localDistance * 50.0);
+            //addingWeight = 0.5;
 
             //std::cout << "adding weight : " << addingWeight << std::endl;
 
@@ -1010,17 +1025,24 @@ bool SupportSurfaceEstimation::terrainContinuityLayerGP(std::string& tip, GridMa
                 }
                 else{
                     if (!isnan(supportMapContinuityGP))
-                        supportMapContinuityGP = (1.0 - addingWeight) * outputHeight + (addingWeight) * supportMapContinuityGP; // Attention hacked this in here..
+                        supportMapContinuityGP = (weight) * outputHeight + (1.0 - weight) * supportMapContinuityGP; // Attention hacked this in here..
                 }
             }
         }
+        const ros::WallDuration duration = ros::WallTime::now() - continuityGPStartTime;
+        ROS_INFO("GP terrain continuity layer has been updated with a new point cloud in %f s.", duration.toSec());
     }
+
     return true;
 }
 
 bool SupportSurfaceEstimation::terrainContinuityLayerGPwhole(std::string& tip, GridMap& supportMap){
 
     if (leftStanceVector_.size() > 0 && rightStanceVector_.size() > 0){
+
+
+        // Set start time for time calculation for continuity layer update.
+        const ros::WallTime continuityGPStartTime(ros::WallTime::now());
 
         Position3 tipPos3 = getFootTipPosition3(tip);
         Position tipPos(tipPos3(0), tipPos3(1));
@@ -1039,7 +1061,7 @@ bool SupportSurfaceEstimation::terrainContinuityLayerGPwhole(std::string& tip, G
         Eigen::VectorXf trainOutput(outputDim);
 
         GaussianProcessRegression<float> continuityGPR(inputDim, outputDim);
-        continuityGPR.SetHyperParamsNN(continuityGPLengthscale_, continuityGPSigmaN_, continuityGPSigmaF_, 0.3); // just set some beta here..
+        continuityGPR.SetHyperParamsNN(continuityGPNNLengthscale_, continuityGPNNSigmaN_, continuityGPNNSigmaF_, continuityGPNNBeta_);; // just set some beta here..
 
 
         for (unsigned int j = 0; j < footTipHistoryGP_.size(); ++j) {
@@ -1069,26 +1091,10 @@ bool SupportSurfaceEstimation::terrainContinuityLayerGPwhole(std::string& tip, G
 
             double outputHeight = continuityGPR.DoRegressionNN(testInput)(0);  // Hope this shouldnt be testOutput(0)
             supportMapContinuityGP = outputHeight;
-
-//            float addingWeight;
-
-//            if (localDistance > 0.0001) addingWeight = fabs(fmax(1.0 - (localDistance / radius), 0.0));
-//            else addingWeight = 0.0;
-
-//            //std::cout << "adding weight : " << addingWeight << std::endl;
-
-//            // TODO: avoid nans for visualization. e.g. isvalid = false approach??
-
-//            if (!isnan(outputHeight)){
-//                if (isnan(supportMapContinuityGP) || !supportMap.isValid(index)){
-//                    supportMapContinuityGP = outputHeight;
-//                }
-//                else{
-//                    if (!isnan(supportMapContinuityGP))
-//                        supportMapContinuityGP = addingWeight * outputHeight + (1.0 - addingWeight) * supportMapContinuityGP;
-//                }
-//            }
         }
+
+        const ros::WallDuration duration = ros::WallTime::now() - continuityGPStartTime;
+        ROS_INFO("GP terrain continuity layer has been updated with a new point cloud in %f s.", duration.toSec());
     }
     return true;
 }

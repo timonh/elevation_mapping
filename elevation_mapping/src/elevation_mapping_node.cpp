@@ -23,9 +23,9 @@ int main(int argc, char** argv)
     elevation_mapping::ElevationMapping elevationMap(nodeHandle);
 
     // Added by timon to set the logger level.
-    //if( ros::console::set_logger_level(ROSCONSOLE_DEFAULT_NAME, ros::console::levels::Warn) ) {
-    //   ros::console::notifyLoggerLevelsChanged();
-    //}
+//    if( ros::console::set_logger_level(ROSCONSOLE_DEFAULT_NAME, ros::console::levels::Info) ) {
+//       ros::console::notifyLoggerLevelsChanged();
+//    }
 
     // Spin
     ros::AsyncSpinner spinner(2); // Use n threads // MANIPULATED!!!!!
