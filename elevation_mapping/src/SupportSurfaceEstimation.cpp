@@ -73,6 +73,9 @@ void SupportSurfaceEstimation::setParameters(){
     nodeHandle_.param("continuity_gp_nn_sigma_n", continuityGPNNSigmaN_, 0.1);
     nodeHandle_.param("continuity_gp_nn_sigma_f", continuityGPNNSigmaF_, 0.001);
     nodeHandle_.param("continuity_gp_nn_beta", continuityGPNNBeta_, 0.001);
+    nodeHandle_.param("continuity_gp_rq_a", continuityGPRQa_, 0.5);
+    nodeHandle_.param("continuity_gp_c_c", continuityGPCC_, 10.0);
+    nodeHandle_.param("continuity_gp_kernel", continuityGPKernel_, std::string("nn"));
     nodeHandle_.param("use_sign_selective_continuity_filter", useSignSelectiveContinuityFilter_, true);
     nodeHandle_.param("sign_selective_continuity_filter_gain", signSelectiveContinuityFilterGain_, 0.5);
     nodeHandle_.param("sinkage_depth_filter_gain_up", sinkageDepthFilterGainUp_, 0.1);
@@ -566,6 +569,10 @@ double SupportSurfaceEstimation::getDifferentialPenetrationDepthVariance(){
 bool SupportSurfaceEstimation::mainGPRegression(double tileResolution, double tileDiameter, double sideLengthAddingPatch, std::string tip,
                                                 const double tipDifference, GridMap& rawMap, GridMap& supportMap, GridMap& fusedMap){
 
+
+    // Set start time for time calculation for main GP regression.
+    const ros::WallTime mainGPStartTime(ros::WallTime::now());
+
     if (2.0 * tileResolution > tileDiameter) { // TODO: make this double, as using circle iterator
         std::cout << "tile size for gaussian process model tiling must be higher than twice the tile Resolution" << std::endl;
         return false;
@@ -592,11 +599,11 @@ bool SupportSurfaceEstimation::mainGPRegression(double tileResolution, double ti
     if (useSignSelectiveContinuityFilter_) {
         // Sign Selective low pass filter.
         if (lowPassFilteredTerrainContinuityValue_ < characteristicValue) lowPassFilteredTerrainContinuityValue_ = fmin(fmax(continuityFilterGain_ * lowPassFilteredTerrainContinuityValue_ + (1 - continuityFilterGain_)
-                                                                * characteristicValue, 0.6), 4.0); // TODO: reason about bounding.
+                                                                * characteristicValue, 0.44), 4.4); // TODO: reason about bounding.
         else lowPassFilteredTerrainContinuityValue_ = characteristicValue;
     }
     else lowPassFilteredTerrainContinuityValue_ = fmin(fmax(continuityFilterGain_ * lowPassFilteredTerrainContinuityValue_ + (1 - continuityFilterGain_)
-                                                        * characteristicValue, 0.6), 4.0); // TODO: reason about bounding.
+                                                        * characteristicValue, 0.44), 4.4); // TODO: reason about bounding.
 
 
     // Set message values.
@@ -744,6 +751,11 @@ bool SupportSurfaceEstimation::mainGPRegression(double tileResolution, double ti
             if (!isnan(supportMapElevationGPAdded)) fusedMapElevationGP = supportMapElevationGPAdded;
         }
     }
+
+
+    const ros::WallDuration duration = ros::WallTime::now() - mainGPStartTime;
+    ROS_INFO("Main GP regression was run totally in %f s.", duration.toSec());
+
 
     // Publish adaptation Parameters
     varianceTwistPublisher_.publish(adaptationMsg);
@@ -947,15 +959,15 @@ bool SupportSurfaceEstimation::terrainContinuityLayerGP(std::string& tip, GridMa
     if (leftStanceVector_.size() > 0 && rightStanceVector_.size() > 0){
 
 
-
         // Set start time for time calculation for continuity layer update.
         const ros::WallTime continuityGPStartTime(ros::WallTime::now());
-
 
         Position3 tipPos3 = getFootTipPosition3(tip);
         Position tipPos(tipPos3(0), tipPos3(1));
 
-        int maxSizeFootTipHistory = 60;
+        int maxSizeFootTipHistory;
+        if (runHindLegSupportSurfaceEstimation_) maxSizeFootTipHistory = 20;
+        else maxSizeFootTipHistory = 10;
 
         footTipHistoryGP_.push_back(tipPos3);
         if (footTipHistoryGP_.size() > maxSizeFootTipHistory)
@@ -969,7 +981,10 @@ bool SupportSurfaceEstimation::terrainContinuityLayerGP(std::string& tip, GridMa
         Eigen::VectorXf trainOutput(outputDim);
 
         GaussianProcessRegression<float> continuityGPR(inputDim, outputDim);
-        continuityGPR.SetHyperParamsNN(continuityGPNNLengthscale_, continuityGPNNSigmaN_, continuityGPNNSigmaF_, continuityGPNNBeta_); // just set some beta here..
+
+        // lengthscale, sigma_n, sigma_f, betaNN, a_RQ, cConst, kernel
+        continuityGPR.SetHyperParamsAll(continuityGPNNLengthscale_, continuityGPNNSigmaN_, continuityGPNNSigmaF_,
+                                        continuityGPNNBeta_, continuityGPRQa_, continuityGPCC_, continuityGPKernel_);
 
         for (unsigned int j = 0; j < footTipHistoryGP_.size(); ++j) {
             Position tipPosLoc(footTipHistoryGP_[j](0), footTipHistoryGP_[j](1));
@@ -1006,18 +1021,9 @@ bool SupportSurfaceEstimation::terrainContinuityLayerGP(std::string& tip, GridMa
 
 
             double weight;
-            if (distance <= 0.2 * radius) weight = 1.0 - (distance / radius);
-            else if (distance >= 0.2 * radius && distance <= weightDecayThreshold_ * radius) weight = 0.8;
+            if (distance <= weightDecayThreshold_ * radius) weight = 1.0 - (1.0 - weightDecayThreshold_) * (distance / radius);
             else weight = weightDecayThreshold_ - weightDecayThreshold_ * (distance - weightDecayThreshold_ * radius)
                     / ((1.0 - weightDecayThreshold_) * radius);
-
-            //addingWeight = 1.0;
-            //addingWeight = exp(-localDistance * 50.0);
-            //addingWeight = 0.5;
-
-            //std::cout << "adding weight : " << addingWeight << std::endl;
-
-            // TODO: avoid nans for visualization. e.g. isvalid = false approach??
 
             if (!isnan(outputHeight)){
                 if (isnan(supportMapContinuityGP) || !supportMap.isValid(index)){
@@ -1039,7 +1045,6 @@ bool SupportSurfaceEstimation::terrainContinuityLayerGP(std::string& tip, GridMa
 bool SupportSurfaceEstimation::terrainContinuityLayerGPwhole(std::string& tip, GridMap& supportMap){
 
     if (leftStanceVector_.size() > 0 && rightStanceVector_.size() > 0){
-
 
         // Set start time for time calculation for continuity layer update.
         const ros::WallTime continuityGPStartTime(ros::WallTime::now());

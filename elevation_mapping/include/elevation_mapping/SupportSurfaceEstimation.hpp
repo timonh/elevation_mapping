@@ -810,6 +810,8 @@ private:
 
  // GP Hyperparameters for terrain continuity layer with nn kernel.
  double continuityGPNNLengthscale_, continuityGPNNSigmaN_, continuityGPNNSigmaF_, continuityGPNNBeta_;
+ double continuityGPRQa_, continuityGPCC_;
+ std::string continuityGPKernel_;
 };
 
 } /* namespace */
