@@ -76,10 +76,16 @@ void SupportSurfaceEstimation::setParameters(){
     nodeHandle_.param("continuity_gp_rq_a", continuityGPRQa_, 0.5);
     nodeHandle_.param("continuity_gp_c_c", continuityGPCC_, 10.0);
     nodeHandle_.param("continuity_gp_kernel", continuityGPKernel_, std::string("nn"));
+
+    nodeHandle_.param("continuity_gp_hy_a", continuityHYa_, 10.0);
+    nodeHandle_.param("continuity_gp_hy_b", continuityHYb_, 10.0);
+    nodeHandle_.param("continuity_gp_hy_sigma_f", continuityHYsigmaf_, 10.0);
+
     nodeHandle_.param("use_sign_selective_continuity_filter", useSignSelectiveContinuityFilter_, true);
     nodeHandle_.param("sign_selective_continuity_filter_gain", signSelectiveContinuityFilterGain_, 0.5);
     nodeHandle_.param("sinkage_depth_filter_gain_up", sinkageDepthFilterGainUp_, 0.1);
     nodeHandle_.param("sinkage_depth_filter_gain_down", sinkageDepthFilterGainDown_, 0.1);
+
 
     // Initializations.
     supportSurfaceInitializationTrigger_ = false;
@@ -599,11 +605,11 @@ bool SupportSurfaceEstimation::mainGPRegression(double tileResolution, double ti
     if (useSignSelectiveContinuityFilter_) {
         // Sign Selective low pass filter.
         if (lowPassFilteredTerrainContinuityValue_ < characteristicValue) lowPassFilteredTerrainContinuityValue_ = fmin(fmax(continuityFilterGain_ * lowPassFilteredTerrainContinuityValue_ + (1 - continuityFilterGain_)
-                                                                * characteristicValue, 0.44), 4.4); // TODO: reason about bounding.
+                                                                * characteristicValue, 0.44), 3.4); // TODO: reason about bounding.
         else lowPassFilteredTerrainContinuityValue_ = characteristicValue;
     }
     else lowPassFilteredTerrainContinuityValue_ = fmin(fmax(continuityFilterGain_ * lowPassFilteredTerrainContinuityValue_ + (1 - continuityFilterGain_)
-                                                        * characteristicValue, 0.44), 4.4); // TODO: reason about bounding.
+                                                        * characteristicValue, 0.44), 3.4); // TODO: reason about bounding.
 
 
     // Set message values.
@@ -620,6 +626,11 @@ bool SupportSurfaceEstimation::mainGPRegression(double tileResolution, double ti
     // Get the foot Tip Position.
     Position3 footTip3 = getFootTipPosition3(tip);
     Position footTip(footTip3(0), footTip3(1));
+
+
+    const ros::WallDuration duration1 = ros::WallTime::now() - mainGPStartTime;
+    ROS_INFO("MAIN::::::::::::: GP regression initialization was done in %f s.", duration1.toSec());
+
 
     // Iterate through the model tiles.
     for (int i = -noOfTilesPerHalfSide; i <= noOfTilesPerHalfSide; ++i){
@@ -684,6 +695,10 @@ bool SupportSurfaceEstimation::mainGPRegression(double tileResolution, double ti
                         testInput(1) = inputPosition(1);
 
                         // Perform regression.
+                        //double regressionOutput = myGPR.DoRegression(testInput)(0);
+                        //double regressionOutputVariance = 0.0;
+
+                        // Hacked away to check if it speeds things up..
                         double regressionOutput = myGPR.DoRegressionVariance(testInput)(0);
                         double regressionOutputVariance = fabs(myGPR.GetVariance()(0));
 
@@ -705,6 +720,11 @@ bool SupportSurfaceEstimation::mainGPRegression(double tileResolution, double ti
             }
         }
     }
+
+
+    const ros::WallDuration duration2 = ros::WallTime::now() - mainGPStartTime;
+    ROS_INFO("MAIN:::::::::iterated through all the tiles in %f s.", duration2.toSec());
+
 
     // Adding procedure.
     for (CircleIterator iterator(supportMap, footTip, radius); !iterator.isPastEnd(); ++iterator) { // HAcked to raw map for testing..
@@ -754,13 +774,224 @@ bool SupportSurfaceEstimation::mainGPRegression(double tileResolution, double ti
 
 
     const ros::WallDuration duration = ros::WallTime::now() - mainGPStartTime;
-    ROS_INFO("Main GP regression was run totally in %f s.", duration.toSec());
+    ROS_INFO("MAIN:::::::::::: GP regression was run totally in %f s.", duration.toSec());
 
 
     // Publish adaptation Parameters
     varianceTwistPublisher_.publish(adaptationMsg);
     return true;
 }
+
+
+bool SupportSurfaceEstimation::mainGPRegressionNoTiles(double tileResolution, double tileDiameter, double sideLengthAddingPatch, std::string tip,
+                                                const double tipDifference, GridMap& rawMap, GridMap& supportMap, GridMap& fusedMap){
+
+
+    // Set start time for time calculation for main GP regression.
+    const ros::WallTime mainGPStartTime(ros::WallTime::now());
+
+    if (2.0 * tileResolution > tileDiameter) { // TODO: make this double, as using circle iterator
+        std::cout << "tile size for gaussian process model tiling must be higher than twice the tile Resolution" << std::endl;
+        return false;
+    }
+
+    // Update sinkage depth map.
+    simpleSinkageDepthLayer(tip, tipDifference, supportMap);
+
+    // Subparams of tiling.
+    int noOfTilesPerHalfSide = floor((sideLengthAddingPatch / 2.0) / tileResolution);
+    double radius = (sideLengthAddingPatch - 0.15) / 2.0;
+
+    // Get uncertainty measures.
+    double terrainVariance = getTerrainVariance();
+    double supportSurfaceUncertaintyEstimation = getSupportSurfaceUncertaintyEstimation();
+    double sinkageVariance = getPenetrationDepthVariance();
+    //double differentialSinkageVariance = getDifferentialPenetrationDepthVariance();
+    //double cumulativeSupportSurfaceUncertaintyEstimation = getCumulativeSupportSurfaceUncertaintyEstimation();
+
+    // Calculate characteristic Value.
+    double characteristicValue = (weightTerrainContinuity_ * terrainVariance) / pow((1.0 * sinkageVariance), exponentCharacteristicValue_);
+
+    // Low pass filtering and bounding of the continuity caracteristic value.
+    if (useSignSelectiveContinuityFilter_) {
+        // Sign Selective low pass filter.
+        if (lowPassFilteredTerrainContinuityValue_ < characteristicValue) lowPassFilteredTerrainContinuityValue_ = fmin(fmax(continuityFilterGain_ * lowPassFilteredTerrainContinuityValue_ + (1 - continuityFilterGain_)
+                                                                * characteristicValue, 0.44), 4.4); // TODO: reason about bounding.
+        else lowPassFilteredTerrainContinuityValue_ = characteristicValue;
+    }
+    else lowPassFilteredTerrainContinuityValue_ = fmin(fmax(continuityFilterGain_ * lowPassFilteredTerrainContinuityValue_ + (1 - continuityFilterGain_)
+                                                        * characteristicValue, 0.44), 4.4); // TODO: reason about bounding.
+
+
+    // Set message values.
+    // RQT message publisher.
+    geometry_msgs::TwistStamped adaptationMsg;
+    adaptationMsg.header.stamp = ros::Time::now();
+    adaptationMsg.twist.linear.x = terrainVariance;
+    adaptationMsg.twist.linear.y = lowPassFilteredTerrainContinuityValue_;
+    adaptationMsg.twist.angular.x = supportSurfaceUncertaintyEstimation;
+    adaptationMsg.twist.angular.y = getMeanGroundTruthDifference();
+    adaptationMsg.twist.angular.z = sinkageVariance;
+    adaptationMsg.twist.linear.z = 0.0; // Still to use..
+
+    // Get the foot Tip Position.
+    Position3 footTip3 = getFootTipPosition3(tip);
+    Position footTip(footTip3(0), footTip3(1));
+
+
+    const ros::WallDuration duration1 = ros::WallTime::now() - mainGPStartTime;
+    ROS_INFO("MAIN::::::::::::: GP NOTILE regression initialization was done in %f s.", duration1.toSec());
+
+
+    // Iterate through the model tiles.
+    //for (int i = -noOfTilesPerHalfSide; i <= noOfTilesPerHalfSide; ++i){
+    //    for (int j = -noOfTilesPerHalfSide; j <= noOfTilesPerHalfSide; ++j){
+    //        if (sqrt(pow(i * tileResolution,2) + pow(j * tileResolution,2)) < radius){
+
+    // GP Parameters -> to move outside of the loop and apply the data clear method (TODO!)
+    int inputDim = 2;
+    int outputDim = 1;
+    //double radius = 0.6;
+    GaussianProcessRegression<float> myGPR(inputDim, outputDim);
+    myGPR.SetHyperParams(GPLengthscale_, GPSigmaN_, GPSigmaF_);
+
+    // Get the tile position.
+   // Position posTile;
+   // posTile(0) = footTip(0) + i * tileResolution;
+   // posTile(1) = footTip(1) + j * tileResolution;
+
+    // Loop to add training data to GP regression.
+    for (CircleIterator iterator(supportMap, footTip, radius); !iterator.isPastEnd(); ++iterator) {
+        const Index index(*iterator);
+        Eigen::VectorXf trainInput(inputDim);
+        Eigen::VectorXf trainOutput(outputDim);
+
+        // Get Position of cell and set as input data for GP training.
+        Position cellPos;
+        supportMap.getPosition(index, cellPos); // This is wrong!!!!!!!!
+        trainInput(0) = cellPos(0);
+        trainInput(1) = cellPos(1);
+
+        // Set Difference between sinkage depth layer and elevation layer as training output for GP.
+        trainOutput(0) = rawMap.at("elevation", index) - supportMap.at("sinkage_depth_gp", index);
+
+        // SomeTests
+        Eigen::VectorXf trainOutput2(outputDim);
+        trainOutput2(0) = supportMap.at("elevation_gp_added", index);
+
+        // Probability sampling and replace the training data by plane value
+        bool insert = sampleContinuityPlaneToTrainingData(cellPos, footTip, lowPassFilteredTerrainContinuityValue_);
+        if (insert) {
+            trainOutput(0) = supportMap.at("terrain_continuity_gp", index);
+        }
+
+        // Add the training data to GP regression.
+        if (!isnan(trainOutput(0))) myGPR.AddTrainingData(trainInput, trainOutput);
+    }
+    //std::cout << "The Number of Data in this tile is: " << myGPR.get_n_data() << std::endl;
+
+    // Only perform regression if no. of Data is sufficiently high.
+    if (myGPR.get_n_data() > 1){
+
+        // Loop here to get test output
+        for (CircleIterator iterator(supportMap, footTip, radius); !iterator.isPastEnd(); ++iterator) {
+            const Index index(*iterator);
+            auto& supportMapElevationGP = supportMap.at("elevation_gp", index);
+            auto& supportMapVarianceGP = supportMap.at("variance_gp", index);
+
+            // Prepare test input.
+            Eigen::VectorXf testInput(inputDim);
+            Position inputPosition;
+            supportMap.getPosition(index, inputPosition);
+            testInput(0) = inputPosition(0);
+            testInput(1) = inputPosition(1);
+
+            // Perform regression.
+            supportMapElevationGP = myGPR.DoRegression(testInput)(0);
+            //supportMapElevationGP = myGPR.DoRegressionVariance(testInput)(0);
+            supportMapVarianceGP = 0.0;
+            //supportMapVarianceGP = fabs(myGPR.GetVariance()(0));
+
+            //if (isnan(supportMapElevationGP)) supportMapElevationGP = regressionOutput;
+            //else supportMapElevationGP = 0.5 *  supportMapElevationGP + regressionOutput * 0.5;
+
+            //if (isnan(supportMapVarianceGP)) supportMapVarianceGP = regressionOutputVariance;
+            //else supportMapVarianceGP = 0.5 * supportMapVarianceGP + regressionOutputVariance * 0.5;
+        }
+    }
+    // Visualization of tile centers.
+    //geometry_msgs::Point p;
+    //p.x = posTile(0);
+    //p.y = posTile(1);
+    //p.z = 0.0;
+    //tileMarkerList_.points.push_back(p);
+    //supportSurfaceAddingAreaPublisher_.publish(tileMarkerList_);
+   // myGPR.ClearTrainingData();
+   //         }
+   //     }
+   // }
+
+
+    const ros::WallDuration duration2 = ros::WallTime::now() - mainGPStartTime;
+    ROS_INFO("MAIN:::::::::iterated NOTILE through no tiles in %f s.", duration2.toSec());
+
+
+    // Adding procedure.
+    for (CircleIterator iterator(supportMap, footTip, radius); !iterator.isPastEnd(); ++iterator) { // HAcked to raw map for testing..
+        const Index index(*iterator);
+
+        Position addingPosition;
+        supportMap.getPosition(index, addingPosition);
+        double distance = sqrt(pow(addingPosition(0) - footTip(0), 2) +
+                               pow(addingPosition(1) - footTip(1), 2));
+
+        // Old weighting scheme.
+        //double distanceFactor = sqrt(pow(addingPosition(0) - footTip(0), 2) +
+        //                                   pow(addingPosition(1) - footTip(1), 2)) / radius;
+
+        // New weighting scheme here:
+        double weight;
+        if (distance <= 0.2 * radius) weight = 1.0 - (distance / radius);
+        else if (distance >= 0.2 * radius && distance <= weightDecayThreshold_ * radius) weight = 0.8;
+        else weight = weightDecayThreshold_ - weightDecayThreshold_ * (distance - weightDecayThreshold_ * radius)
+                / ((1.0 - weightDecayThreshold_) * radius);
+        // End of new weighting scheme
+
+        // Get the various layers.
+        auto& supportMapElevationGP = supportMap.at("elevation_gp", index);
+        auto& supportMapElevationGPAdded = supportMap.at("elevation_gp_added", index);
+        auto& supportMapVarianceGP = supportMap.at("variance_gp", index);
+        auto& supportMapVarianceGPAdded = supportMap.at("variance_gp_added", index);
+
+        //
+        if (!isnan(supportMapElevationGPAdded)) {
+            supportMapElevationGPAdded = (1 - weight) * supportMapElevationGPAdded + (supportMapElevationGP) * weight;
+        }
+        else {
+            supportMapElevationGPAdded = supportMapElevationGP;
+        }
+
+        if (!isnan(supportMapVarianceGPAdded)) {
+            supportMapVarianceGPAdded = (1 - weight) * supportMapVarianceGPAdded + (supportMapVarianceGP) * weight;
+        }
+        else supportMapVarianceGPAdded = supportMapVarianceGP;
+
+        if (!useBag_){
+            auto& fusedMapElevationGP = fusedMap.at("elevation_gp_added_raw", index);
+            if (!isnan(supportMapElevationGPAdded)) fusedMapElevationGP = supportMapElevationGPAdded;
+        }
+    }
+
+
+    const ros::WallDuration duration = ros::WallTime::now() - mainGPStartTime;
+    ROS_INFO("MAIN:::::::::::: GP NOTILE regression was run totally in %f s.", duration.toSec());
+
+
+    // Publish adaptation Parameters
+    varianceTwistPublisher_.publish(adaptationMsg);
+    return true;
+}
+
 
 bool SupportSurfaceEstimation::simpleSinkageDepthLayer(std::string& tip, const double& tipDifference, GridMap& supportMap){
 
@@ -984,7 +1215,8 @@ bool SupportSurfaceEstimation::terrainContinuityLayerGP(std::string& tip, GridMa
 
         // lengthscale, sigma_n, sigma_f, betaNN, a_RQ, cConst, kernel
         continuityGPR.SetHyperParamsAll(continuityGPNNLengthscale_, continuityGPNNSigmaN_, continuityGPNNSigmaF_,
-                                        continuityGPNNBeta_, continuityGPRQa_, continuityGPCC_, continuityGPKernel_);
+                                        continuityGPNNBeta_, continuityGPRQa_, continuityGPCC_, continuityHYa_, continuityHYb_,
+                                       continuityHYsigmaf_, continuityGPKernel_);
 
         for (unsigned int j = 0; j < footTipHistoryGP_.size(); ++j) {
             Position tipPosLoc(footTipHistoryGP_[j](0), footTipHistoryGP_[j](1));

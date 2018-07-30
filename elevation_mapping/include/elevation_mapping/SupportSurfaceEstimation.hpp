@@ -483,6 +483,11 @@ private:
                        grid_map::GridMap& rawMap, grid_map::GridMap& supportMap, grid_map::GridMap& fusedMap);
 
  //! TODO: Description:
+ bool mainGPRegressionNoTiles(double tileResolution, double tileDiameter,
+                       double sideLengthAddingPatch, std::string tip, const double tipDifference,
+                       grid_map::GridMap& rawMap, grid_map::GridMap& supportMap, grid_map::GridMap& fusedMap);
+
+ //! TODO: Description:
  double getFootTipElevationMapDifferenceGP(std::string tip, grid_map::GridMap& supportMap);
 
  //! TODO: Description:
@@ -812,6 +817,11 @@ private:
  double continuityGPNNLengthscale_, continuityGPNNSigmaN_, continuityGPNNSigmaF_, continuityGPNNBeta_;
  double continuityGPRQa_, continuityGPCC_;
  std::string continuityGPKernel_;
+
+ // GP Hyperparameters for terrain continuity layer with hy kernel.
+ double continuityHYa_;
+ double continuityHYb_;
+ double continuityHYsigmaf_;
 };
 
 } /* namespace */
