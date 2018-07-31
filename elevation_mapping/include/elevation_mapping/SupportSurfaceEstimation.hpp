@@ -497,10 +497,10 @@ private:
  bool supportSurfaceUpperBoundingGP(grid_map::GridMap& upperBoundMap, grid_map::GridMap& supportSurfaceMap);
 
  //! TODO: Description:
- bool setTerrainVariance(double &terrainVariance);
+ bool setTerrainVariance(double &terrainVariance, std::string tip);
 
  //! TODO: Description:
- double getTerrainVariance();
+ double getTerrainVariance(std::string tip);
 
  //! TODO: Description:
  bool setSupportSurfaceUncertaintyEstimation(std::string tip, grid_map::GridMap& supportMap);
@@ -748,14 +748,14 @@ private:
  geometry_msgs::Transform footprint_;
 
  // Variance values.
- double terrainVariance_;
+ double terrainVarianceFront_, terrainVarianceHind_;
  double PenetrationDepthVariance_;
  double supportSurfaceUncertaintyEstimation_;
  double cumulativeSupportSurfaceUncertaintyEstimation_;
 
  // Foot tip position history for GP.
  std::vector<grid_map::Position3> footTipHistoryGP_;
- std::vector<float> sinkageDepthHistory_;
+ std::vector<float> sinkageDepthHistory_, sinkageDepthHistoryHind_;
 
  // Quadruped velocity for low pass filtered velocity.
  Eigen::Vector3f quadrupedBaseVelocity_;
@@ -780,10 +780,10 @@ private:
  double continuityFilterGain_;
 
  // Store latest sinkage depth value.
- float leftFrontSinkageDepth_, rightFrontSinkageDepth_;
+ float leftFrontSinkageDepth_, rightFrontSinkageDepth_, leftHindSinkageDepth_, rightHindSinkageDepth_;
 
  // Bools for sinkage depth history storage.
- bool initializedLeftSinkageDepth_, initializedRightSinkageDepth_;
+ bool initializedLeftSinkageDepth_, initializedRightSinkageDepth_, initializedLeftHindSinkageDepth_, initializedRightHindSinkageDepth_;
  std::vector<grid_map::Position3> sinkageFootTipHistoryGP_;
 
  // GP Hyperparameters.

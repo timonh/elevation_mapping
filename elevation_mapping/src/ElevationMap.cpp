@@ -80,7 +80,7 @@ ElevationMap::ElevationMap(ros::NodeHandle nodeHandle)
               "sensor_z_at_lowest_scan", "elevation_gp_added_raw", "foot_tip_elevation", "support_surface_smooth"}),
       fusedMap_({"elevation", "upper_bound", "lower_bound", "color", "elevation_gp_added_raw"}),
       supportMap_({"elevation", "variance", "elevation_gp", "elevation_gp_added"}),
-      supportMapGP_({"elevation_gp", "variance_gp", "elevation_gp_added", "variance_gp_added", "sinkage_depth_gp",
+      supportMapGP_({"elevation", "variance", "elevation_gp", "variance_gp", "sinkage_depth_gp",
                     "terrain_continuity_gp", "smoothed_top_layer_gp", "ground_truth"}),
       hasUnderlyingMap_(false),
       visibilityCleanupDuration_(0.0),
@@ -92,7 +92,7 @@ ElevationMap::ElevationMap(ros::NodeHandle nodeHandle)
   rawMap_.setBasicLayers({"elevation", "variance"});
   fusedMap_.setBasicLayers({"elevation_gp_added_raw", "upper_bound", "lower_bound"});  // Hacked here..
   supportMap_.setBasicLayers({"elevation", "variance", "elevation_gp", "elevation_gp_added"}); // SS
-  supportMapGP_.setBasicLayers({"elevation_gp", "elevation_gp_added"}); // SS
+  supportMapGP_.setBasicLayers({"elevation"}); // SS
 
   clear();
 
@@ -811,6 +811,11 @@ grid_map::GridMap& ElevationMap::getRawGridMap()
 grid_map::GridMap& ElevationMap::getFusedGridMap()
 {
   return fusedMap_;
+}
+
+grid_map::GridMap& ElevationMap::getSupportSurfaceGridMap()
+{
+  return supportMapGP_;
 }
 
 ros::Time ElevationMap::getTimeOfLastUpdate()

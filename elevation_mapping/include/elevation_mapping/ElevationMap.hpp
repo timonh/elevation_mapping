@@ -183,6 +183,13 @@ class ElevationMap
    */
   grid_map::GridMap& getFusedGridMap();
 
+  // New
+  /*!
+   * Gets a reference to the support surface grid map.
+   * @return the support surface grid map.
+   */
+  grid_map::GridMap& getSupportSurfaceGridMap();
+
   /*!
    * Gets the time of last map update.
    * @return time of the last map update.

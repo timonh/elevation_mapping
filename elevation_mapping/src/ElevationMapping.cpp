@@ -485,13 +485,15 @@ bool ElevationMapping::getSupportSurfaceSubmap(grid_map_msgs::GetGridMap::Reques
   grid_map::Position requestedSubmapPosition(request.position_x, request.position_y);
   Length requestedSubmapLength(request.length_x, request.length_y);
   ROS_DEBUG("Elevation submap request: Position x=%f, y=%f, Length x=%f, y=%f.", requestedSubmapPosition.x(), requestedSubmapPosition.y(), requestedSubmapLength(0), requestedSubmapLength(1));
-  boost::recursive_mutex::scoped_lock scopedLock(map_.getFusedDataMutex());
-  map_.fuseArea(requestedSubmapPosition, requestedSubmapLength);
+  //boost::recursive_mutex::scoped_lock scopedLock(map_.getFusedDataMutex());
+  //map_.fuseArea(requestedSubmapPosition, requestedSubmapLength);
+
+  std::cout << "HEREIWAS!!!" << std::endl;
 
   bool isSuccess;
   Index index;
-  GridMap subMap = map_.getFusedGridMap().getSubmap(requestedSubmapPosition, requestedSubmapLength, index, isSuccess);
-  scopedLock.unlock();
+  GridMap subMap = map_.getSupportSurfaceGridMap().getSubmap(requestedSubmapPosition, requestedSubmapLength, index, isSuccess);
+  //scopedLock.unlock();
 
   if (request.layers.empty()) {
     GridMapRosConverter::toMessage(subMap, response.map);
@@ -502,6 +504,7 @@ bool ElevationMapping::getSupportSurfaceSubmap(grid_map_msgs::GetGridMap::Reques
     }
     GridMapRosConverter::toMessage(subMap, layers, response.map);
   }
+  std::cout << "HEREIWAS!!!" << std::endl;
 
   //ROS_DEBUG("Elevation submap responded with timestamp %f.", map_.getTimeOfLastFusion().toSec());
   return isSuccess;
