@@ -147,9 +147,7 @@ bool SupportSurfaceEstimation::updateSupportSurfaceEstimation(std::string tip, G
                 setSmoothedTopLayer(tip, rawMap, supportMap);
                 double verticalDifference = getFootTipElevationMapDifferenceGP(tip, supportMap);
 
-                // Sinkage depth variance estimation.
-                if (tip != "lefthind" && tip != "righthind") sinkageDepthVarianceEstimation(tip, verticalDifference);
-                //sinkageDepthVarianceEstimation(tip, verticalDifference);
+                sinkageDepthVarianceEstimation(tip, verticalDifference);
                 //! Yes all this!
 
                 // Uncertainty Estimation based on low pass filtered error between foot tip height and predicted support Surface.
@@ -261,57 +259,115 @@ bool SupportSurfaceEstimation::sinkageDepthVarianceEstimation(std::string tip, d
     // Parameter, number of considered sinkage depth values.
     int maxHistory = 5; // Hacking!!
 
-    // Initializations.
-    double totalVerticalDifference = 0.0;
-    double squaredTotalVerticalDifference = 0.0;
-    double totalVerticalDifferenceChange = 0.0;
-    double squaredTotalVerticalDifferenceChange = 0.0;
+    if (tip == "left" || tip == "right") {
+        // Initializations.
+        double totalVerticalDifference = 0.0;
+        double squaredTotalVerticalDifference = 0.0;
+        double totalVerticalDifferenceChange = 0.0;
+        double squaredTotalVerticalDifferenceChange = 0.0;
 
-    // Populate Vector of vertical Difference Values.
-    if (!isnan(verticalDifference)) verticalDifferenceVector_.push_back(verticalDifference);
-    if (verticalDifferenceVector_.size() > maxHistory) verticalDifferenceVector_.erase(verticalDifferenceVector_.begin());
+        // Populate Vector of vertical Difference Values.
+        if (!isnan(verticalDifference)) verticalDifferenceVector_.push_back(verticalDifference);
+        if (verticalDifferenceVector_.size() > maxHistory) verticalDifferenceVector_.erase(verticalDifferenceVector_.begin());
 
-    // Get the number of sinkage depth values considered.
-    int count = verticalDifferenceVector_.size();
+        // Get the number of sinkage depth values considered.
+        int count = verticalDifferenceVector_.size();
 
-    // Iterate.
-    for (auto& n : verticalDifferenceVector_) {
-        totalVerticalDifference += n;
-        squaredTotalVerticalDifference += pow(n, 2);
-    }
-
-    // Differencial version.
-    if (verticalDifferenceVector_.size() > 1) {
-        for (unsigned int j = 1; j < verticalDifferenceVector_.size(); ++j) {
-            totalVerticalDifferenceChange += verticalDifferenceVector_[j] - verticalDifferenceVector_[j-1];
-            squaredTotalVerticalDifferenceChange += pow(verticalDifferenceVector_[j] - verticalDifferenceVector_[j-1], 2);
+        // Iterate.
+        for (auto& n : verticalDifferenceVector_) {
+            totalVerticalDifference += n;
+            squaredTotalVerticalDifference += pow(n, 2);
         }
-    }
 
-    // Variance Calculation.
-    double penetrationDepthVariance = squaredTotalVerticalDifference / double(count) -
-            pow(totalVerticalDifference / double(count), 2);
+        // Differencial version.
+        if (verticalDifferenceVector_.size() > 1) {
+            for (unsigned int j = 1; j < verticalDifferenceVector_.size(); ++j) {
+                totalVerticalDifferenceChange += verticalDifferenceVector_[j] - verticalDifferenceVector_[j-1];
+                squaredTotalVerticalDifferenceChange += pow(verticalDifferenceVector_[j] - verticalDifferenceVector_[j-1], 2);
+            }
+        }
 
-    // Differential Version.
-    double differentialPenetrationDepthVariance = squaredTotalVerticalDifferenceChange / double(count) -
-            pow(totalVerticalDifferenceChange / double(count), 2);
+        // Variance Calculation.
+        double penetrationDepthVariance = squaredTotalVerticalDifference / double(count) -
+                pow(totalVerticalDifference / double(count), 2);
 
-    // Sign selective low pass filter.
-    if (!isnan(penetrationDepthVariance)) {
-        lowPassFilteredSinkageDepthVariance_ = signSelectiveLowPassFilter(lowPassFilteredSinkageDepthVariance_,
-                                                                          penetrationDepthVariance, sinkageDepthFilterGainDown_, sinkageDepthFilterGainUp_);
-        setPenetrationDepthVariance(lowPassFilteredSinkageDepthVariance_);
+        // Differential Version.
+        double differentialPenetrationDepthVariance = squaredTotalVerticalDifferenceChange / double(count) -
+                pow(totalVerticalDifferenceChange / double(count), 2);
+
+        // Sign selective low pass filter.
+        if (!isnan(penetrationDepthVariance)) {
+            lowPassFilteredSinkageDepthVariance_ = signSelectiveLowPassFilter(lowPassFilteredSinkageDepthVariance_,
+                                                                              penetrationDepthVariance, sinkageDepthFilterGainDown_, sinkageDepthFilterGainUp_);
+            setPenetrationDepthVariance(lowPassFilteredSinkageDepthVariance_, tip);
+        }
+        else {
+            setPenetrationDepthVariance(penetrationDepthVariance, tip);
+        }
+        //setDifferentialPenetrationDepthVariance(differentialPenetrationDepthVariance);
     }
-    else {
-        setPenetrationDepthVariance(penetrationDepthVariance);
+    if (tip == "lefthind" || tip == "righthind") {
+        // Initializations.
+        double totalVerticalDifference = 0.0;
+        double squaredTotalVerticalDifference = 0.0;
+        double totalVerticalDifferenceChange = 0.0;
+        double squaredTotalVerticalDifferenceChange = 0.0;
+
+        // Populate Vector of vertical Difference Values.
+        if (!isnan(verticalDifference)) verticalDifferenceVectorHind_.push_back(verticalDifference);
+        if (verticalDifferenceVectorHind_.size() > maxHistory) verticalDifferenceVectorHind_.erase(verticalDifferenceVectorHind_.begin());
+
+        // Get the number of sinkage depth values considered.
+        int count = verticalDifferenceVectorHind_.size();
+
+        // Iterate.
+        for (auto& n : verticalDifferenceVectorHind_) {
+            totalVerticalDifference += n;
+            squaredTotalVerticalDifference += pow(n, 2);
+        }
+
+        // Differencial version.
+        if (verticalDifferenceVectorHind_.size() > 1) {
+            for (unsigned int j = 1; j < verticalDifferenceVectorHind_.size(); ++j) {
+                totalVerticalDifferenceChange += verticalDifferenceVectorHind_[j] - verticalDifferenceVectorHind_[j-1];
+                squaredTotalVerticalDifferenceChange += pow(verticalDifferenceVectorHind_[j] - verticalDifferenceVectorHind_[j-1], 2);
+            }
+        }
+
+        // Variance Calculation.
+        double penetrationDepthVariance = squaredTotalVerticalDifference / double(count) -
+                pow(totalVerticalDifference / double(count), 2);
+
+        std::cout << " HINDHINDHIND: " << penetrationDepthVariance << std::endl;
+
+        // Differential Version.
+        double differentialPenetrationDepthVariance = squaredTotalVerticalDifferenceChange / double(count) -
+                pow(totalVerticalDifferenceChange / double(count), 2);
+
+        // Sign selective low pass filter.
+        if (!isnan(penetrationDepthVariance)) {
+            lowPassFilteredHindSinkageDepthVariance_ = signSelectiveLowPassFilter(lowPassFilteredHindSinkageDepthVariance_,
+                                                                              penetrationDepthVariance, sinkageDepthFilterGainDown_, sinkageDepthFilterGainUp_);
+            setPenetrationDepthVariance(lowPassFilteredHindSinkageDepthVariance_, tip);
+        }
+        else {
+            setPenetrationDepthVariance(penetrationDepthVariance, tip);
+        }
+        //setDifferentialPenetrationDepthVariance(differentialPenetrationDepthVariance);
     }
-    setDifferentialPenetrationDepthVariance(differentialPenetrationDepthVariance);
     return true;
 }
 
 // For using it in the penetration depth estimation.
-void SupportSurfaceEstimation::setPenetrationDepthVariance(double penetrationDepthVariance){
-    if (!isnan(penetrationDepthVariance)) penetrationDepthVariance_ = penetrationDepthVariance;
+void SupportSurfaceEstimation::setPenetrationDepthVariance(double penetrationDepthVariance, std::string tip){
+    if (tip == "left" || tip == "right")
+        if (!isnan(penetrationDepthVariance)) penetrationDepthVariance_ = penetrationDepthVariance;
+    if (tip == "lefthind" || tip == "righthind") {
+        if (!isnan(penetrationDepthVariance)) {
+            std::cout << "SET THE HIND PEN DEPTH VARIANCE ESTIMATION!!!!!!: \n \n \n \n \n " << penetrationDepthVariance << std::endl;
+            penetrationDepthVarianceHind_ = penetrationDepthVariance;
+        }
+    }
 }
 
 // For using it in the penetration depth estimation.
@@ -580,15 +636,16 @@ bool SupportSurfaceEstimation::setTerrainVariance(double& terrainVariance, std::
         terrainVarianceHind_ = terrainVariance;
 }
 
-double SupportSurfaceEstimation::getTerrainVariance(std::string tip){
-    if (tip == "left" || tip == "right")
+double SupportSurfaceEstimation::getTerrainVariance(std::string tips){
+    if (tips == "front")
         return terrainVarianceFront_;
     else if (runHindLegSupportSurfaceEstimation_)
         return terrainVarianceHind_;
 }
 
-double SupportSurfaceEstimation::getPenetrationDepthVariance(){
-    return penetrationDepthVariance_;
+double SupportSurfaceEstimation::getPenetrationDepthVariance(std::string tips){
+    if (tips == "front") return penetrationDepthVariance_;
+    if (tips == "hind") return penetrationDepthVarianceHind_;
 }
 
 double SupportSurfaceEstimation::getDifferentialPenetrationDepthVariance(){
@@ -615,36 +672,61 @@ bool SupportSurfaceEstimation::mainGPRegression(double tileResolution, double ti
     double radius = (sideLengthAddingPatch - 0.15) / 2.0;
 
     // Get uncertainty measures.
-    double terrainVariance = getTerrainVariance(tip);
+    double terrainVariance = getTerrainVariance("front");
+    double terrainVarianceHind = getTerrainVariance("hind");
+
+
     double supportSurfaceUncertaintyEstimation = getSupportSurfaceUncertaintyEstimation();
-    double sinkageVariance = getPenetrationDepthVariance();
+    double sinkageVariance = getPenetrationDepthVariance("front");
+    double sinkageVarianceHind = getPenetrationDepthVariance("hind");
     //double differentialSinkageVariance = getDifferentialPenetrationDepthVariance();
     //double cumulativeSupportSurfaceUncertaintyEstimation = getCumulativeSupportSurfaceUncertaintyEstimation();
 
-    // Calculate characteristic Value.
-    double characteristicValue = (weightTerrainContinuity_ * terrainVariance) / pow((1.0 * sinkageVariance), exponentCharacteristicValue_);
+    if (tip == "left" || tip == "right") {
 
-    // Low pass filtering and bounding of the continuity caracteristic value.
-    if (useSignSelectiveContinuityFilter_) {
-        // Sign Selective low pass filter.
-        if (lowPassFilteredTerrainContinuityValue_ < characteristicValue) lowPassFilteredTerrainContinuityValue_ = fmin(fmax(continuityFilterGain_ * lowPassFilteredTerrainContinuityValue_ + (1 - continuityFilterGain_)
-                                                                * characteristicValue, 0.44), 3.4); // TODO: reason about bounding.
-        else lowPassFilteredTerrainContinuityValue_ = characteristicValue;
+        // Calculate characteristic Value.
+        double characteristicValue = (weightTerrainContinuity_ * terrainVariance) / pow(sinkageVariance, exponentCharacteristicValue_);
+
+        // Low pass filtering and bounding of the continuity caracteristic value.
+        if (useSignSelectiveContinuityFilter_) {
+            // Sign Selective low pass filter.
+            if (lowPassFilteredTerrainContinuityValue_ < characteristicValue) lowPassFilteredTerrainContinuityValue_ = fmin(fmax(continuityFilterGain_ * lowPassFilteredTerrainContinuityValue_ + (1 - continuityFilterGain_)
+                                                                    * characteristicValue, 0.34), 3.4); // TODO: reason about bounding.
+            else lowPassFilteredTerrainContinuityValue_ = characteristicValue;
+        }
+        else lowPassFilteredTerrainContinuityValue_ = fmin(fmax(continuityFilterGain_ * lowPassFilteredTerrainContinuityValue_ + (1 - continuityFilterGain_)
+                                                            * characteristicValue, 0.34), 3.4); // TODO: reason about bounding.
     }
-    else lowPassFilteredTerrainContinuityValue_ = fmin(fmax(continuityFilterGain_ * lowPassFilteredTerrainContinuityValue_ + (1 - continuityFilterGain_)
-                                                        * characteristicValue, 0.44), 3.4); // TODO: reason about bounding.
+    if (tip == "lefthind" || tip == "righthind") {
 
+        std::cout << "terr vat hind:   -> -> -> ................................." << terrainVarianceHind << std::endl;
+        std::cout << "sink vat hind:   -> -> -> ................................." << sinkageVarianceHind << std::endl;
 
-    // Set message values.
-    // RQT message publisher.
+        // Calculate characteristic Value.
+        double characteristicValue = (weightTerrainContinuity_ * terrainVarianceHind) / pow(sinkageVarianceHind, exponentCharacteristicValue_);
+
+        std::cout << "hind characteristic value!!" << characteristicValue << std::endl;
+
+        // Low pass filtering and bounding of the continuity caracteristic value.
+        if (useSignSelectiveContinuityFilter_) {
+            // Sign Selective low pass filter.
+            if (lowPassFilteredHindTerrainContinuityValue_ < characteristicValue) lowPassFilteredHindTerrainContinuityValue_ = fmin(fmax(continuityFilterGain_ * lowPassFilteredHindTerrainContinuityValue_ + (1 - continuityFilterGain_)
+                                                                    * characteristicValue, 0.34), 3.4); // TODO: reason about bounding.
+            else lowPassFilteredHindTerrainContinuityValue_ = characteristicValue;
+        }
+        else lowPassFilteredHindTerrainContinuityValue_ = fmin(fmax(continuityFilterGain_ * lowPassFilteredHindTerrainContinuityValue_ + (1 - continuityFilterGain_)
+                                                            * characteristicValue, 0.34), 3.4); // TODO: reason about bounding.
+    }
+
+    // Set adaptation message values.
     geometry_msgs::TwistStamped adaptationMsg;
     adaptationMsg.header.stamp = ros::Time::now();
     adaptationMsg.twist.linear.x = terrainVariance;
-    adaptationMsg.twist.linear.y = lowPassFilteredTerrainContinuityValue_;
-    adaptationMsg.twist.angular.x = supportSurfaceUncertaintyEstimation;
-    adaptationMsg.twist.angular.y = getMeanGroundTruthDifference();
-    adaptationMsg.twist.angular.z = sinkageVariance;
-    adaptationMsg.twist.linear.z = 0.0; // Still to use..
+    adaptationMsg.twist.linear.y = sinkageVariance;
+    adaptationMsg.twist.linear.z = lowPassFilteredTerrainContinuityValue_;
+    adaptationMsg.twist.angular.x = terrainVarianceHind;
+    adaptationMsg.twist.angular.y = sinkageVarianceHind;
+    adaptationMsg.twist.angular.z = lowPassFilteredHindTerrainContinuityValue_;
 
     // Get the foot Tip Position.
     Position3 footTip3 = getFootTipPosition3(tip);
@@ -691,7 +773,11 @@ bool SupportSurfaceEstimation::mainGPRegression(double tileResolution, double ti
                     //trainOutput2(0) = supportMap.at("elevation", index);
 
                     // Probability sampling and replace the training data by plane value
-                    bool insert = sampleContinuityPlaneToTrainingData(cellPos, footTip, lowPassFilteredTerrainContinuityValue_);
+                    double samplingValue;
+                    if (tip == "left" || tip == "right") samplingValue = lowPassFilteredTerrainContinuityValue_;
+                    if (tip == "lefthind" || tip == "righthind") samplingValue = lowPassFilteredHindTerrainContinuityValue_;
+
+                    bool insert = sampleContinuityPlaneToTrainingData(cellPos, footTip, samplingValue);
                     if (insert) {
                         trainOutput(0) = supportMap.at("terrain_continuity_gp", index);
                     }
@@ -828,7 +914,7 @@ bool SupportSurfaceEstimation::mainGPRegressionNoTiles(double tileResolution, do
     // Get uncertainty measures.
     double terrainVariance = getTerrainVariance(tip);
     double supportSurfaceUncertaintyEstimation = getSupportSurfaceUncertaintyEstimation();
-    double sinkageVariance = getPenetrationDepthVariance();
+    double sinkageVariance = getPenetrationDepthVariance(tip);
     //double differentialSinkageVariance = getDifferentialPenetrationDepthVariance();
     //double cumulativeSupportSurfaceUncertaintyEstimation = getCumulativeSupportSurfaceUncertaintyEstimation();
 
@@ -1018,134 +1104,135 @@ bool SupportSurfaceEstimation::mainGPRegressionNoTiles(double tileResolution, do
 
 bool SupportSurfaceEstimation::simpleSinkageDepthLayer(std::string& tip, const double& tipDifference, GridMap& supportMap){
 
-    if (leftStanceVector_.size() > 0 && rightStanceVector_.size() > 0 && leftHindStanceVector_.size() > 0 && rightHindStanceVector_.size() > 0){
+    //if (tip == "left" || tip == "right") {
+        if (leftStanceVector_.size() > 0 && rightStanceVector_.size() > 0 && leftHindStanceVector_.size() > 0 && rightHindStanceVector_.size() > 0){
 
+            double radius = 0.7;
+            int maxSizeFootTipHistory = 15; // See what this does..
 
+            std::cout << "TIP DIFFERENCE::::::::::::::::::::::::::::::::::::::::::::::: " << -tipDifference << std::endl;
+            // DEBUG:
+            //if (-tipDifference < 0.0) std::cout << "Attention, negative tip DIfference found!!: " << -tipDifference << std::endl;
+            //if (initializedLeftSinkageDepth_ && leftFrontSinkageDepth_ < 0.0) std::cout << "Attention, negative leftfrontsd found!!: " << leftFrontSinkageDepth_ << std::endl;
+            //if (initializedRightSinkageDepth_ && rightFrontSinkageDepth_ < 0.0) std::cout << "Attention, negative rightfrontsd found!!: " << rightFrontSinkageDepth_ << std::endl;
+            //if (isnan(leftFrontSinkageDepth_)) std::cout << " NANANANANANANAANNNNNNNNNNNNANNNNNNNAAAAAAAAAAAAAANNNNNNNNNNNNNN" << std::endl;
 
+            // Do history vector.
+            Position3 footTip = getFootTipPosition3(tip);
 
-        double radius = 0.7;
-        int maxSizeFootTipHistory = 15; // See what this does..
+            if (isnan(tipDifference)) {
+                if (tip == "left" && !isnan(leftFrontSinkageDepth_) && initializedLeftSinkageDepth_) {
+                    sinkageDepthHistory_.push_back(leftFrontSinkageDepth_); // Do not update the sinkage depth if there is no new information.
+                    sinkageFootTipHistoryGP_.push_back(footTip);
+                    if (fabs(leftFrontSinkageDepth_) < 0.001) std::cout << "WARNING: the stored sinkage depth value is very close to zero!!! \n \n \n \n \n WARNING \n";
+                }
+                if (tip == "right" && !isnan(rightFrontSinkageDepth_) && initializedRightSinkageDepth_) {
+                    sinkageDepthHistory_.push_back(rightFrontSinkageDepth_);
+                    sinkageFootTipHistoryGP_.push_back(footTip);
+                    if (fabs(rightFrontSinkageDepth_) < 0.001) std::cout << "WARNING: the stored sinkage depth value is very close to zero!!! \n \n \n \n \n WARNING \n";
+                }
+                if (tip == "lefthind" && !isnan(leftHindSinkageDepth_) && initializedLeftHindSinkageDepth_) {
+                    sinkageDepthHistory_.push_back(leftHindSinkageDepth_);
+                    sinkageFootTipHistoryGP_.push_back(footTip);
+                    if (fabs(leftHindSinkageDepth_) < 0.001) std::cout << "WARNING: the stored sinkage depth value is very close to zero!!! \n \n \n \n \n WARNING \n";
+                }
+                if (tip == "righthind" && !isnan(rightHindSinkageDepth_) && initializedRightHindSinkageDepth_) {
+                    sinkageDepthHistory_.push_back(rightHindSinkageDepth_);
+                    sinkageFootTipHistoryGP_.push_back(footTip);
+                    if (fabs(rightHindSinkageDepth_) < 0.001) std::cout << "WARNING: the stored sinkage depth value is very close to zero!!! \n \n \n \n \n WARNING \n";
+                }
 
-        std::cout << "TIP DIFFERENCE::::::::::::::::::::::::::::::::::::::::::::::: " << -tipDifference << std::endl;
-        // DEBUG:
-        if (-tipDifference < 0.0) std::cout << "Attention, negative tip DIfference found!!: " << -tipDifference << std::endl;
-        if (initializedLeftSinkageDepth_ && leftFrontSinkageDepth_ < 0.0) std::cout << "Attention, negative leftfrontsd found!!: " << leftFrontSinkageDepth_ << std::endl;
-        if (initializedRightSinkageDepth_ && rightFrontSinkageDepth_ < 0.0) std::cout << "Attention, negative rightfrontsd found!!: " << rightFrontSinkageDepth_ << std::endl;
-        if (isnan(leftFrontSinkageDepth_)) std::cout << " NANANANANANANAANNNNNNNNNNNNANNNNNNNAAAAAAAAAAAAAANNNNNNNNNNNNNN" << std::endl;
-
-        // Do history vector.
-        Position3 footTip = getFootTipPosition3(tip);
-
-        if (isnan(tipDifference)) {
-            if (tip == "left" && !isnan(leftFrontSinkageDepth_) && initializedLeftSinkageDepth_) {
-                sinkageDepthHistory_.push_back(leftFrontSinkageDepth_); // Do not update the sinkage depth if there is no new information.
+            }
+            else {
+                sinkageDepthHistory_.push_back(-tipDifference);
                 sinkageFootTipHistoryGP_.push_back(footTip);
-                if (fabs(leftFrontSinkageDepth_) < 0.001) std::cout << "WARNING: the stored sinkage depth value is very close to zero!!! \n \n \n \n \n WARNING \n";
-            }
-            if (tip == "right" && !isnan(rightFrontSinkageDepth_) && initializedRightSinkageDepth_) {
-                sinkageDepthHistory_.push_back(rightFrontSinkageDepth_);
-                sinkageFootTipHistoryGP_.push_back(footTip);
-                if (fabs(rightFrontSinkageDepth_) < 0.001) std::cout << "WARNING: the stored sinkage depth value is very close to zero!!! \n \n \n \n \n WARNING \n";
-            }
-            if (tip == "lefthind" && !isnan(leftHindSinkageDepth_) && initializedLeftHindSinkageDepth_) {
-                sinkageDepthHistoryHind_.push_back(leftHindSinkageDepth_);
-                sinkageFootTipHistoryGP_.push_back(footTip);
-                if (fabs(leftHindSinkageDepth_) < 0.001) std::cout << "WARNING: the stored sinkage depth value is very close to zero!!! \n \n \n \n \n WARNING \n";
-            }
-            if (tip == "righthind" && !isnan(rightHindSinkageDepth_) && initializedRightHindSinkageDepth_) {
-                sinkageDepthHistoryHind_.push_back(rightHindSinkageDepth_);
-                sinkageFootTipHistoryGP_.push_back(footTip);
-                if (fabs(rightHindSinkageDepth_) < 0.001) std::cout << "WARNING: the stored sinkage depth value is very close to zero!!! \n \n \n \n \n WARNING \n";
-            }
-        }
-        else {
-            sinkageDepthHistory_.push_back(-tipDifference); // Todo nicer with class vars for each foot tip
-            sinkageFootTipHistoryGP_.push_back(footTip);
-            if (tip == "left"){
-                leftFrontSinkageDepth_ = -tipDifference;
-                initializedLeftSinkageDepth_ = true;
-            }
-            if (tip == "right") {
-                rightFrontSinkageDepth_ = -tipDifference;
-                initializedRightSinkageDepth_ = true;
-            }
-            if (tip == "lefthind") {
-                leftHindSinkageDepth_ = -tipDifference;
-                initializedLeftHindSinkageDepth_ = true;
-            }
-            if (tip == "righthind") {
-                rightHindSinkageDepth_ = -tipDifference;
-                initializedRightHindSinkageDepth_ = true;
+                if (tip == "left"){
+                    leftFrontSinkageDepth_ = -tipDifference;
+                    initializedLeftSinkageDepth_ = true;
+                }
+                if (tip == "right") {
+                    rightFrontSinkageDepth_ = -tipDifference;
+                    initializedRightSinkageDepth_ = true;
+                }
+                if (tip == "lefthind") {
+                    leftHindSinkageDepth_ = -tipDifference;
+                    initializedLeftHindSinkageDepth_ = true;
+                }
+                if (tip == "righthind") {
+                    rightHindSinkageDepth_ = -tipDifference;
+                    initializedRightHindSinkageDepth_ = true;
+                }
+
             }
 
-        }
+            std::cout << "after if loop" << std::endl;
+            //std::cout << "leftFrontSinkageDepth:: " << leftFrontSinkageDepth_ << " rightFrontSinkageDepth_ " << rightFrontSinkageDepth_ << std::endl;
 
-        //std::cout << "leftFrontSinkageDepth:: " << leftFrontSinkageDepth_ << " rightFrontSinkageDepth_ " << rightFrontSinkageDepth_ << std::endl;
 
-        if (sinkageFootTipHistoryGP_.size() > maxSizeFootTipHistory) { // They must be the same!!
-            sinkageFootTipHistoryGP_.erase(sinkageFootTipHistoryGP_.begin());
-            sinkageDepthHistory_.erase(sinkageDepthHistory_.begin());
-            sinkageDepthHistoryHind_.erase(sinkageDepthHistoryHind_.begin());
-        }
+            if (sinkageFootTipHistoryGP_.size() > maxSizeFootTipHistory) { // They must be the same!!
+                sinkageFootTipHistoryGP_.erase(sinkageFootTipHistoryGP_.begin());
+                sinkageDepthHistory_.erase(sinkageDepthHistory_.begin());
+                //sinkageDepthHistoryHind_.erase(sinkageDepthHistoryHind_.begin());
+            }
 
-        if (sinkageFootTipHistoryGP_.size() != sinkageDepthHistory_.size()) {
-            std::cout << "Attention, having issues \n \n \n \n ISSUES i said!!" << std::endl;
-        }
+            if (sinkageFootTipHistoryGP_.size() != sinkageDepthHistory_.size()) {
+                std::cout << "Attention, having issues \n \n \n \n ISSUES i said!!" << std::endl;
+            }
 
-        Position center(footTip(0), footTip(1));
+            std::cout << "here i was still 1" << std::endl;
 
-        for (grid_map::CircleIterator iterator(supportMap, center, radius); !iterator.isPastEnd(); ++iterator) {
+            Position center(footTip(0), footTip(1));
 
-            const Index index(*iterator);
-            auto& supportMapElevationGPSinkage = supportMap.at("sinkage_depth_gp", index);
-            Position pos;
-            supportMap.getPosition(index, pos);
+            for (grid_map::CircleIterator iterator(supportMap, center, radius); !iterator.isPastEnd(); ++iterator) {
 
-            float addingDistance = sqrt(pow(pos(0) - footTip(0), 2) + pow(pos(1) - footTip(1), 2));
+                const Index index(*iterator);
+                auto& supportMapElevationGPSinkage = supportMap.at("sinkage_depth_gp", index);
+                Position pos;
+                supportMap.getPosition(index, pos);
 
-            // Keep track of total weight and temporary height value.
-            float totalWeight = 0.0;
-            float tempHeight = 0.0;
+                float addingDistance = sqrt(pow(pos(0) - footTip(0), 2) + pow(pos(1) - footTip(1), 2));
 
-            for (unsigned int i = 0; i < min(sinkageFootTipHistoryGP_.size(), sinkageDepthHistory_.size()); ++i) {
-                double distance = sqrt(pow(sinkageFootTipHistoryGP_[i](0) - footTip(0), 2) + pow(sinkageFootTipHistoryGP_[i](1) - footTip(1), 2));
-                if (distance < radius) {
-                    float localDistance = sqrt(pow(sinkageFootTipHistoryGP_[i](0) - pos(0), 2) + pow(sinkageFootTipHistoryGP_[i](1) - pos(1), 2));
-                    float weight;
-                    if (localDistance > 0.0001) weight = 1 / pow(localDistance, exponentSinkageDepthWeight_); // Hacking here to test the range of the power.
-                    else weight = 0.0;
-                    totalWeight += weight;
-                    if (tip == "left" || tip == "right"){
+                // Keep track of total weight and temporary height value.
+                float totalWeight = 0.0;
+                float tempHeight = 0.0;
+
+                int maxIter = min(sinkageFootTipHistoryGP_.size(), sinkageDepthHistory_.size());
+
+                for (unsigned int i = 0; i < maxIter; ++i) {
+                    double distance = sqrt(pow(sinkageFootTipHistoryGP_[i](0) - footTip(0), 2) + pow(sinkageFootTipHistoryGP_[i](1) - footTip(1), 2));
+                    if (distance < radius) {
+                        float localDistance = sqrt(pow(sinkageFootTipHistoryGP_[i](0) - pos(0), 2) + pow(sinkageFootTipHistoryGP_[i](1) - pos(1), 2));
+                        float weight;
+                        if (localDistance > 0.0001) weight = 1 / pow(localDistance, exponentSinkageDepthWeight_); // Hacking here to test the range of the power.
+                        else weight = 0.0;
+                        totalWeight += weight;
                         if (!isnan(sinkageDepthHistory_[i])) tempHeight += sinkageDepthHistory_[i] * weight;
                     }
-                    else {
-                        if (!isnan(sinkageDepthHistoryHind_[i])) tempHeight += sinkageDepthHistoryHind_[i] * weight;
+                }
+
+                double output;
+                if (totalWeight > 0.0001) output = tempHeight / totalWeight;
+                else if (!isnan(tipDifference)) output = tipDifference;
+                else output = 0.0;
+
+                float addingWeight = fmax(1 - (addingDistance / radius), 0.0);
+                if (!isnan(output)){
+                    if (!supportMap.isValid(index)){
+                        supportMapElevationGPSinkage = output;
+                    }
+                    else{
+                        if (!isnan(supportMapElevationGPSinkage))  // Hacked away, attention!!
+                            supportMapElevationGPSinkage = addingWeight * output + (1 - addingWeight) * supportMapElevationGPSinkage;
                     }
                 }
+                //else std::cout << "Output would have been NANANANANANANANANANANA" << std::endl;
+                // TODO: idea: exponent of distance proportionality as learning parameter.
+                //if (isnan(supportMap.at("terrain_continuity_gp", index)))
             }
-
-            double output;
-            if (totalWeight > 0.0001) output = tempHeight / totalWeight;
-            else if (!isnan(tipDifference)) output = tipDifference;
-            else output = 0.0;
-
-            float addingWeight = fmax(1 - (addingDistance / radius), 0.0);
-            if (!isnan(output)){
-                if (!supportMap.isValid(index)){
-                    supportMapElevationGPSinkage = output;
-                }
-                else{
-                    if (!isnan(supportMapElevationGPSinkage))  // Hacked away, attention!!
-                        supportMapElevationGPSinkage = addingWeight * output + (1 - addingWeight) * supportMapElevationGPSinkage;
-                }
-            }
-            //else std::cout << "Output would have been NANANANANANANANANANANA" << std::endl;
-            // TODO: idea: exponent of distance proportionality as learning parameter.
-            //if (isnan(supportMap.at("terrain_continuity_gp", index)))
         }
-    }
 
-    std::cout << "Check 123456" << std::endl;
+        std::cout << "Check 123456" << std::endl;
+    //}
     return true;
 }
 

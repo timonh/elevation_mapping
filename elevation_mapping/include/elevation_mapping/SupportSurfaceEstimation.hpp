@@ -421,13 +421,13 @@ private:
  Eigen::Vector3f getLatestRightStance();
 
  //! TODO: Description:
- void setPenetrationDepthVariance(double penetrationDepthVariance);
+ void setPenetrationDepthVariance(double penetrationDepthVariance, std::string tip);
 
  //! TODO: Description:
  void setDifferentialPenetrationDepthVariance(double differentialPenetrationDepthVariance);
 
  //! TODO: Description:
- double getPenetrationDepthVariance();
+ double getPenetrationDepthVariance(std::string tips);
 
  //! TODO: Description:
  double getDifferentialPenetrationDepthVariance();
@@ -500,7 +500,7 @@ private:
  bool setTerrainVariance(double &terrainVariance, std::string tip);
 
  //! TODO: Description:
- double getTerrainVariance(std::string tip);
+ double getTerrainVariance(std::string tips);
 
  //! TODO: Description:
  bool setSupportSurfaceUncertaintyEstimation(std::string tip, grid_map::GridMap& supportMap);
@@ -734,8 +734,8 @@ private:
  bool supportSurfaceInitializationTrigger_;
 
  //! For use in penetrationDepthVarianceEstimation
- double penetrationDepthVariance_, differentialPenetrationDepthVariance_;
- std::vector<double> verticalDifferenceVector_;
+ double penetrationDepthVariance_, penetrationDepthVarianceHind_, differentialPenetrationDepthVariance_;
+ std::vector<double> verticalDifferenceVector_, verticalDifferenceVectorHind_;
 
  filters::FilterChain<grid_map::GridMap> filterChain_;
  filters::FilterChain<grid_map::GridMap> filterChain2_;
@@ -776,7 +776,7 @@ private:
  bool useSignSelectiveContinuityFilter_;
  double signSelectiveContinuityFilterGain_;
 
- double lowPassFilteredTerrainContinuityValue_;
+ double lowPassFilteredTerrainContinuityValue_, lowPassFilteredHindTerrainContinuityValue_;
  double continuityFilterGain_;
 
  // Store latest sinkage depth value.
@@ -807,7 +807,7 @@ private:
  double continuityGPSigmaF_;
 
  // Low pass filter Parameters for sinkage depth.
- double lowPassFilteredSinkageDepthVariance_;
+ double lowPassFilteredSinkageDepthVariance_, lowPassFilteredHindSinkageDepthVariance_;
  double sinkageDepthFilterGainUp_, sinkageDepthFilterGainDown_;
 
  // Regression tile visualization
