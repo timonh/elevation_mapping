@@ -9,6 +9,7 @@
 #include "elevation_mapping/SupportSurfaceEstimation.hpp"
 #include "elevation_mapping/ElevationMap.hpp"
 
+
 using namespace std;
 using namespace grid_map;
 
@@ -691,11 +692,11 @@ bool SupportSurfaceEstimation::mainGPRegression(double tileResolution, double ti
         if (useSignSelectiveContinuityFilter_) {
             // Sign Selective low pass filter.
             if (lowPassFilteredTerrainContinuityValue_ < characteristicValue) lowPassFilteredTerrainContinuityValue_ = fmin(fmax(continuityFilterGain_ * lowPassFilteredTerrainContinuityValue_ + (1 - continuityFilterGain_)
-                                                                    * characteristicValue, 0.34), 3.4); // TODO: reason about bounding.
+                                                                    * characteristicValue, 0.44), 3.4); // TODO: reason about bounding.
             else lowPassFilteredTerrainContinuityValue_ = characteristicValue;
         }
         else lowPassFilteredTerrainContinuityValue_ = fmin(fmax(continuityFilterGain_ * lowPassFilteredTerrainContinuityValue_ + (1 - continuityFilterGain_)
-                                                            * characteristicValue, 0.34), 3.4); // TODO: reason about bounding.
+                                                            * characteristicValue, 0.44), 3.4); // TODO: reason about bounding.
     }
     if (tip == "lefthind" || tip == "righthind") {
 
@@ -711,11 +712,11 @@ bool SupportSurfaceEstimation::mainGPRegression(double tileResolution, double ti
         if (useSignSelectiveContinuityFilter_) {
             // Sign Selective low pass filter.
             if (lowPassFilteredHindTerrainContinuityValue_ < characteristicValue) lowPassFilteredHindTerrainContinuityValue_ = fmin(fmax(continuityFilterGain_ * lowPassFilteredHindTerrainContinuityValue_ + (1 - continuityFilterGain_)
-                                                                    * characteristicValue, 0.34), 3.4); // TODO: reason about bounding.
+                                                                    * characteristicValue, 0.44), 3.4); // TODO: reason about bounding.
             else lowPassFilteredHindTerrainContinuityValue_ = characteristicValue;
         }
         else lowPassFilteredHindTerrainContinuityValue_ = fmin(fmax(continuityFilterGain_ * lowPassFilteredHindTerrainContinuityValue_ + (1 - continuityFilterGain_)
-                                                            * characteristicValue, 0.34), 3.4); // TODO: reason about bounding.
+                                                            * characteristicValue, 0.44), 3.4); // TODO: reason about bounding.
     }
 
     // Set adaptation message values.
@@ -777,6 +778,8 @@ bool SupportSurfaceEstimation::mainGPRegression(double tileResolution, double ti
                     if (tip == "left" || tip == "right") samplingValue = lowPassFilteredTerrainContinuityValue_;
                     if (tip == "lefthind" || tip == "righthind") samplingValue = lowPassFilteredHindTerrainContinuityValue_;
 
+                    //std::cout << "this is the sampling value..." << samplingValue << std::endl;
+
                     bool insert = sampleContinuityPlaneToTrainingData(cellPos, footTip, samplingValue);
                     if (insert) {
                         trainOutput(0) = supportMap.at("terrain_continuity_gp", index);
@@ -805,7 +808,7 @@ bool SupportSurfaceEstimation::mainGPRegression(double tileResolution, double ti
 
                         // Perform regression.
                         //double regressionOutput = myGPR.DoRegression(testInput)(0);
-                        //double regressionOutputVariance = 0.0;
+                        //double regressionOutputVariance = 0.0; // * sinkage / dist
 
                         // Hacked away to check if it speeds things up..
                         double regressionOutput = myGPR.DoRegressionVariance(testInput)(0);
@@ -864,21 +867,36 @@ bool SupportSurfaceEstimation::mainGPRegression(double tileResolution, double ti
 
         // 
         if (!isnan(supportMapElevationGPAdded)) {
-            supportMapElevationGPAdded = (1 - weight) * supportMapElevationGPAdded + (supportMapElevationGP) * weight;
+            supportMapElevationGPAdded = (1 - weight) * supportMapElevationGPAdded + supportMapElevationGP * weight;
         }
         else {
             supportMapElevationGPAdded = supportMapElevationGP;
         }
 
-        if (!isnan(supportMapVarianceGPAdded)) {
-            supportMapVarianceGPAdded = (1 - weight) * supportMapVarianceGPAdded + (supportMapVarianceGP) * weight;
-        }
-        else supportMapVarianceGPAdded = supportMapVarianceGP;
+        double distanceVarianceExponent = 1.0;
+        double heightVarianceExponent = 0.2;
 
-        if (!useBag_){
-            auto& fusedMapElevationGP = fusedMap.at("elevation_gp_added_raw", index);
-            if (!isnan(supportMapElevationGPAdded)) fusedMapElevationGP = supportMapElevationGPAdded;
+        if (!isnan(supportMapVarianceGPAdded)) {
+            //supportMapVarianceGPAdded = (1 - weight) * supportMapVarianceGPAdded + supportMapVarianceGP * weight; // test!!!
+            if (!isnan(fabs(supportMapElevationGPAdded - rawMap.at("elevation", index))))
+                supportMapVarianceGPAdded = (1 - weight) * supportMapVarianceGPAdded + pow(distance, distanceVarianceExponent) *
+                        pow(supportMapElevationGPAdded - rawMap.at("elevation", index), heightVarianceExponent) * weight; // test!!!
+            else supportMapVarianceGPAdded = (1 - weight) * supportMapVarianceGPAdded + pow(distance,distanceVarianceExponent) * weight; // Not neatly coded here TODO make clean!!
         }
+        else {
+            //supportMapVarianceGPAdded = supportMapVarianceGP; // tests!!!!
+            supportMapVarianceGPAdded = pow(distance,distanceVarianceExponent) * pow(supportMapElevationGPAdded - rawMap.at("elevation", index), heightVarianceExponent);
+            if (isnan(supportMapVarianceGPAdded)) supportMapVarianceGPAdded = pow(distance,distanceVarianceExponent);
+        }
+
+        // New variance scheme..
+        //supportMapVarianceGPAdded = supportMapVarianceGPAdded * distance * supportMap.at("sinkage_depth_gp", index) * 10000.0;
+
+
+//        if (!useBag_){
+//            auto& fusedMapElevationGP = fusedMap.at("elevation_gp_added_raw", index);
+//            if (!isnan(supportMapElevationGPAdded)) fusedMapElevationGP = supportMapElevationGPAdded;
+//        }
     }
 
 
@@ -1353,6 +1371,21 @@ bool SupportSurfaceEstimation::terrainContinuityLayerGP(std::string& tip, GridMa
                                         continuityGPNNBeta_, continuityGPRQa_, continuityGPCC_, continuityHYa_, continuityHYb_,
                                        continuityHYsigmaf_, continuityGPKernel_);
 
+        double totalHeight = 0.0;
+        int counter = 0;
+        // Version of gaussian kernel with zero mean.
+        for (unsigned int j = 0; j < footTipHistoryGP_.size(); ++j) {
+            Position tipPosLoc(footTipHistoryGP_[j](0), footTipHistoryGP_[j](1));
+            double localDistance = sqrt(pow(tipPosLoc(0) - tipPos(0), 2) + pow(tipPosLoc(1) - tipPos(1), 2));
+
+            if (localDistance < radius + 0.3) {
+                // To calculate the mean.
+                totalHeight += footTipHistoryGP_[j](2);
+                counter++;
+            }
+        }
+        double meanGP = totalHeight / double(counter);
+
         for (unsigned int j = 0; j < footTipHistoryGP_.size(); ++j) {
             Position tipPosLoc(footTipHistoryGP_[j](0), footTipHistoryGP_[j](1));
             double localDistance = sqrt(pow(tipPosLoc(0) - tipPos(0), 2) + pow(tipPosLoc(1) - tipPos(1), 2));
@@ -1360,10 +1393,15 @@ bool SupportSurfaceEstimation::terrainContinuityLayerGP(std::string& tip, GridMa
             if (localDistance < radius + 0.3) {
                 trainInput(0) = tipPosLoc(0);
                 trainInput(1) = tipPosLoc(1);
-                trainOutput(0) = footTipHistoryGP_[j](2);
+                //trainOutput(0) = footTipHistoryGP_[j](2);
+                trainOutput(0) = footTipHistoryGP_[j](2) - meanGP;
                 continuityGPR.AddTrainingData(trainInput, trainOutput);
             }
         }
+
+
+
+
 
         for (CircleIterator iterator(supportMap, tipPos, radius); !iterator.isPastEnd(); ++iterator) {
             const Index index(*iterator);
@@ -1377,7 +1415,10 @@ bool SupportSurfaceEstimation::terrainContinuityLayerGP(std::string& tip, GridMa
             testInput(1) = cellPos(1);
 
 
-            double outputHeight = continuityGPR.DoRegressionNN(testInput)(0);  // Hope this shouldnt be testOutput(0)
+            //double outputHeight = continuityGPR.DoRegressionNN(testInput)(0);
+
+            // Mean shifted version.
+            double outputHeight = continuityGPR.DoRegressionNN(testInput)(0) + meanGP;  // Hope this shouldnt be testOutput(0)
 
             double distance = sqrt(pow(cellPos(0) - tipPos(0), 2) + pow(cellPos(1) - tipPos(1), 2));
 
