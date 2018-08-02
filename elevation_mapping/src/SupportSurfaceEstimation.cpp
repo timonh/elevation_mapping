@@ -1254,6 +1254,140 @@ bool SupportSurfaceEstimation::simpleSinkageDepthLayer(std::string& tip, const d
     return true;
 }
 
+bool SupportSurfaceEstimation::sinkageDepthLayerGP(std::string& tip, const double& tipDifference, GridMap& supportMap){
+
+    //if (tip == "left" || tip == "right") {
+        if (leftStanceVector_.size() > 0 && rightStanceVector_.size() > 0 && leftHindStanceVector_.size() > 0 && rightHindStanceVector_.size() > 0){
+
+            double radius = 0.7;
+            int maxSizeFootTipHistory = 15; // See what this does..
+
+            std::cout << "TIP DIFFERENCE::::::::::::::::::::::::::::::::::::::::::::::: " << -tipDifference << std::endl;
+            // DEBUG:
+            //if (-tipDifference < 0.0) std::cout << "Attention, negative tip DIfference found!!: " << -tipDifference << std::endl;
+            //if (initializedLeftSinkageDepth_ && leftFrontSinkageDepth_ < 0.0) std::cout << "Attention, negative leftfrontsd found!!: " << leftFrontSinkageDepth_ << std::endl;
+            //if (initializedRightSinkageDepth_ && rightFrontSinkageDepth_ < 0.0) std::cout << "Attention, negative rightfrontsd found!!: " << rightFrontSinkageDepth_ << std::endl;
+            //if (isnan(leftFrontSinkageDepth_)) std::cout << " NANANANANANANAANNNNNNNNNNNNANNNNNNNAAAAAAAAAAAAAANNNNNNNNNNNNNN" << std::endl;
+
+            // Do history vector.
+            Position3 footTip = getFootTipPosition3(tip);
+
+            if (isnan(tipDifference)) {
+                if (tip == "left" && !isnan(leftFrontSinkageDepth_) && initializedLeftSinkageDepth_) {
+                    sinkageDepthHistory_.push_back(leftFrontSinkageDepth_); // Do not update the sinkage depth if there is no new information.
+                    sinkageFootTipHistoryGP_.push_back(footTip);
+                    if (fabs(leftFrontSinkageDepth_) < 0.001) std::cout << "WARNING: the stored sinkage depth value is very close to zero!!! \n \n \n \n \n WARNING \n";
+                }
+                if (tip == "right" && !isnan(rightFrontSinkageDepth_) && initializedRightSinkageDepth_) {
+                    sinkageDepthHistory_.push_back(rightFrontSinkageDepth_);
+                    sinkageFootTipHistoryGP_.push_back(footTip);
+                    if (fabs(rightFrontSinkageDepth_) < 0.001) std::cout << "WARNING: the stored sinkage depth value is very close to zero!!! \n \n \n \n \n WARNING \n";
+                }
+                if (tip == "lefthind" && !isnan(leftHindSinkageDepth_) && initializedLeftHindSinkageDepth_) {
+                    sinkageDepthHistory_.push_back(leftHindSinkageDepth_);
+                    sinkageFootTipHistoryGP_.push_back(footTip);
+                    if (fabs(leftHindSinkageDepth_) < 0.001) std::cout << "WARNING: the stored sinkage depth value is very close to zero!!! \n \n \n \n \n WARNING \n";
+                }
+                if (tip == "righthind" && !isnan(rightHindSinkageDepth_) && initializedRightHindSinkageDepth_) {
+                    sinkageDepthHistory_.push_back(rightHindSinkageDepth_);
+                    sinkageFootTipHistoryGP_.push_back(footTip);
+                    if (fabs(rightHindSinkageDepth_) < 0.001) std::cout << "WARNING: the stored sinkage depth value is very close to zero!!! \n \n \n \n \n WARNING \n";
+                }
+
+            }
+            else {
+                sinkageDepthHistory_.push_back(-tipDifference);
+                sinkageFootTipHistoryGP_.push_back(footTip);
+                if (tip == "left"){
+                    leftFrontSinkageDepth_ = -tipDifference;
+                    initializedLeftSinkageDepth_ = true;
+                }
+                if (tip == "right") {
+                    rightFrontSinkageDepth_ = -tipDifference;
+                    initializedRightSinkageDepth_ = true;
+                }
+                if (tip == "lefthind") {
+                    leftHindSinkageDepth_ = -tipDifference;
+                    initializedLeftHindSinkageDepth_ = true;
+                }
+                if (tip == "righthind") {
+                    rightHindSinkageDepth_ = -tipDifference;
+                    initializedRightHindSinkageDepth_ = true;
+                }
+
+            }
+
+            std::cout << "after if loop" << std::endl;
+            //std::cout << "leftFrontSinkageDepth:: " << leftFrontSinkageDepth_ << " rightFrontSinkageDepth_ " << rightFrontSinkageDepth_ << std::endl;
+
+
+            if (sinkageFootTipHistoryGP_.size() > maxSizeFootTipHistory) { // They must be the same!!
+                sinkageFootTipHistoryGP_.erase(sinkageFootTipHistoryGP_.begin());
+                sinkageDepthHistory_.erase(sinkageDepthHistory_.begin());
+                //sinkageDepthHistoryHind_.erase(sinkageDepthHistoryHind_.begin());
+            }
+
+            if (sinkageFootTipHistoryGP_.size() != sinkageDepthHistory_.size()) {
+                std::cout << "Attention, having issues \n \n \n \n ISSUES i said!!" << std::endl;
+            }
+
+            std::cout << "here i was still 1" << std::endl;
+
+            Position center(footTip(0), footTip(1));
+
+            for (grid_map::CircleIterator iterator(supportMap, center, radius); !iterator.isPastEnd(); ++iterator) {
+
+                const Index index(*iterator);
+                auto& supportMapElevationGPSinkage = supportMap.at("sinkage_depth_gp", index);
+                Position pos;
+                supportMap.getPosition(index, pos);
+
+                float addingDistance = sqrt(pow(pos(0) - footTip(0), 2) + pow(pos(1) - footTip(1), 2));
+
+                // Keep track of total weight and temporary height value.
+                float totalWeight = 0.0;
+                float tempHeight = 0.0;
+
+                int maxIter = min(sinkageFootTipHistoryGP_.size(), sinkageDepthHistory_.size());
+
+                for (unsigned int i = 0; i < maxIter; ++i) {
+                    double distance = sqrt(pow(sinkageFootTipHistoryGP_[i](0) - footTip(0), 2) + pow(sinkageFootTipHistoryGP_[i](1) - footTip(1), 2));
+                    if (distance < radius) {
+                        float localDistance = sqrt(pow(sinkageFootTipHistoryGP_[i](0) - pos(0), 2) + pow(sinkageFootTipHistoryGP_[i](1) - pos(1), 2));
+                        float weight;
+                        if (localDistance > 0.0001) weight = 1 / pow(localDistance, exponentSinkageDepthWeight_); // Hacking here to test the range of the power.
+                        else weight = 0.0;
+                        totalWeight += weight;
+                        if (!isnan(sinkageDepthHistory_[i])) tempHeight += sinkageDepthHistory_[i] * weight;
+                    }
+                }
+
+                double output;
+                if (totalWeight > 0.0001) output = tempHeight / totalWeight;
+                else if (!isnan(tipDifference)) output = tipDifference;
+                else output = 0.0;
+
+                float addingWeight = fmax(1 - (addingDistance / radius), 0.0);
+                if (!isnan(output)){
+                    if (!supportMap.isValid(index)){
+                        supportMapElevationGPSinkage = output;
+                    }
+                    else{
+                        if (!isnan(supportMapElevationGPSinkage))  // Hacked away, attention!!
+                            supportMapElevationGPSinkage = addingWeight * output + (1 - addingWeight) * supportMapElevationGPSinkage;
+                    }
+                }
+                //else std::cout << "Output would have been NANANANANANANANANANANA" << std::endl;
+                // TODO: idea: exponent of distance proportionality as learning parameter.
+                //if (isnan(supportMap.at("terrain_continuity_gp", index)))
+            }
+        }
+
+        std::cout << "Check 123456" << std::endl;
+    //}
+    return true;
+}
+
 // Put them together at some time..
 bool SupportSurfaceEstimation::simpleTerrainContinuityLayer(std::string& tip, GridMap& supportMap){
 
@@ -1342,7 +1476,6 @@ bool SupportSurfaceEstimation::terrainContinuityLayerGP(std::string& tip, GridMa
 
     if (leftStanceVector_.size() > 0 && rightStanceVector_.size() > 0){
 
-
         // Set start time for time calculation for continuity layer update.
         const ros::WallTime continuityGPStartTime(ros::WallTime::now());
 
@@ -1408,6 +1541,7 @@ bool SupportSurfaceEstimation::terrainContinuityLayerGP(std::string& tip, GridMa
             Eigen::VectorXf testInput(inputDim);
 
             auto& supportMapContinuityGP = supportMap.at("terrain_continuity_gp", index);
+            auto& supportMapContinuityVarianceGP = supportMap.at("terrain_continuity_variance_gp", index);
 
             Position cellPos;
             supportMap.getPosition(index, cellPos);
@@ -1418,7 +1552,8 @@ bool SupportSurfaceEstimation::terrainContinuityLayerGP(std::string& tip, GridMa
             //double outputHeight = continuityGPR.DoRegressionNN(testInput)(0);
 
             // Mean shifted version.
-            double outputHeight = continuityGPR.DoRegressionNN(testInput)(0) + meanGP;  // Hope this shouldnt be testOutput(0)
+            double outputHeight = continuityGPR.DoRegressionNNVariance(testInput)(0) + meanGP;  // Hope this shouldnt be testOutput(0)
+            double outputVariance = fabs(continuityGPR.GetVariance()(0));
 
             double distance = sqrt(pow(cellPos(0) - tipPos(0), 2) + pow(cellPos(1) - tipPos(1), 2));
 
@@ -1442,6 +1577,20 @@ bool SupportSurfaceEstimation::terrainContinuityLayerGP(std::string& tip, GridMa
                         supportMapContinuityGP = (weight) * outputHeight + (1.0 - weight) * supportMapContinuityGP; // Attention hacked this in here..
                 }
             }
+
+            if (!isnan(outputVariance)){
+                if (isnan(supportMapContinuityVarianceGP)){
+                    supportMapContinuityVarianceGP = outputVariance;
+                }
+                else{
+                    if (!isnan(supportMapContinuityVarianceGP))
+                        supportMapContinuityVarianceGP = (weight) * outputVariance + (1.0 - weight) * supportMapContinuityVarianceGP; // Attention hacked this in here..
+                }
+            }
+
+
+
+
         }
         const ros::WallDuration duration = ros::WallTime::now() - continuityGPStartTime;
         ROS_INFO("GP terrain continuity layer has been updated with a new point cloud in %f s.", duration.toSec());

@@ -524,6 +524,9 @@ private:
  bool simpleSinkageDepthLayer(std::string& tip, const double& tipDifference, grid_map::GridMap& supportMap);
 
  //! TODO: Description:
+ bool sinkageDepthLayerGP(std::string& tip, const double& tipDifference, grid_map::GridMap& supportMap);
+
+ //! TODO: Description:
  bool simpleTerrainContinuityLayer(std::string& tip, grid_map::GridMap& supportMap);
 
  //! TODO: Description:
