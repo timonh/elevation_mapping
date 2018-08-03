@@ -82,6 +82,12 @@ void SupportSurfaceEstimation::setParameters(){
     nodeHandle_.param("continuity_gp_hy_b", continuityHYb_, 10.0);
     nodeHandle_.param("continuity_gp_hy_sigma_f", continuityHYsigmaf_, 10.0);
 
+    nodeHandle_.param("sinkage_gp_lengthscale", sinkageGPLengthscale_, 0.1);
+    nodeHandle_.param("sinkage_gp_sigma_n", sinkageGPSigmaN_, 0.1);
+    nodeHandle_.param("sinkage_gp_sigma_f", sinkageGPSigmaF_, 0.001);
+    nodeHandle_.param("sinkage_gp_kernel", sinkageGPKernel_, std::string("ou"));
+
+
     nodeHandle_.param("use_sign_selective_continuity_filter", useSignSelectiveContinuityFilter_, true);
     nodeHandle_.param("sign_selective_continuity_filter_gain", signSelectiveContinuityFilterGain_, 0.5);
     nodeHandle_.param("sinkage_depth_filter_gain_up", sinkageDepthFilterGainUp_, 0.1);
@@ -166,7 +172,7 @@ bool SupportSurfaceEstimation::updateSupportSurfaceEstimation(std::string tip, G
     else ROS_WARN("Foot tip considered not to be inside the valid area of the elevation map. \n");
 
     // Set the raw Elevation Map layer to be the upper bound of the support surface estimation.
-    supportSurfaceUpperBoundingGP(rawMap, supportMap);
+    //supportSurfaceUpperBoundingGP(rawMap, supportMap);
 
     // Publish map
     grid_map_msgs::GridMap mapMessageGP;
@@ -667,6 +673,7 @@ bool SupportSurfaceEstimation::mainGPRegression(double tileResolution, double ti
 
     // Update sinkage depth map.
     simpleSinkageDepthLayer(tip, tipDifference, supportMap);
+    //sinkageDepthLayerGP(tip, tipDifference, supportMap);
 
     // Subparams of tiling.
     int noOfTilesPerHalfSide = floor((sideLengthAddingPatch / 2.0) / tileResolution);
@@ -885,8 +892,11 @@ bool SupportSurfaceEstimation::mainGPRegression(double tileResolution, double ti
         }
         else {
             //supportMapVarianceGPAdded = supportMapVarianceGP; // tests!!!!
-            supportMapVarianceGPAdded = pow(distance,distanceVarianceExponent) * pow(supportMapElevationGPAdded - rawMap.at("elevation", index), heightVarianceExponent);
-            if (isnan(supportMapVarianceGPAdded)) supportMapVarianceGPAdded = pow(distance,distanceVarianceExponent);
+            //supportMapVarianceGPAdded = pow(distance,distanceVarianceExponent) * pow(fabs(supportMapElevationGPAdded - rawMap.at("elevation", index)) - supportMap.at("sinkage_depth_gp", index), 1.0);
+            //if (isnan(supportMapVarianceGPAdded)) supportMapVarianceGPAdded = pow(distance,distanceVarianceExponent);
+            supportMapVarianceGPAdded = supportMap.at("terrain_continuity_variance_gp", index) *
+                    pow(fabs(supportMapElevationGPAdded - rawMap.at("elevation", index)) - supportMap.at("sinkage_depth_gp", index), 0.5);
+            if (isnan(supportMapVarianceGPAdded)) supportMapVarianceGPAdded = supportMap.at("terrain_continuity_variance_gp", index); // Testing some stuff..
         }
 
         // New variance scheme..
@@ -1256,135 +1266,126 @@ bool SupportSurfaceEstimation::simpleSinkageDepthLayer(std::string& tip, const d
 
 bool SupportSurfaceEstimation::sinkageDepthLayerGP(std::string& tip, const double& tipDifference, GridMap& supportMap){
 
-    //if (tip == "left" || tip == "right") {
-        if (leftStanceVector_.size() > 0 && rightStanceVector_.size() > 0 && leftHindStanceVector_.size() > 0 && rightHindStanceVector_.size() > 0){
+    if (leftStanceVector_.size() > 0 && rightStanceVector_.size() > 0 && leftHindStanceVector_.size() > 0 && rightHindStanceVector_.size() > 0){
 
-            double radius = 0.7;
-            int maxSizeFootTipHistory = 15; // See what this does..
+        double radius = 0.7;
+        int maxSizeFootTipHistory;
+        if (runHindLegSupportSurfaceEstimation_) maxSizeFootTipHistory = 20; // See what this does..
+        else maxSizeFootTipHistory = 10;
 
-            std::cout << "TIP DIFFERENCE::::::::::::::::::::::::::::::::::::::::::::::: " << -tipDifference << std::endl;
-            // DEBUG:
-            //if (-tipDifference < 0.0) std::cout << "Attention, negative tip DIfference found!!: " << -tipDifference << std::endl;
-            //if (initializedLeftSinkageDepth_ && leftFrontSinkageDepth_ < 0.0) std::cout << "Attention, negative leftfrontsd found!!: " << leftFrontSinkageDepth_ << std::endl;
-            //if (initializedRightSinkageDepth_ && rightFrontSinkageDepth_ < 0.0) std::cout << "Attention, negative rightfrontsd found!!: " << rightFrontSinkageDepth_ << std::endl;
-            //if (isnan(leftFrontSinkageDepth_)) std::cout << " NANANANANANANAANNNNNNNNNNNNANNNNNNNAAAAAAAAAAAAAANNNNNNNNNNNNNN" << std::endl;
+        // Do history vector.
+        Position3 footTip = getFootTipPosition3(tip);
 
-            // Do history vector.
-            Position3 footTip = getFootTipPosition3(tip);
+        if (!isnan(tipDifference)) {
+            sinkageDepthHistory_.push_back(-tipDifference);
+            sinkageFootTipHistoryGP_.push_back(footTip);
+        }
 
-            if (isnan(tipDifference)) {
-                if (tip == "left" && !isnan(leftFrontSinkageDepth_) && initializedLeftSinkageDepth_) {
-                    sinkageDepthHistory_.push_back(leftFrontSinkageDepth_); // Do not update the sinkage depth if there is no new information.
-                    sinkageFootTipHistoryGP_.push_back(footTip);
-                    if (fabs(leftFrontSinkageDepth_) < 0.001) std::cout << "WARNING: the stored sinkage depth value is very close to zero!!! \n \n \n \n \n WARNING \n";
-                }
-                if (tip == "right" && !isnan(rightFrontSinkageDepth_) && initializedRightSinkageDepth_) {
-                    sinkageDepthHistory_.push_back(rightFrontSinkageDepth_);
-                    sinkageFootTipHistoryGP_.push_back(footTip);
-                    if (fabs(rightFrontSinkageDepth_) < 0.001) std::cout << "WARNING: the stored sinkage depth value is very close to zero!!! \n \n \n \n \n WARNING \n";
-                }
-                if (tip == "lefthind" && !isnan(leftHindSinkageDepth_) && initializedLeftHindSinkageDepth_) {
-                    sinkageDepthHistory_.push_back(leftHindSinkageDepth_);
-                    sinkageFootTipHistoryGP_.push_back(footTip);
-                    if (fabs(leftHindSinkageDepth_) < 0.001) std::cout << "WARNING: the stored sinkage depth value is very close to zero!!! \n \n \n \n \n WARNING \n";
-                }
-                if (tip == "righthind" && !isnan(rightHindSinkageDepth_) && initializedRightHindSinkageDepth_) {
-                    sinkageDepthHistory_.push_back(rightHindSinkageDepth_);
-                    sinkageFootTipHistoryGP_.push_back(footTip);
-                    if (fabs(rightHindSinkageDepth_) < 0.001) std::cout << "WARNING: the stored sinkage depth value is very close to zero!!! \n \n \n \n \n WARNING \n";
-                }
+        if (sinkageFootTipHistoryGP_.size() > maxSizeFootTipHistory) { // They must be the same!!
+            sinkageFootTipHistoryGP_.erase(sinkageFootTipHistoryGP_.begin());
+            sinkageDepthHistory_.erase(sinkageDepthHistory_.begin());
+            //sinkageDepthHistoryHind_.erase(sinkageDepthHistoryHind_.begin());
+        }
 
+        if (sinkageFootTipHistoryGP_.size() != sinkageDepthHistory_.size()) {
+            std::cout << "Attention, having issues \n \n \n \n ISSUES i said!!" << std::endl;
+        }
+
+        //std::cout << "here i was still 1" << std::endl;
+
+        int inputDim = 2;
+        int outputDim = 1;
+        GaussianProcessRegression<float> sinkageGPR(inputDim, outputDim);
+
+        // lengthscale, sigma_n, sigma_f, betaNN, a_RQ, cConst, kernel
+        //sinkageGPR.SetHyperParams(sinkageGPLengthscale_, sinkageGPSigmaN_, sinkageGPSigmaF_);
+        sinkageGPR.SetHyperParamsAll(sinkageGPLengthscale_, sinkageGPSigmaN_, sinkageGPSigmaF_,
+                                        continuityGPNNBeta_, continuityGPRQa_, continuityGPCC_, continuityHYa_, continuityHYb_,
+                                       continuityHYsigmaf_, sinkageGPKernel_);
+
+        double totalHeight = 0.0;
+        int counter = 0;
+        for (unsigned int j = 0; j < sinkageFootTipHistoryGP_.size(); ++j) {
+            Position tipPosLoc(sinkageFootTipHistoryGP_[j](0), sinkageFootTipHistoryGP_[j](1));
+            double localDistance = sqrt(pow(tipPosLoc(0) - footTip(0), 2) + pow(tipPosLoc(1) - footTip(1), 2));
+            if (localDistance < radius + 0.3) {
+                // To calculate the mean.
+                totalHeight += sinkageDepthHistory_[j];
+                counter++;
             }
-            else {
-                sinkageDepthHistory_.push_back(-tipDifference);
-                sinkageFootTipHistoryGP_.push_back(footTip);
-                if (tip == "left"){
-                    leftFrontSinkageDepth_ = -tipDifference;
-                    initializedLeftSinkageDepth_ = true;
-                }
-                if (tip == "right") {
-                    rightFrontSinkageDepth_ = -tipDifference;
-                    initializedRightSinkageDepth_ = true;
-                }
-                if (tip == "lefthind") {
-                    leftHindSinkageDepth_ = -tipDifference;
-                    initializedLeftHindSinkageDepth_ = true;
-                }
-                if (tip == "righthind") {
-                    rightHindSinkageDepth_ = -tipDifference;
-                    initializedRightHindSinkageDepth_ = true;
-                }
+        }
 
+        double meanSinkageGP = totalHeight / double(counter);
+
+
+        Eigen::VectorXf trainInput(inputDim);
+        Eigen::VectorXf trainOutput(outputDim);
+
+        for (unsigned int j = 0; j < sinkageFootTipHistoryGP_.size(); ++j) {
+
+            Position tipPosLoc(sinkageFootTipHistoryGP_[j](0), sinkageFootTipHistoryGP_[j](1));
+            double localDistance = sqrt(pow(tipPosLoc(0) - footTip(0), 2) + pow(tipPosLoc(1) - footTip(1), 2));
+
+            if (localDistance < radius + 0.3) {
+                trainInput(0) = tipPosLoc(0);
+                trainInput(1) = tipPosLoc(1);
+                trainOutput(0) = sinkageDepthHistory_[j] - meanSinkageGP;
+                if (!isnan(trainOutput(0))) sinkageGPR.AddTrainingData(trainInput, trainOutput);
             }
+        }
 
-            std::cout << "after if loop" << std::endl;
-            //std::cout << "leftFrontSinkageDepth:: " << leftFrontSinkageDepth_ << " rightFrontSinkageDepth_ " << rightFrontSinkageDepth_ << std::endl;
+        double l, n, f;
+        sinkageGPR.GetHyperParams(l, n, f);
+        std::cout << "hyperparams: l: " << l << " n: " << n << " f: " << f << std::endl;
 
 
-            if (sinkageFootTipHistoryGP_.size() > maxSizeFootTipHistory) { // They must be the same!!
-                sinkageFootTipHistoryGP_.erase(sinkageFootTipHistoryGP_.begin());
-                sinkageDepthHistory_.erase(sinkageDepthHistory_.begin());
-                //sinkageDepthHistoryHind_.erase(sinkageDepthHistoryHind_.begin());
-            }
-
-            if (sinkageFootTipHistoryGP_.size() != sinkageDepthHistory_.size()) {
-                std::cout << "Attention, having issues \n \n \n \n ISSUES i said!!" << std::endl;
-            }
-
-            std::cout << "here i was still 1" << std::endl;
-
+        if (sinkageGPR.get_n_data() > 0) {
             Position center(footTip(0), footTip(1));
-
             for (grid_map::CircleIterator iterator(supportMap, center, radius); !iterator.isPastEnd(); ++iterator) {
 
                 const Index index(*iterator);
                 auto& supportMapElevationGPSinkage = supportMap.at("sinkage_depth_gp", index);
+                auto& supportMapElevationGPSinkageVariance = supportMap.at("sinkage_depth_variance_gp", index);
+
                 Position pos;
                 supportMap.getPosition(index, pos);
+                Eigen::VectorXf testInput(inputDim);
+                testInput(0) = pos(0);
+                testInput(1) = pos(1);
 
-                float addingDistance = sqrt(pow(pos(0) - footTip(0), 2) + pow(pos(1) - footTip(1), 2));
+                double regressionOutput = sinkageGPR.DoRegressionNNVariance(testInput)(0) + meanSinkageGP;
+                double regressionOutputVariance = sinkageGPR.GetVariance()(0);
 
-                // Keep track of total weight and temporary height value.
-                float totalWeight = 0.0;
-                float tempHeight = 0.0;
+                double distance = sqrt(pow(pos(0) - footTip(0), 2) + pow(pos(1) - footTip(1), 2));
+                double weight;
+                if (distance <= weightDecayThreshold_ * radius) weight = 1.0 - (1.0 - weightDecayThreshold_) * (distance / radius);
+                else weight = weightDecayThreshold_ - weightDecayThreshold_ * (distance - weightDecayThreshold_ * radius)
+                        / ((1.0 - weightDecayThreshold_) * radius);
 
-                int maxIter = min(sinkageFootTipHistoryGP_.size(), sinkageDepthHistory_.size());
-
-                for (unsigned int i = 0; i < maxIter; ++i) {
-                    double distance = sqrt(pow(sinkageFootTipHistoryGP_[i](0) - footTip(0), 2) + pow(sinkageFootTipHistoryGP_[i](1) - footTip(1), 2));
-                    if (distance < radius) {
-                        float localDistance = sqrt(pow(sinkageFootTipHistoryGP_[i](0) - pos(0), 2) + pow(sinkageFootTipHistoryGP_[i](1) - pos(1), 2));
-                        float weight;
-                        if (localDistance > 0.0001) weight = 1 / pow(localDistance, exponentSinkageDepthWeight_); // Hacking here to test the range of the power.
-                        else weight = 0.0;
-                        totalWeight += weight;
-                        if (!isnan(sinkageDepthHistory_[i])) tempHeight += sinkageDepthHistory_[i] * weight;
-                    }
-                }
-
-                double output;
-                if (totalWeight > 0.0001) output = tempHeight / totalWeight;
-                else if (!isnan(tipDifference)) output = tipDifference;
-                else output = 0.0;
-
-                float addingWeight = fmax(1 - (addingDistance / radius), 0.0);
-                if (!isnan(output)){
-                    if (!supportMap.isValid(index)){
-                        supportMapElevationGPSinkage = output;
+                // Adjust this!!
+                if (!isnan(regressionOutput)){
+                    if (isnan(supportMapElevationGPSinkage) || !supportMap.isValid(index)){
+                        supportMapElevationGPSinkage = regressionOutput;
                     }
                     else{
-                        if (!isnan(supportMapElevationGPSinkage))  // Hacked away, attention!!
-                            supportMapElevationGPSinkage = addingWeight * output + (1 - addingWeight) * supportMapElevationGPSinkage;
+                        if (!isnan(supportMapElevationGPSinkage))
+                            supportMapElevationGPSinkage = (weight) * regressionOutput + (1.0 - weight) * supportMapElevationGPSinkage; // Attention hacked this in here..
                     }
                 }
-                //else std::cout << "Output would have been NANANANANANANANANANANA" << std::endl;
-                // TODO: idea: exponent of distance proportionality as learning parameter.
-                //if (isnan(supportMap.at("terrain_continuity_gp", index)))
+
+                if (!isnan(regressionOutputVariance)){
+                    if (isnan(supportMapElevationGPSinkageVariance)){
+                        supportMapElevationGPSinkageVariance = regressionOutputVariance;
+                    }
+                    else{
+                        if (!isnan(supportMapElevationGPSinkageVariance))
+                            supportMapElevationGPSinkageVariance = (weight) * regressionOutputVariance + (1.0 - weight) * supportMapElevationGPSinkageVariance; // Attention hacked this in here..
+                    }
+                }
+                // Until here!!!
             }
         }
-
-        std::cout << "Check 123456" << std::endl;
-    //}
+    }
     return true;
 }
 

@@ -758,7 +758,7 @@ private:
 
  // Foot tip position history for GP.
  std::vector<grid_map::Position3> footTipHistoryGP_;
- std::vector<float> sinkageDepthHistory_, sinkageDepthHistoryHind_;
+ std::vector<float> sinkageDepthHistory_;
 
  // Quadruped velocity for low pass filtered velocity.
  Eigen::Vector3f quadrupedBaseVelocity_;
@@ -825,6 +825,12 @@ private:
  double continuityHYa_;
  double continuityHYb_;
  double continuityHYsigmaf_;
+
+ // GP Hyperparameters for sinkage depth layer with gaussian kernel
+ double sinkageGPLengthscale_;
+ double sinkageGPSigmaN_;
+ double sinkageGPSigmaF_;
+ std::string sinkageGPKernel_;
 };
 
 } /* namespace */

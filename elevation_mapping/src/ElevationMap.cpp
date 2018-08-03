@@ -80,7 +80,7 @@ ElevationMap::ElevationMap(ros::NodeHandle nodeHandle)
               "sensor_z_at_lowest_scan", "elevation_gp_added_raw", "foot_tip_elevation", "support_surface_smooth"}),
       fusedMap_({"elevation", "upper_bound", "lower_bound", "color", "elevation_gp_added_raw"}),
       supportMap_({"elevation", "variance", "elevation_gp", "elevation_gp_added"}),
-      supportMapGP_({"elevation", "variance", "elevation_gp", "variance_gp", "sinkage_depth_gp",
+      supportMapGP_({"elevation", "variance", "elevation_gp", "variance_gp", "sinkage_depth_gp", "sinkage_depth_variance_gp",
                     "terrain_continuity_gp", "terrain_continuity_variance_gp", "smoothed_top_layer_gp", "ground_truth"}),
       hasUnderlyingMap_(false),
       visibilityCleanupDuration_(0.0),
