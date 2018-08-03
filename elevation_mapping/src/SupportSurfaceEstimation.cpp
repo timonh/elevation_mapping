@@ -798,7 +798,7 @@ bool SupportSurfaceEstimation::mainGPRegression(double tileResolution, double ti
                 //std::cout << "The Number of Data in this tile is: " << myGPR.get_n_data() << std::endl;
 
                 // Only perform regression if no. of Data is sufficiently high.
-                if (myGPR.get_n_data() > 1){
+                if (myGPR.get_n_data() > 0){
 
                     // Loop here to get test output
                     for (CircleIterator iterator(supportMap, posTile, tileDiameter/2.0); !iterator.isPastEnd(); ++iterator) {
@@ -814,12 +814,12 @@ bool SupportSurfaceEstimation::mainGPRegression(double tileResolution, double ti
                         testInput(1) = inputPosition(1);
 
                         // Perform regression.
-                        //double regressionOutput = myGPR.DoRegression(testInput)(0);
-                        //double regressionOutputVariance = 0.0; // * sinkage / dist
+                        double regressionOutput = myGPR.DoRegression(testInput)(0);
+                        double regressionOutputVariance = 0.0; // * sinkage / dist
 
                         // Hacked away to check if it speeds things up..
-                        double regressionOutput = myGPR.DoRegressionVariance(testInput)(0);
-                        double regressionOutputVariance = fabs(myGPR.GetVariance()(0));
+                        //double regressionOutput = myGPR.DoRegressionVariance(testInput)(0);
+                        //double regressionOutputVariance = fabs(myGPR.GetVariance()(0));
 
                         if (isnan(supportMapElevationGP)) supportMapElevationGP = regressionOutput;
                         else supportMapElevationGP = 0.5 *  supportMapElevationGP + regressionOutput * 0.5;
@@ -840,10 +840,8 @@ bool SupportSurfaceEstimation::mainGPRegression(double tileResolution, double ti
         }
     }
 
-
     const ros::WallDuration duration2 = ros::WallTime::now() - mainGPStartTime;
     ROS_INFO("MAIN:::::::::iterated through all the tiles in %f s.", duration2.toSec());
-
 
     // Adding procedure.
     for (CircleIterator iterator(supportMap, footTip, radius); !iterator.isPastEnd(); ++iterator) { // HAcked to raw map for testing..
@@ -895,7 +893,7 @@ bool SupportSurfaceEstimation::mainGPRegression(double tileResolution, double ti
             //supportMapVarianceGPAdded = pow(distance,distanceVarianceExponent) * pow(fabs(supportMapElevationGPAdded - rawMap.at("elevation", index)) - supportMap.at("sinkage_depth_gp", index), 1.0);
             //if (isnan(supportMapVarianceGPAdded)) supportMapVarianceGPAdded = pow(distance,distanceVarianceExponent);
             supportMapVarianceGPAdded = supportMap.at("terrain_continuity_variance_gp", index) *
-                    pow(fabs(supportMapElevationGPAdded - rawMap.at("elevation", index)) - supportMap.at("sinkage_depth_gp", index), 0.5);
+                    pow(fabs(supportMapElevationGPAdded - rawMap.at("elevation", index)) - supportMap.at("sinkage_depth_gp", index), 0.2);
             if (isnan(supportMapVarianceGPAdded)) supportMapVarianceGPAdded = supportMap.at("terrain_continuity_variance_gp", index); // Testing some stuff..
         }
 
@@ -1135,8 +1133,10 @@ bool SupportSurfaceEstimation::simpleSinkageDepthLayer(std::string& tip, const d
     //if (tip == "left" || tip == "right") {
         if (leftStanceVector_.size() > 0 && rightStanceVector_.size() > 0 && leftHindStanceVector_.size() > 0 && rightHindStanceVector_.size() > 0){
 
-            double radius = 0.7;
-            int maxSizeFootTipHistory = 15; // See what this does..
+            double radius = 0.5;
+            int maxSizeFootTipHistory;
+            if (runHindLegSupportSurfaceEstimation_) maxSizeFootTipHistory = 20;
+            else maxSizeFootTipHistory = 10;
 
             std::cout << "TIP DIFFERENCE::::::::::::::::::::::::::::::::::::::::::::::: " << -tipDifference << std::endl;
             // DEBUG:
@@ -1245,13 +1245,10 @@ bool SupportSurfaceEstimation::simpleSinkageDepthLayer(std::string& tip, const d
 
                 float addingWeight = fmax(1 - (addingDistance / radius), 0.0);
                 if (!isnan(output)){
-                    if (!supportMap.isValid(index)){
-                        supportMapElevationGPSinkage = output;
-                    }
-                    else{
-                        if (!isnan(supportMapElevationGPSinkage))  // Hacked away, attention!!
-                            supportMapElevationGPSinkage = addingWeight * output + (1 - addingWeight) * supportMapElevationGPSinkage;
-                    }
+
+                    if (!isnan(supportMapElevationGPSinkage))  // Hacked away, attention!!
+                        supportMapElevationGPSinkage = addingWeight * output + (1 - addingWeight) * supportMapElevationGPSinkage;
+                    else supportMapElevationGPSinkage = output;
                 }
                 //else std::cout << "Output would have been NANANANANANANANANANANA" << std::endl;
                 // TODO: idea: exponent of distance proportionality as learning parameter.
@@ -1493,7 +1490,7 @@ bool SupportSurfaceEstimation::terrainContinuityLayerGP(std::string& tip, GridMa
 
         int inputDim = 2;
         int outputDim = 1;
-        float radius = 0.7;
+        float radius = 0.5;
 
         Eigen::VectorXf trainInput(inputDim);
         Eigen::VectorXf trainOutput(outputDim);
@@ -1549,7 +1546,6 @@ bool SupportSurfaceEstimation::terrainContinuityLayerGP(std::string& tip, GridMa
             testInput(0) = cellPos(0);
             testInput(1) = cellPos(1);
 
-
             //double outputHeight = continuityGPR.DoRegressionNN(testInput)(0);
 
             // Mean shifted version.
@@ -1570,7 +1566,7 @@ bool SupportSurfaceEstimation::terrainContinuityLayerGP(std::string& tip, GridMa
                     / ((1.0 - weightDecayThreshold_) * radius);
 
             if (!isnan(outputHeight)){
-                if (isnan(supportMapContinuityGP) || !supportMap.isValid(index)){
+                if (isnan(supportMapContinuityGP)){
                     supportMapContinuityGP = outputHeight;
                 }
                 else{
