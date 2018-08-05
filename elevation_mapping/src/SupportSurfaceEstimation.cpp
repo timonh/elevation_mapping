@@ -869,6 +869,11 @@ bool SupportSurfaceEstimation::mainGPRegression(double tileResolution, double ti
                 / ((1.0 - weightDecayThreshold_) * radius);
         // End of new weighting scheme
 
+        //test :
+        weight = fabs(max(1 - (distance / radius), 0.0)); // Linear weight, differences, artefacts, frame correction in high grass?
+        weight = fabs(exp(-distance/radius));
+
+
         // Get the various layers.
         auto& supportMapElevationGP = supportMap.at("elevation_gp", index);
         auto& supportMapElevationGPAdded = supportMap.at("elevation", index);
@@ -890,10 +895,11 @@ bool SupportSurfaceEstimation::mainGPRegression(double tileResolution, double ti
             //supportMapVarianceGPAdded = (1 - weight) * supportMapVarianceGPAdded + supportMapVarianceGP * weight; // test!!!
             if (!isnan(supportMap.at("terrain_continuity_variance_gp", index) + supportMap.at("sinkage_depth_variance_gp", index)))
                 supportMapVarianceGPAdded = (1 - weight) * supportMapVarianceGPAdded +
-                        (supportMap.at("terrain_continuity_variance_gp", index) + supportMap.at("sinkage_depth_variance_gp", index)) * weight;
+                        (supportMap.at("terrain_continuity_variance_gp", index) + 0.0 * supportMap.at("sinkage_depth_variance_gp", index)) * weight;
         }
         else {
-            supportMapVarianceGPAdded = supportMap.at("terrain_continuity_variance_gp", index) + supportMap.at("sinkage_depth_variance_gp", index);
+            supportMapVarianceGPAdded = supportMap.at("terrain_continuity_variance_gp", index) + 0.0 *
+                    supportMap.at("sinkage_depth_variance_gp", index);
         }
 
         // New variance scheme..
@@ -1494,7 +1500,7 @@ bool SupportSurfaceEstimation::terrainContinuityLayerGP(std::string& tip, GridMa
 
 
         // Option to change into corrected frame..
-        if (runDriftRefinementSupportSurface_) tipPos3(2) -= totalEstimatedDrift;
+        if (runDriftRefinementSupportSurface_) tipPos3(2) += totalEstimatedDrift; // Check if sensible..
         footTipHistoryGP_.push_back(tipPos3);
 
         if (footTipHistoryGP_.size() > maxSizeFootTipHistory)

@@ -577,7 +577,7 @@ void ElevationMapping::footTipStanceCallback(const quadruped_msgs::QuadrupedStat
   std::string tip = getTriggeredTip();
   if (trigger) {
 
-      if (tip != "lefthind" && tip != "righthind") {
+      //if (tip != "lefthind" && tip != "righthind") {
           grid_map::Position tipPosition(stanceProcessor_.meanStance_(0), stanceProcessor_.meanStance_(1));
           // Do function get ellipsis axes for clarity..
           Eigen::Array2d ellipseAxes;
@@ -587,7 +587,7 @@ void ElevationMapping::footTipStanceCallback(const quadruped_msgs::QuadrupedStat
           map_.fuseArea(tipPosition, ellipseAxes);
           // TODO: elevation map bound fusion here. and pass fused map as reference to the comparison function..
           stanceProcessor_.driftRefinement_.footTipElevationMapComparison(tip, stanceProcessor_.meanStance_, map_.getRawGridMap(), map_.getFusedGridMap(), map_.supportMapGP_);
-      }
+      //}
       stanceProcessor_.footTipTrigger_ = false;
 
       stanceProcessor_.driftRefinement_.publishAveragedFootTipPositionMarkers(map_.getRawGridMap(), stanceProcessor_.meanStance_, tip);
