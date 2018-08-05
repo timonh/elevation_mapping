@@ -592,9 +592,12 @@ void ElevationMapping::footTipStanceCallback(const quadruped_msgs::QuadrupedStat
 
       stanceProcessor_.driftRefinement_.publishAveragedFootTipPositionMarkers(map_.getRawGridMap(), stanceProcessor_.meanStance_, tip);
 
+      // Shift mean stance by the estimated total drift.
+
+
       // Support Surface Estimation.
       if (runSupportSurfaceEstimation_){
-          supportSurfaceEstimation_.updateSupportSurfaceEstimation(tip, map_.getRawGridMap(), map_.supportMapGP_, map_.getFusedGridMap(), stanceProcessor_.meanStance_);
+          supportSurfaceEstimation_.updateSupportSurfaceEstimation(tip, map_.getRawGridMap(), map_.supportMapGP_, map_.getFusedGridMap(), stanceProcessor_.meanStance_, stanceProcessor_.driftRefinement_.heightDifferenceFromComparison_);
       }
 
   }

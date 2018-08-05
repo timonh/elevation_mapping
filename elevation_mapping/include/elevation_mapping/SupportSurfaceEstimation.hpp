@@ -82,7 +82,8 @@ public:
 
  // New Stuff public
  //! TODO: Description:
- bool updateSupportSurfaceEstimation(std::string tip, grid_map::GridMap& rawMap, grid_map::GridMap& supportMap, grid_map::GridMap& fusedMap, Eigen::Vector3f& stance);
+ bool updateSupportSurfaceEstimation(std::string tip, grid_map::GridMap& rawMap, grid_map::GridMap& supportMap,
+                                     grid_map::GridMap& fusedMap, Eigen::Vector3f& stance, const double totalEstimatedDrift);
 
 
  /*!
@@ -554,7 +555,7 @@ private:
  double getMeanGroundTruthDifference();
 
  //! TODO: Description:
- bool terrainContinuityLayerGP(std::string& tip, grid_map::GridMap& supportMap);
+ bool terrainContinuityLayerGP(std::string& tip, grid_map::GridMap& supportMap, const double& totalEstimatedDrift);
 
  //! TODO: Description:
  bool terrainContinuityLayerGPwhole(std::string& tip, grid_map::GridMap& supportMap);
@@ -831,6 +832,9 @@ private:
  double sinkageGPSigmaN_;
  double sinkageGPSigmaF_;
  std::string sinkageGPKernel_;
+
+ // Param, bool run drift refinement in high grass.
+ bool runDriftRefinementSupportSurface_;
 };
 
 } /* namespace */

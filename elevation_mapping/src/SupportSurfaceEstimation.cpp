@@ -93,6 +93,9 @@ void SupportSurfaceEstimation::setParameters(){
     nodeHandle_.param("sinkage_depth_filter_gain_up", sinkageDepthFilterGainUp_, 0.1);
     nodeHandle_.param("sinkage_depth_filter_gain_down", sinkageDepthFilterGainDown_, 0.1);
 
+    nodeHandle_.param("run_drift_refinement_support_surface", runDriftRefinementSupportSurface_, false);
+
+
 
     // Initializations.
     supportSurfaceInitializationTrigger_ = false;
@@ -131,7 +134,7 @@ void SupportSurfaceEstimation::setParameters(){
 }
 
 bool SupportSurfaceEstimation::updateSupportSurfaceEstimation(std::string tip, GridMap& rawMap,
-                                                              GridMap& supportMap, GridMap& fusedMap, Eigen::Vector3f& stance){
+                                                              GridMap& supportMap, GridMap& fusedMap, Eigen::Vector3f& stance, const double totalEstimatedDrift){
     // Check if foot tip is inside of the elevation map.
     Position tipPosition(stance(0), stance(1));
     if(rawMap.isInside(tipPosition)) {
@@ -146,7 +149,7 @@ bool SupportSurfaceEstimation::updateSupportSurfaceEstimation(std::string tip, G
             if (leftStanceVector_.size() > 0 && rightStanceVector_.size() > 0) {
 
                 //simpleTerrainContinuityLayer(tip, supportMap);
-                terrainContinuityLayerGP(tip, supportMap);
+                terrainContinuityLayerGP(tip, supportMap, totalEstimatedDrift);
 
                 //terrainContinuityLayerGPwhole(tip, supportMap);
 
@@ -1474,7 +1477,7 @@ bool SupportSurfaceEstimation::simpleTerrainContinuityLayer(std::string& tip, Gr
     return true;
 }
 
-bool SupportSurfaceEstimation::terrainContinuityLayerGP(std::string& tip, GridMap& supportMap){
+bool SupportSurfaceEstimation::terrainContinuityLayerGP(std::string& tip, GridMap& supportMap, const double& totalEstimatedDrift){
 
     if (leftStanceVector_.size() > 0 && rightStanceVector_.size() > 0){
 
@@ -1488,7 +1491,12 @@ bool SupportSurfaceEstimation::terrainContinuityLayerGP(std::string& tip, GridMa
         if (runHindLegSupportSurfaceEstimation_) maxSizeFootTipHistory = 20;
         else maxSizeFootTipHistory = 10;
 
+
+
+        // Option to change into corrected frame..
+        if (runDriftRefinementSupportSurface_) tipPos3(2) -= totalEstimatedDrift;
         footTipHistoryGP_.push_back(tipPos3);
+
         if (footTipHistoryGP_.size() > maxSizeFootTipHistory)
             footTipHistoryGP_.erase(footTipHistoryGP_.begin());
 

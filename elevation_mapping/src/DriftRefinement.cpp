@@ -192,10 +192,15 @@ bool DriftRefinement::footTipElevationMapComparison(std::string tip, Eigen::Vect
                 std::cout << "variance of Support MAP:::::::::::::::::::::::::::::::::::::::::::::::::::::::-> " <<
                              supportMap.atPosition("variance", tipPosition) << std::endl;
 
+                double variance = supportMap.atPosition("variance", tipPosition);
+
                 elevationFused = supportMap.atPosition("elevation", tipPosition);
-                lowerBoundFused = elevationFused - 0.2 * sqrt(supportMap.atPosition("variance", tipPosition));
-                upperBoundFused = elevationFused + 0.2 * sqrt(supportMap.atPosition("variance", tipPosition));
+                lowerBoundFused = elevationFused - 0.02 * sqrt(fabs(variance)); // Testing here..
+                upperBoundFused = elevationFused + 0.02 * sqrt(fabs(variance));
                 verticalDifference = zTip - supportMap.atPosition("elevation", tipPosition);
+                std::cout << "LOWER BOUND BEFORE: " << lowerBoundFused << std::endl;
+                std::cout << "UPPER BOUND BEFORE: " << upperBoundFused << std::endl;
+                std::cout << "ELEVATION: " << elevationFused << std::endl;
             }
 
             std::cout << "VERTICAL DIFFERENCE DRIFT ADJUSTMENT: " << verticalDifference << std::endl;
@@ -212,8 +217,15 @@ bool DriftRefinement::footTipElevationMapComparison(std::string tip, Eigen::Vect
             // TODO: test validity of these:
 
             // DEBUG
-          //  std::cout << "heightDiff befor weighted difference vector creation: " << heightDifferenceFromComparison_ <<
-          //               " weightedVerticalDiffIncrement: " << weightedVerticalDifferenceIncrement << std::endl;
+            std::cout << "heightDiff befor weighted difference vector creation: " << heightDifferenceFromComparison_ <<
+                         " weightedVerticalDiffIncrement: " << weightedVerticalDifferenceIncrement << std::endl;
+
+
+            std::cout << "\n \n \n " << std::endl;
+
+
+
+
 
             // Store the vertical difference history in a vector for PID controlling.
             weightedDifferenceVector_.push_back(heightDifferenceFromComparison_ + weightedVerticalDifferenceIncrement); // TODO: check viability
@@ -321,6 +333,12 @@ bool DriftRefinement::footTipElevationMapComparison(std::string tip, Eigen::Vect
     //frameCorrection(); // Published here also.. (Hacked)
 
 
+
+    // Separate layer:
+    //rawMap.add("additional_layer", heightDifferenceFromComparison_);
+    //rawMap["elevation_corrected"] = rawMap["elevation_corrected"] + rawMap["additional_layer"];
+
+
     // Publish the elevation map with the new layer, at the frequency of the stances.
     grid_map_msgs::GridMap mapMessage;
     GridMapRosConverter::toMessage(rawMap, mapMessage);
@@ -415,6 +433,9 @@ float DriftRefinement::gaussianWeightedDifferenceIncrement(double lowerBound, do
 {
     diff -= heightDifferenceFromComparison_;
 
+    std::cout << "LOWER         BOUND: " << lowerBound << std::endl;
+    std::cout << "UPPER         BOUND: " << upperBound << std::endl;
+
     // New Stuff for testing!! ********************************************************************************************************
     //! For testing
     if(elevation + diff < lowerBound + 0.9 * (elevation - lowerBound)){
@@ -437,7 +458,7 @@ float DriftRefinement::gaussianWeightedDifferenceIncrement(double lowerBound, do
         if (triggerSum > 3 && runHighGrassDetection_){
           //  std::cout << "<<<<<<<<>>>>>>>>> \n" << "<<<<<<<<<<>>>>>>>> \n" << "<<<<<<<<<<>>>>>>>>> \n";
             highGrassMode_ = true; // Hacked!!!!
-            applyFrameCorrection_ = false; // Hacked here!!!!!!
+            applyFrameCorrection_ = true; // Hacked true into here!!!!!!
         }
         else{
           //  std::cout << "!!!! \n" << "!!!! \n" << "!!!! \n";
@@ -506,8 +527,9 @@ float DriftRefinement::gaussianWeightedDifferenceIncrement(double lowerBound, do
 
 
 
-   // std::cout << "WEIGHT: " << (1-weight) << " diff: " << diff << " elevation: " << elevation <<
-   //              " lower: " << lowerBound << " upper: " << upperBound << std::endl;
+
+    std::cout << "WEIGHT: " << (1-weight) << " diff: " << diff << " elevation: " << elevation <<
+                 " lower: " << lowerBound << " upper: " << upperBound << std::endl;
     return (1.0 - weight) * diff;
 }
 
