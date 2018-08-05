@@ -78,7 +78,7 @@ ElevationMap::ElevationMap(ros::NodeHandle nodeHandle)
       rawMap_({"elevation", "variance", "horizontal_variance_x", "horizontal_variance_y", "horizontal_variance_xy",
               "color", "time", "lowest_scan_point", "sensor_x_at_lowest_scan", "sensor_y_at_lowest_scan",
               "sensor_z_at_lowest_scan", "elevation_gp_added_raw", "foot_tip_elevation", "support_surface_smooth"}),
-      fusedMap_({"elevation", "upper_bound", "lower_bound", "color", "elevation_gp_added_raw"}),
+      fusedMap_({"elevation", "upper_bound", "lower_bound", "color"}),
       supportMap_({"elevation", "variance", "elevation_gp", "elevation_gp_added"}),
       supportMapGP_({"elevation", "variance", "elevation_gp", "variance_gp", "sinkage_depth_gp", "sinkage_depth_variance_gp",
                     "terrain_continuity_gp", "terrain_continuity_variance_gp", "smoothed_top_layer_gp", "ground_truth"}),
@@ -90,7 +90,7 @@ ElevationMap::ElevationMap(ros::NodeHandle nodeHandle)
 
   // Timon added foot_tip_elevation layer
   rawMap_.setBasicLayers({"elevation", "variance"});
-  fusedMap_.setBasicLayers({"elevation_gp_added_raw", "upper_bound", "lower_bound"});  // Hacked here..
+  fusedMap_.setBasicLayers({"elevation", "upper_bound", "lower_bound"});  // Hacked here..
   supportMap_.setBasicLayers({"elevation", "variance", "elevation_gp", "elevation_gp_added"}); // SS
   //supportMapGP_.setBasicLayers({"elevation"}); // SS // Check if this allows for issue solution..
 
@@ -2110,7 +2110,7 @@ bool ElevationMap::proprioceptiveVariance(std::string tip){
     else if(leftHindStanceVector_.size() > 1 && tip == "lefthind"){
         diff = double((leftHindStanceVector_[1](0) - leftHindStanceVector_[0](0)));
     }
-    else if(rightHindStanceVector_.size() > 1){
+    else if(rightHindStanceVector_.size() > 1 && tip == "righthind"){
         diff = double((rightHindStanceVector_[1](0) - rightHindStanceVector_[0](0)));
     }
 

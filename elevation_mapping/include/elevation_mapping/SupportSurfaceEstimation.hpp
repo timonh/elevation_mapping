@@ -521,7 +521,7 @@ private:
  bool setSmoothedTopLayer(std::string tip, grid_map::GridMap& rawMap, grid_map::GridMap& supportMap);
 
  //! TODO: Description:
- bool simpleSinkageDepthLayer(std::string& tip, const double& tipDifference, grid_map::GridMap& supportMap);
+ bool simpleSinkageDepthLayer(std::string& tip, const double& tipDifference, grid_map::GridMap& supportMap, grid_map::GridMap& rawMap);
 
  //! TODO: Description:
  bool sinkageDepthLayerGP(std::string& tip, const double& tipDifference, grid_map::GridMap& supportMap);

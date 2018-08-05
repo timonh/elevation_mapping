@@ -82,7 +82,7 @@ DriftRefinement::DriftRefinement(ros::NodeHandle nodeHandle)
   nodeHandle_.param("run_high_grass_detection", runHighGrassDetection_, false);
   nodeHandle_.param("run_support_surface_estimation", runSupportSurfaceEstimation_, false);
   nodeHandle_.param("frame_correction_switching", frameCorrectionSwitching_, false);
-
+  nodeHandle_.param("run_drift_refinement_support_surface", runDriftRefinementSupportSurface_, false);
 
   //planeFitVisualizationPublisher_ = nodeHandle_.advertise<visualization_msgs::Marker>("plane_fit_visualization_marker_list", 1000); // DR
   footContactPublisher_ = nodeHandle_.advertise<visualization_msgs::Marker>("mean_foot_contact_markers_rviz", 1000);
@@ -114,7 +114,7 @@ DriftRefinement::~DriftRefinement()
 {
 }
 
-bool DriftRefinement::footTipElevationMapComparison(std::string tip, Eigen::Vector3f& meanStance, GridMap& rawMap, GridMap& fusedMap)
+bool DriftRefinement::footTipElevationMapComparison(std::string tip, Eigen::Vector3f& meanStance, GridMap& rawMap, GridMap& fusedMap, GridMap& supportMap)
 {
     //boost::recursive_mutex::scoped_lock scopedLockForFootTipStanceProcessor(footTipStanceComparisonMutex_);
     //boost::recursive_mutex::scoped_lock scopedLockForFootTipStanceProcessor(footTipStanceProcessorMutex_);
@@ -185,6 +185,21 @@ bool DriftRefinement::footTipElevationMapComparison(std::string tip, Eigen::Vect
             double lowerBoundFused = std::get<0>(boundTuple);
             double elevationFused = std::get<1>(boundTuple);
             double upperBoundFused = std::get<2>(boundTuple);
+
+            if (runDriftRefinementSupportSurface_) {
+                std::cout << "elevation of Support MAP:::::::::::::::::::::::::::::::::::::::::::::::::::::::-> " <<
+                             supportMap.atPosition("elevation", tipPosition) << std::endl;
+                std::cout << "variance of Support MAP:::::::::::::::::::::::::::::::::::::::::::::::::::::::-> " <<
+                             supportMap.atPosition("variance", tipPosition) << std::endl;
+
+                elevationFused = supportMap.atPosition("elevation", tipPosition);
+                lowerBoundFused = elevationFused - 0.2 * sqrt(supportMap.atPosition("variance", tipPosition));
+                upperBoundFused = elevationFused + 0.2 * sqrt(supportMap.atPosition("variance", tipPosition));
+                verticalDifference = zTip - supportMap.atPosition("elevation", tipPosition);
+            }
+
+            std::cout << "VERTICAL DIFFERENCE DRIFT ADJUSTMENT: " << verticalDifference << std::endl;
+
            // std::cout << "lower: " << lowerBoundFused << " elev: " << elevationFused << " upper: " << upperBoundFused << std::endl;
             weightedVerticalDifferenceIncrement = gaussianWeightedDifferenceIncrement(lowerBoundFused, elevationFused, upperBoundFused, verticalDifference);
 
@@ -300,7 +315,7 @@ bool DriftRefinement::footTipElevationMapComparison(std::string tip, Eigen::Vect
     }
 
 
-    std::cout << "foot Tip Elev Comparison: " << heightDifferenceFromComparison_ << std::endl;
+    std::cout << "foot Tip Elev Comparison:  XYXYXYXYXYXYXYXYXY:::::::::::" << heightDifferenceFromComparison_ << std::endl;
 
     // Publish frame, offset by the height difference parameter.
     //frameCorrection(); // Published here also.. (Hacked)
@@ -330,6 +345,7 @@ bool DriftRefinement::publishFusedMapBoundMarkers(double& xTip, double& yTip,
     p_elev.z = elevationFused + heightDifferenceFromComparison_;
     p_upper.z = upperBoundFused + heightDifferenceFromComparison_;
     p_lower.z = lowerBoundFused + heightDifferenceFromComparison_;
+
 
 
     std_msgs::ColorRGBA c;

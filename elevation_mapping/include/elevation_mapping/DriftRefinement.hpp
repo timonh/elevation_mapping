@@ -316,7 +316,8 @@ private:
  bool templateMatchingForStanceDetection(std::string tip, std::vector<bool> &stateVector);
 
  //! TODO: Description:
- bool footTipElevationMapComparison(std::string mode, Eigen::Vector3f& meanStance, grid_map::GridMap& rawMap, grid_map::GridMap& fusedMap);
+ bool footTipElevationMapComparison(std::string mode, Eigen::Vector3f& meanStance, grid_map::GridMap& rawMap,
+                                    grid_map::GridMap& fusedMap, grid_map::GridMap& supportMap);
 
  //! TODO: Description:
  std::tuple<double, double> filteredDriftEstimation(double diffComparisonUpdate, float estDrift, float PEstDrift);
@@ -666,6 +667,7 @@ private:
  // Parameters.
  bool runSupportSurfaceEstimation_;
  bool runHighGrassDetection_;
+ bool runDriftRefinementSupportSurface_;
 
  // Elevation Map
  ElevationMap map_;

@@ -586,7 +586,7 @@ void ElevationMapping::footTipStanceCallback(const quadruped_msgs::QuadrupedStat
 
           map_.fuseArea(tipPosition, ellipseAxes);
           // TODO: elevation map bound fusion here. and pass fused map as reference to the comparison function..
-          stanceProcessor_.driftRefinement_.footTipElevationMapComparison(tip, stanceProcessor_.meanStance_, map_.getRawGridMap(), map_.getFusedGridMap());
+          stanceProcessor_.driftRefinement_.footTipElevationMapComparison(tip, stanceProcessor_.meanStance_, map_.getRawGridMap(), map_.getFusedGridMap(), map_.supportMapGP_);
       }
       stanceProcessor_.footTipTrigger_ = false;
 
