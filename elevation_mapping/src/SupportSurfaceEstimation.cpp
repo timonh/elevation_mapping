@@ -74,18 +74,31 @@ void SupportSurfaceEstimation::setParameters(){
     nodeHandle_.param("continuity_gp_nn_sigma_n", continuityGPNNSigmaN_, 0.1);
     nodeHandle_.param("continuity_gp_nn_sigma_f", continuityGPNNSigmaF_, 0.001);
     nodeHandle_.param("continuity_gp_nn_beta", continuityGPNNBeta_, 0.001);
-    nodeHandle_.param("continuity_gp_rq_a", continuityGPRQa_, 0.5);
+
     nodeHandle_.param("continuity_gp_c_c", continuityGPCC_, 10.0);
     nodeHandle_.param("continuity_gp_kernel", continuityGPKernel_, std::string("nn"));
 
     nodeHandle_.param("continuity_gp_hy_a", continuityHYa_, 10.0);
     nodeHandle_.param("continuity_gp_hy_b", continuityHYb_, 10.0);
-    nodeHandle_.param("continuity_gp_hy_sigma_f", continuityHYsigmaf_, 10.0);
+    nodeHandle_.param("continuity_gp_hy_sigma_f", continuityGPHYSigmaF_, 10.0);
+    nodeHandle_.param("continuity_gp_hy_sigma_n", continuityGPHYSigmaN_, 10.0);
 
     nodeHandle_.param("sinkage_gp_lengthscale", sinkageGPLengthscale_, 0.1);
     nodeHandle_.param("sinkage_gp_sigma_n", sinkageGPSigmaN_, 0.1);
     nodeHandle_.param("sinkage_gp_sigma_f", sinkageGPSigmaF_, 0.001);
     nodeHandle_.param("sinkage_gp_kernel", sinkageGPKernel_, std::string("ou"));
+
+    // rq kernel params
+    nodeHandle_.param("continuity_gp_rq_lengthscale", continuityGPRQLengthscale_, 0.5);
+    nodeHandle_.param("continuity_gp_rq_sigma_f", continuityGPRQSigmaF_, 0.5);
+    nodeHandle_.param("continuity_gp_rq_sigma_n", continuityGPRQSigmaN_, 0.5);
+    nodeHandle_.param("continuity_gp_rq_alpha", continuityGPRQa_, 0.5);
+
+    // Ou continuity gp params.
+    nodeHandle_.param("continuity_gp_ou_lengthscale", continuityGPOULengthscale_, 0.1);
+    nodeHandle_.param("continuity_gp_ou_sigma_n", continuityGPOUSigmaN_, 0.1);
+    nodeHandle_.param("continuity_gp_ou_sigma_f", continuityGPOUSigmaF_, 0.001);
+
 
 
     nodeHandle_.param("use_sign_selective_continuity_filter", useSignSelectiveContinuityFilter_, true);
@@ -307,12 +320,14 @@ bool SupportSurfaceEstimation::sinkageDepthVarianceEstimation(std::string tip, d
 
         // Sign selective low pass filter.
         if (!isnan(penetrationDepthVariance)) {
-            lowPassFilteredSinkageDepthVariance_ = signSelectiveLowPassFilter(lowPassFilteredSinkageDepthVariance_,
-                                                                              penetrationDepthVariance, sinkageDepthFilterGainDown_, sinkageDepthFilterGainUp_);
-            setPenetrationDepthVariance(lowPassFilteredSinkageDepthVariance_, tip);
-        }
-        else {
-            setPenetrationDepthVariance(penetrationDepthVariance, tip);
+            if (!isnan(lowPassFilteredSinkageDepthVariance_)) {
+                lowPassFilteredSinkageDepthVariance_ = signSelectiveLowPassFilter(lowPassFilteredSinkageDepthVariance_,
+                                                                                  penetrationDepthVariance, sinkageDepthFilterGainDown_, sinkageDepthFilterGainUp_);
+                setPenetrationDepthVariance(lowPassFilteredSinkageDepthVariance_, tip);
+            }
+            else {
+                setPenetrationDepthVariance(penetrationDepthVariance, tip);
+            }
         }
         //setDifferentialPenetrationDepthVariance(differentialPenetrationDepthVariance);
     }
@@ -356,14 +371,16 @@ bool SupportSurfaceEstimation::sinkageDepthVarianceEstimation(std::string tip, d
 
         // Sign selective low pass filter.
         if (!isnan(penetrationDepthVariance)) {
-            lowPassFilteredHindSinkageDepthVariance_ = signSelectiveLowPassFilter(lowPassFilteredHindSinkageDepthVariance_,
-                                                                              penetrationDepthVariance, sinkageDepthFilterGainDown_, sinkageDepthFilterGainUp_);
-            setPenetrationDepthVariance(lowPassFilteredHindSinkageDepthVariance_, tip);
+            if (!isnan(lowPassFilteredHindSinkageDepthVariance_)) {
+                lowPassFilteredHindSinkageDepthVariance_ = signSelectiveLowPassFilter(lowPassFilteredHindSinkageDepthVariance_,
+                                                                                  penetrationDepthVariance, sinkageDepthFilterGainDown_, sinkageDepthFilterGainUp_);
+                setPenetrationDepthVariance(lowPassFilteredHindSinkageDepthVariance_, tip);
+            }
+            else {
+                setPenetrationDepthVariance(penetrationDepthVariance, tip);
+            }
         }
-        else {
-            setPenetrationDepthVariance(penetrationDepthVariance, tip);
-        }
-        //setDifferentialPenetrationDepthVariance(differentialPenetrationDepthVariance);
+            //setDifferentialPenetrationDepthVariance(differentialPenetrationDepthVariance);
     }
     return true;
 }
@@ -704,11 +721,11 @@ bool SupportSurfaceEstimation::mainGPRegression(double tileResolution, double ti
         if (useSignSelectiveContinuityFilter_) {
             // Sign Selective low pass filter.
             if (lowPassFilteredTerrainContinuityValue_ < characteristicValue) lowPassFilteredTerrainContinuityValue_ = fmin(fmax(continuityFilterGain_ * lowPassFilteredTerrainContinuityValue_ + (1 - continuityFilterGain_)
-                                                                    * characteristicValue, 0.44), 3.4); // TODO: reason about bounding.
+                                                                    * characteristicValue, 0.44), 3.8); // TODO: reason about bounding.
             else lowPassFilteredTerrainContinuityValue_ = characteristicValue;
         }
         else lowPassFilteredTerrainContinuityValue_ = fmin(fmax(continuityFilterGain_ * lowPassFilteredTerrainContinuityValue_ + (1 - continuityFilterGain_)
-                                                            * characteristicValue, 0.44), 3.4); // TODO: reason about bounding.
+                                                            * characteristicValue, 0.44), 3.8); // TODO: reason about bounding.
     }
     if (tip == "lefthind" || tip == "righthind") {
 
@@ -724,11 +741,11 @@ bool SupportSurfaceEstimation::mainGPRegression(double tileResolution, double ti
         if (useSignSelectiveContinuityFilter_) {
             // Sign Selective low pass filter.
             if (lowPassFilteredHindTerrainContinuityValue_ < characteristicValue) lowPassFilteredHindTerrainContinuityValue_ = fmin(fmax(continuityFilterGain_ * lowPassFilteredHindTerrainContinuityValue_ + (1 - continuityFilterGain_)
-                                                                    * characteristicValue, 0.44), 3.4); // TODO: reason about bounding.
+                                                                    * characteristicValue, 0.44), 3.0); // TODO: reason about bounding.
             else lowPassFilteredHindTerrainContinuityValue_ = characteristicValue;
         }
         else lowPassFilteredHindTerrainContinuityValue_ = fmin(fmax(continuityFilterGain_ * lowPassFilteredHindTerrainContinuityValue_ + (1 - continuityFilterGain_)
-                                                            * characteristicValue, 0.44), 3.4); // TODO: reason about bounding.
+                                                            * characteristicValue, 0.44), 3.0); // TODO: reason about bounding.
     }
 
     // Set adaptation message values.
@@ -870,8 +887,8 @@ bool SupportSurfaceEstimation::mainGPRegression(double tileResolution, double ti
         // End of new weighting scheme
 
         //test :
-        weight = fabs(max(1 - (distance / radius), 0.0)); // Linear weight, differences, artefacts, frame correction in high grass?
-        weight = fabs(exp(-distance/radius));
+        //weight = fabs(max(1 - (distance / radius), 0.0)); // Linear weight, differences, artefacts, frame correction in high grass?
+        //weight = fabs(exp(-distance/radius));
 
 
         // Get the various layers.
@@ -1311,7 +1328,7 @@ bool SupportSurfaceEstimation::sinkageDepthLayerGP(std::string& tip, const doubl
         //sinkageGPR.SetHyperParams(sinkageGPLengthscale_, sinkageGPSigmaN_, sinkageGPSigmaF_);
         sinkageGPR.SetHyperParamsAll(sinkageGPLengthscale_, sinkageGPSigmaN_, sinkageGPSigmaF_,
                                         continuityGPNNBeta_, continuityGPRQa_, continuityGPCC_, continuityHYa_, continuityHYb_,
-                                       continuityHYsigmaf_, sinkageGPKernel_);
+                                        sinkageGPKernel_);
 
         double totalHeight = 0.0;
         int counter = 0;
@@ -1515,10 +1532,35 @@ bool SupportSurfaceEstimation::terrainContinuityLayerGP(std::string& tip, GridMa
 
         GaussianProcessRegression<float> continuityGPR(inputDim, outputDim);
 
+        if (continuityGPKernel_ == "nn") {
+
+        }
+        else if (continuityGPKernel_ == "ou") {
+            continuityGPNNLengthscale_ = continuityGPOULengthscale_;
+            continuityGPNNSigmaN_ = continuityGPOUSigmaN_;
+            continuityGPNNSigmaF_ = continuityGPOUSigmaF_;
+        }
+        else if (continuityGPKernel_ == "hy") {
+            continuityGPNNSigmaN_ = continuityGPHYSigmaN_;
+            continuityGPNNSigmaF_ = continuityGPHYSigmaF_;
+        }
+        else if (continuityGPKernel_ == "sqe") {
+            continuityGPNNLengthscale_ = continuityGPLengthscale_;
+            continuityGPNNSigmaN_ = continuityGPSigmaN_;
+            continuityGPNNSigmaF_ = continuityGPSigmaF_;
+        }
+        else if (continuityGPKernel_ == "rq") {
+            continuityGPNNLengthscale_ = continuityGPRQLengthscale_;
+            continuityGPNNSigmaN_ = continuityGPRQSigmaN_;
+            continuityGPNNSigmaF_ = continuityGPRQSigmaF_;
+        }
+
+
         // lengthscale, sigma_n, sigma_f, betaNN, a_RQ, cConst, kernel
         continuityGPR.SetHyperParamsAll(continuityGPNNLengthscale_, continuityGPNNSigmaN_, continuityGPNNSigmaF_,
                                         continuityGPNNBeta_, continuityGPRQa_, continuityGPCC_, continuityHYa_, continuityHYb_,
-                                       continuityHYsigmaf_, continuityGPKernel_);
+                                        continuityGPKernel_);
+        //continuityGPR.SetHyperParams(continuityGPLengthscale_, continuityGPSigmaN_, continuityGPSigmaF_);
 
         double totalHeight = 0.0;
         int counter = 0;
@@ -1569,6 +1611,7 @@ bool SupportSurfaceEstimation::terrainContinuityLayerGP(std::string& tip, GridMa
             // Mean shifted version.
             double outputHeight = continuityGPR.DoRegressionNNVariance(testInput)(0) + meanGP;  // Hope this shouldnt be testOutput(0)
             double outputVariance = fabs(continuityGPR.GetVariance()(0));
+
 
             double distance = sqrt(pow(cellPos(0) - tipPos(0), 2) + pow(cellPos(1) - tipPos(1), 2));
 

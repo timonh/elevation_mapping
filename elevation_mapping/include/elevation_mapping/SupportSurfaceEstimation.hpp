@@ -819,19 +819,31 @@ private:
 
  // GP Hyperparameters for terrain continuity layer with nn kernel.
  double continuityGPNNLengthscale_, continuityGPNNSigmaN_, continuityGPNNSigmaF_, continuityGPNNBeta_;
- double continuityGPRQa_, continuityGPCC_;
+ double continuityGPCC_;
  std::string continuityGPKernel_;
 
  // GP Hyperparameters for terrain continuity layer with hy kernel.
  double continuityHYa_;
  double continuityHYb_;
- double continuityHYsigmaf_;
+ double continuityGPHYSigmaF_;
+ double continuityGPHYSigmaN_;
 
  // GP Hyperparameters for sinkage depth layer with gaussian kernel
  double sinkageGPLengthscale_;
  double sinkageGPSigmaN_;
  double sinkageGPSigmaF_;
  std::string sinkageGPKernel_;
+
+ // GP Hyperparameters for continuity depth layer with OU kernel
+ double continuityGPOULengthscale_;
+ double continuityGPOUSigmaN_;
+ double continuityGPOUSigmaF_;
+
+ // RQ KErnel Params.
+ double continuityGPRQLengthscale_;
+ double continuityGPRQSigmaF_;
+ double continuityGPRQSigmaN_;
+ double continuityGPRQa_;
 
  // Param, bool run drift refinement in high grass.
  bool runDriftRefinementSupportSurface_;
