@@ -845,6 +845,10 @@ private:
  double continuityGPRQSigmaN_;
  double continuityGPRQa_;
 
+
+ double continuityGPOUSQELengthscale_;
+ double continuityGPNNLengthscale2_;
+
  // Param, bool run drift refinement in high grass.
  bool runDriftRefinementSupportSurface_;
 };

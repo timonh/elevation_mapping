@@ -88,6 +88,8 @@ void SupportSurfaceEstimation::setParameters(){
     nodeHandle_.param("sinkage_gp_sigma_f", sinkageGPSigmaF_, 0.001);
     nodeHandle_.param("sinkage_gp_kernel", sinkageGPKernel_, std::string("ou"));
 
+    nodeHandle_.param("continuity_gp_ousqe_lengthscale", continuityGPOUSQELengthscale_, 0.6);
+
     // rq kernel params
     nodeHandle_.param("continuity_gp_rq_lengthscale", continuityGPRQLengthscale_, 0.5);
     nodeHandle_.param("continuity_gp_rq_sigma_f", continuityGPRQSigmaF_, 0.5);
@@ -1297,7 +1299,7 @@ bool SupportSurfaceEstimation::sinkageDepthLayerGP(std::string& tip, const doubl
 
         double radius = 0.7;
         int maxSizeFootTipHistory;
-        if (runHindLegSupportSurfaceEstimation_) maxSizeFootTipHistory = 20; // See what this does..
+        if (runHindLegSupportSurfaceEstimation_) maxSizeFootTipHistory = 20;
         else maxSizeFootTipHistory = 10;
 
         // Do history vector.
@@ -1326,7 +1328,7 @@ bool SupportSurfaceEstimation::sinkageDepthLayerGP(std::string& tip, const doubl
 
         // lengthscale, sigma_n, sigma_f, betaNN, a_RQ, cConst, kernel
         //sinkageGPR.SetHyperParams(sinkageGPLengthscale_, sinkageGPSigmaN_, sinkageGPSigmaF_);
-        sinkageGPR.SetHyperParamsAll(sinkageGPLengthscale_, sinkageGPSigmaN_, sinkageGPSigmaF_,
+        sinkageGPR.SetHyperParamsAll(sinkageGPLengthscale_, 0.1, sinkageGPSigmaN_, sinkageGPSigmaF_,
                                         continuityGPNNBeta_, continuityGPRQa_, continuityGPCC_, continuityHYa_, continuityHYb_,
                                         sinkageGPKernel_);
 
@@ -1511,8 +1513,8 @@ bool SupportSurfaceEstimation::terrainContinuityLayerGP(std::string& tip, GridMa
         Position tipPos(tipPos3(0), tipPos3(1));
 
         int maxSizeFootTipHistory;
-        if (runHindLegSupportSurfaceEstimation_) maxSizeFootTipHistory = 20;
-        else maxSizeFootTipHistory = 10;
+        if (runHindLegSupportSurfaceEstimation_) maxSizeFootTipHistory = 18;
+        else maxSizeFootTipHistory = 9;
 
 
 
@@ -1554,10 +1556,19 @@ bool SupportSurfaceEstimation::terrainContinuityLayerGP(std::string& tip, GridMa
             continuityGPNNSigmaN_ = continuityGPRQSigmaN_;
             continuityGPNNSigmaF_ = continuityGPRQSigmaF_;
         }
+        else if (continuityGPKernel_ == "ousqe") {
+            continuityGPNNLengthscale_ = continuityGPOULengthscale_;
+            continuityGPNNSigmaN_ = continuityGPOUSigmaN_;
+            continuityGPNNSigmaF_ = continuityGPOUSigmaF_;
+            continuityGPNNLengthscale2_ = continuityGPOUSQELengthscale_;
+        }
+
+        std::cout << "lscale::::::::::::::::::::::::::::::::                                           :::::::::::::::::::::: "
+                  << continuityGPOUSQELengthscale_ << std::endl;
 
 
         // lengthscale, sigma_n, sigma_f, betaNN, a_RQ, cConst, kernel
-        continuityGPR.SetHyperParamsAll(continuityGPNNLengthscale_, continuityGPNNSigmaN_, continuityGPNNSigmaF_,
+        continuityGPR.SetHyperParamsAll(continuityGPNNLengthscale_, continuityGPOUSQELengthscale_, continuityGPNNSigmaN_, continuityGPNNSigmaF_,
                                         continuityGPNNBeta_, continuityGPRQa_, continuityGPCC_, continuityHYa_, continuityHYb_,
                                         continuityGPKernel_);
         //continuityGPR.SetHyperParams(continuityGPLengthscale_, continuityGPSigmaN_, continuityGPSigmaF_);
