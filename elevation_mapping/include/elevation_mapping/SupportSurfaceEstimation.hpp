@@ -851,6 +851,9 @@ private:
 
  // Param, bool run drift refinement in high grass.
  bool runDriftRefinementSupportSurface_;
+
+ // Param for increased data in support Surface layer (obtained by constant sinkage depth assumption only)
+ bool addEstimatedSinkageDepthDataAhead_;
 };
 
 } /* namespace */

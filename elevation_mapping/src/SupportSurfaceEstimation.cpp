@@ -109,6 +109,7 @@ void SupportSurfaceEstimation::setParameters(){
     nodeHandle_.param("sinkage_depth_filter_gain_down", sinkageDepthFilterGainDown_, 0.1);
 
     nodeHandle_.param("run_drift_refinement_support_surface", runDriftRefinementSupportSurface_, false);
+    nodeHandle_.param("add_estimated_sinkage_depth_data_ahead", addEstimatedSinkageDepthDataAhead_, false);
 
 
 
@@ -118,7 +119,8 @@ void SupportSurfaceEstimation::setParameters(){
     leftFrontSinkageDepth_ = 0.0;
     rightFrontSinkageDepth_ = 0.0;
     lowPassFilteredSinkageDepthVariance_ = 0.0;
-    terrainVarianceFront_ = terrainVarianceHind_ = 0.0;
+    terrainVarianceFront_ = 0.0;
+    terrainVarianceHind_ = 0.0;
     initializedLeftSinkageDepth_ = initializedRightSinkageDepth_ = initializedLeftHindSinkageDepth_ = initializedRightHindSinkageDepth_ = false;
 
     // Initializations for ground truth comparison in simulation.
@@ -494,19 +496,19 @@ bool SupportSurfaceEstimation::proprioceptiveRoughnessEstimation(std::string tip
     bool writeHorizontalFootTipEstimationStatisticsToFile = false;
     if(writeHorizontalFootTipEstimationStatisticsToFile){
         if (leftStanceVector_.size() > 1 && tip == "left"){
-            double diff = double(leftStanceVector_[1](0)-leftStanceVector_[0](0));
+            double diff = double(leftStanceVector_[1](2)-leftStanceVector_[0](2));
             //writeFootTipStatisticsToFile(diff, "/home/timon/driftEst.txt");
         }
         else if(rightStanceVector_.size() > 1 && tip == "right"){
-            double diff = double(rightStanceVector_[1](0)-rightStanceVector_[0](0));
+            double diff = double(rightStanceVector_[1](2)-rightStanceVector_[0](2));
             //writeFootTipStatisticsToFile(diff, "/home/timon/driftEst.txt");
         }
         else if(leftHindStanceVector_.size() > 1 && tip == "lefthind"){
-            double diff = double(leftHindStanceVector_[1](0)-leftHindStanceVector_[0](0));
+            double diff = double(leftHindStanceVector_[1](2)-leftHindStanceVector_[0](2));
             //writeFootTipStatisticsToFile(diff, "/home/timon/driftEst.txt");
         }
         else if(rightHindStanceVector_.size() > 1 && tip == "righthind"){
-            double diff = double(rightHindStanceVector_[1](0)-rightHindStanceVector_[0](0));
+            double diff = double(rightHindStanceVector_[1](2)-rightHindStanceVector_[0](2));
             //writeFootTipStatisticsToFile(diff, "/home/timon/driftEst.txt");
         }
     }
@@ -518,16 +520,16 @@ bool SupportSurfaceEstimation::proprioceptiveVariance(std::string tip){
     double diff = 0.0;
     double meanDrift = 0.467;
     if (leftStanceVector_.size() > 1 && tip == "left"){
-        diff = double((leftStanceVector_[1](0) - leftStanceVector_[0](0)));
+        diff = double((leftStanceVector_[1](2) - leftStanceVector_[0](2)));
     }
     else if(rightStanceVector_.size() > 1 && tip == "right"){
-        diff = double((rightStanceVector_[1](0) - rightStanceVector_[0](0)));
+        diff = double((rightStanceVector_[1](2) - rightStanceVector_[0](2)));
     }
     else if(leftHindStanceVector_.size() > 1 && tip == "lefthind"){
-        diff = double((leftHindStanceVector_[1](0) - leftHindStanceVector_[0](0)));
+        diff = double((leftHindStanceVector_[1](2) - leftHindStanceVector_[0](2)));
     }
     else if(rightHindStanceVector_.size() > 1 && tip == "righthind"){
-        diff = double((rightHindStanceVector_[1](0) - rightHindStanceVector_[0](0)));
+        diff = double((rightHindStanceVector_[1](2) - rightHindStanceVector_[0](2)));
     }
 
     if (tip == "left" || tip == "right") proprioceptiveDiffVectorFront_.push_back(diff);
@@ -696,12 +698,12 @@ bool SupportSurfaceEstimation::mainGPRegression(double tileResolution, double ti
     }
 
     // Update sinkage depth map.
-    simpleSinkageDepthLayer(tip, tipDifference, supportMap, rawMap);
-    //sinkageDepthLayerGP(tip, tipDifference, supportMap);
+    //simpleSinkageDepthLayer(tip, tipDifference, supportMap, rawMap);
+    sinkageDepthLayerGP(tip, tipDifference, supportMap);
 
     // Subparams of tiling.
     int noOfTilesPerHalfSide = floor((sideLengthAddingPatch / 2.0) / tileResolution);
-    double radius = (sideLengthAddingPatch - 0.15) / 2.0;
+    double radius = (sideLengthAddingPatch - 0.1) / 2.0;
 
     // Get uncertainty measures.
     double terrainVariance = getTerrainVariance("front");
@@ -723,11 +725,11 @@ bool SupportSurfaceEstimation::mainGPRegression(double tileResolution, double ti
         if (useSignSelectiveContinuityFilter_) {
             // Sign Selective low pass filter.
             if (lowPassFilteredTerrainContinuityValue_ < characteristicValue) lowPassFilteredTerrainContinuityValue_ = fmin(fmax(continuityFilterGain_ * lowPassFilteredTerrainContinuityValue_ + (1 - continuityFilterGain_)
-                                                                    * characteristicValue, 0.44), 3.8); // TODO: reason about bounding.
+                                                                    * characteristicValue, 0.44), 3.5); // TODO: reason about bounding.
             else lowPassFilteredTerrainContinuityValue_ = characteristicValue;
         }
         else lowPassFilteredTerrainContinuityValue_ = fmin(fmax(continuityFilterGain_ * lowPassFilteredTerrainContinuityValue_ + (1 - continuityFilterGain_)
-                                                            * characteristicValue, 0.44), 3.8); // TODO: reason about bounding.
+                                                            * characteristicValue, 0.44), 3.5); // TODO: reason about bounding.
     }
     if (tip == "lefthind" || tip == "righthind") {
 
@@ -743,11 +745,11 @@ bool SupportSurfaceEstimation::mainGPRegression(double tileResolution, double ti
         if (useSignSelectiveContinuityFilter_) {
             // Sign Selective low pass filter.
             if (lowPassFilteredHindTerrainContinuityValue_ < characteristicValue) lowPassFilteredHindTerrainContinuityValue_ = fmin(fmax(continuityFilterGain_ * lowPassFilteredHindTerrainContinuityValue_ + (1 - continuityFilterGain_)
-                                                                    * characteristicValue, 0.44), 3.0); // TODO: reason about bounding.
+                                                                    * characteristicValue, 0.44), 3.5); // TODO: reason about bounding.
             else lowPassFilteredHindTerrainContinuityValue_ = characteristicValue;
         }
         else lowPassFilteredHindTerrainContinuityValue_ = fmin(fmax(continuityFilterGain_ * lowPassFilteredHindTerrainContinuityValue_ + (1 - continuityFilterGain_)
-                                                            * characteristicValue, 0.44), 3.0); // TODO: reason about bounding.
+                                                            * characteristicValue, 0.44), 3.5); // TODO: reason about bounding.
     }
 
     // Set adaptation message values.
@@ -933,12 +935,14 @@ bool SupportSurfaceEstimation::mainGPRegression(double tileResolution, double ti
 
 
     // New, to enlarge the area covered by the data..
-    for (GridMapIterator iterator(rawMap); !iterator.isPastEnd(); ++iterator) {
-        const Index index(*iterator);
-        if (isnan(supportMap.at("elevation", index))) {
-            auto& sinkageDepth = supportMap.at("sinkage_depth_gp", index);
-            if (!isnan(sinkageDepth)) {
-                supportMap.at("elevation", index) = rawMap.at("elevation", index) - sinkageDepth;
+    if (addEstimatedSinkageDepthDataAhead_) {
+        for (GridMapIterator iterator(rawMap); !iterator.isPastEnd(); ++iterator) {
+            const Index index(*iterator);
+            if (isnan(supportMap.at("elevation", index))) {
+                auto& sinkageDepth = supportMap.at("sinkage_depth_gp", index);
+                if (!isnan(sinkageDepth)) {
+                    supportMap.at("elevation", index) = rawMap.at("elevation", index) - sinkageDepth;
+                }
             }
         }
     }
@@ -1170,7 +1174,7 @@ bool SupportSurfaceEstimation::simpleSinkageDepthLayer(std::string& tip, const d
 
             if (!isnan(tipDifference)) {
 
-                double radius = 1.4;
+                double radius = 0.7;
                 int maxSizeFootTipHistory;
                 if (runHindLegSupportSurfaceEstimation_) maxSizeFootTipHistory = 20;
                 else maxSizeFootTipHistory = 10;
@@ -1412,12 +1416,15 @@ bool SupportSurfaceEstimation::sinkageDepthLayerGP(std::string& tip, const doubl
                 if (!isnan(regressionOutput)){
                     if (isnan(supportMapElevationGPSinkage) || !supportMap.isValid(index)){
                         supportMapElevationGPSinkage = regressionOutput;
+
                     }
                     else{
                         if (!isnan(supportMapElevationGPSinkage))
                             supportMapElevationGPSinkage = (weight) * regressionOutput + (1.0 - weight) * supportMapElevationGPSinkage; // Attention hacked this in here..
                     }
                 }
+
+                if (supportMapElevationGPSinkage < 0.0) supportMapElevationGPSinkage = 0.0;
 
                 if (!isnan(regressionOutputVariance)){
                     if (isnan(supportMapElevationGPSinkageVariance)){
@@ -1428,7 +1435,6 @@ bool SupportSurfaceEstimation::sinkageDepthLayerGP(std::string& tip, const doubl
                             supportMapElevationGPSinkageVariance = (weight) * regressionOutputVariance + (1.0 - weight) * supportMapElevationGPSinkageVariance; // Attention hacked this in here..
                     }
                 }
-                // Until here!!!
             }
         }
     }
@@ -1544,7 +1550,7 @@ bool SupportSurfaceEstimation::terrainContinuityLayerGP(std::string& tip, GridMa
 
         int inputDim = 2;
         int outputDim = 1;
-        float radius = 0.6;
+        float radius = 0.7;
 
         Eigen::VectorXf trainInput(inputDim);
         Eigen::VectorXf trainOutput(outputDim);
@@ -1664,15 +1670,25 @@ bool SupportSurfaceEstimation::terrainContinuityLayerGP(std::string& tip, GridMa
                 }
             }
 
-            if (!isnan(outputVariance)){
-                if (isnan(supportMapContinuityVarianceGP)){
-                    supportMapContinuityVarianceGP = outputVariance;
-                }
-                else{
-                    if (!isnan(supportMapContinuityVarianceGP))
-                        supportMapContinuityVarianceGP = (weight) * outputVariance + (1.0 - weight) * supportMapContinuityVarianceGP; // Attention hacked this in here..
-                }
+
+            double minDist = 10000;
+            for (unsigned int j = 0; j < footTipHistoryGP_.size(); ++j) {
+                Position tipPosLoc(footTipHistoryGP_[j](0), footTipHistoryGP_[j](1));
+                double distVar = sqrt(pow(tipPosLoc(0) - cellPos(0), 2) + pow(tipPosLoc(1) - cellPos(1), 2));
+                if (distVar < minDist) minDist = distVar;
             }
+            supportMapContinuityVarianceGP = minDist;
+
+
+//            if (!isnan(outputVariance)){
+//                if (isnan(supportMapContinuityVarianceGP)){
+//                    supportMapContinuityVarianceGP = distance;
+//                }
+//                else{
+//                    if (!isnan(supportMapContinuityVarianceGP))
+//                        supportMapContinuityVarianceGP = (weight) * distance + (1.0 - weight) * supportMapContinuityVarianceGP; // Attention hacked this in here..
+//                }
+//            }
 
 
 
