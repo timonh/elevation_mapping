@@ -492,6 +492,7 @@ float DriftRefinement::gaussianWeightedDifferenceIncrement(double lowerBound, do
     double dropoffFactor = 1.7;
 
 
+
     // Initialize
     double weight = 0.0;
 
@@ -508,6 +509,11 @@ float DriftRefinement::gaussianWeightedDifferenceIncrement(double lowerBound, do
         }
         else footTipOutsideBounds_ = false;
 
+        if (elevation + diff < elevation + 1.5 * (lowerBound - elevation)) {
+            std::cout << "SIGMOID DROPPOFF LOWER ACTIVATED!! " << std::endl;
+
+        }
+
     }
     else{
         weight = normalDistribution(diff, 0.0, fabs(elevation-upperBound)*standardDeviationFactor);
@@ -515,6 +521,11 @@ float DriftRefinement::gaussianWeightedDifferenceIncrement(double lowerBound, do
         // For Coloration
         if(elevation + diff > upperBound) footTipOutsideBounds_ = true;
         else footTipOutsideBounds_ = false;
+
+        if (elevation + diff > elevation + 1.5 * (upperBound - elevation)) {
+            std::cout << "SIGMOID DROPPOFF UPPER ACTIVATED!! " << std::endl;
+
+        }
     }
 
     // Constrain to be maximally 1.
