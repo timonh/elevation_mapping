@@ -200,7 +200,7 @@ class ElevationMapping
 
   std::string getTriggeredTip();
 
-  bool processTip(std::string tip);
+  void processTriggerCallback(const std_msgs::String triggeredTip);
 
   //! ROS nodehandle.
   ros::NodeHandle& nodeHandle_;
@@ -299,6 +299,7 @@ class ElevationMapping
 
   // Ros Subscriber for stance detection.
   ros::Subscriber footTipStanceSubscriber_;
+  ros::Subscriber processTriggerSubscriber_;
 
   // Transform Broadcaster for drift adjustment.
   tf::TransformBroadcaster mapCorrectedOdomTransformBroadcaster_;

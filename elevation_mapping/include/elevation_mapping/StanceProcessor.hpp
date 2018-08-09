@@ -28,6 +28,9 @@
 #include <Eigen/Core>
 #include <Eigen/Geometry>
 
+// TEST
+#include <std_msgs/String.h>
+
 // PCL
 #include <pcl/point_cloud.h>
 #include <pcl/point_types.h>
@@ -637,6 +640,9 @@ private:
  ros::Publisher varianceTwistPublisher_;
  ros::Publisher supportSurfaceAddingAreaPublisher_;
  ros::Publisher elevationMapGPPublisher_;
+
+ //! ROS publishr for stance trigger
+ ros::Publisher stanceProcessorTriggerPublisher_;
 
  //! Publication of Markers:
  visualization_msgs::Marker footContactMarkerList_;

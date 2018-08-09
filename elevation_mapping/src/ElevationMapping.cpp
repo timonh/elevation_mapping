@@ -122,11 +122,14 @@ ElevationMapping::ElevationMapping(ros::NodeHandle& nodeHandle)
   //! Introduced by Timon
   if (true) {
     if(runFootTipElevationMapEnhancements_){ // SP
-      if(!useBag_) footTipStanceSubscriber_ = nodeHandle_.subscribe("/state_estimator/quadruped_state", 1, &ElevationMapping::footTipStanceCallback, this);
-      else footTipStanceSubscriber_ = nodeHandle_.subscribe("/state_estimator/quadruped_state_remapped", 1, &ElevationMapping::footTipStanceCallback, this);
+      if(!useBag_) footTipStanceSubscriber_ = nodeHandle_.subscribe("/state_estimator/quadruped_state", 28, &ElevationMapping::footTipStanceCallback, this);
+      else footTipStanceSubscriber_ = nodeHandle_.subscribe("/state_estimator/quadruped_state_remapped", 28, &ElevationMapping::footTipStanceCallback, this);
     } // SP
   }
   //! End of newly introduced section
+
+  // Do adjust the queue size if needed TODO:
+  processTriggerSubscriber_ = nodeHandle_.subscribe("stance_trigger", 7, &ElevationMapping::processTriggerCallback, this);
 
   // Publisher for data on continuity assumption negotiation.
   varianceTwistPublisher_ = nodeHandle_.advertise<geometry_msgs::TwistStamped>("variances", 1000);
@@ -571,7 +574,7 @@ void ElevationMapping::footTipStanceCallback(const quadruped_msgs::QuadrupedStat
 
   if (triggeredStance != "none") {
     //  std::cout << " BEFORE PROCESSING!!! " << triggeredStance << std::endl;
-      processTip(triggeredStance);
+     // processTip(triggeredStance);
     //  std::cout << " AFTER!!! => PROCESSING!!! " << triggeredStance << std::endl;
   }
 
@@ -589,8 +592,10 @@ void ElevationMapping::footTipStanceCallback(const quadruped_msgs::QuadrupedStat
   //}
 }
 
-bool ElevationMapping::processTip(std::string tip) {
+void ElevationMapping::processTriggerCallback(const std_msgs::String triggeredTip) {
     //if (tip != "lefthind" && tip != "righthind") {
+
+    std::string tip = triggeredTip.data;
 
         std::cout << "TIP PROCESSED: -> " << tip << std::endl;
 
@@ -617,7 +622,6 @@ bool ElevationMapping::processTip(std::string tip) {
     if (runSupportSurfaceEstimation_){
         supportSurfaceEstimation_.updateSupportSurfaceEstimation(tip, map_.getRawGridMap(), map_.supportMapGP_, map_.getFusedGridMap(), stanceProcessor_.meanStance_, stanceProcessor_.driftRefinement_.heightDifferenceFromComparison_);
     }
-    return true;
 }
 
 
