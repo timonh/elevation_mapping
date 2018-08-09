@@ -200,6 +200,8 @@ class ElevationMapping
 
   std::string getTriggeredTip();
 
+  bool processTip(std::string tip);
+
   //! ROS nodehandle.
   ros::NodeHandle& nodeHandle_;
 

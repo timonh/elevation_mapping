@@ -488,8 +488,6 @@ bool ElevationMapping::getSupportSurfaceSubmap(grid_map_msgs::GetGridMap::Reques
   //boost::recursive_mutex::scoped_lock scopedLock(map_.getFusedDataMutex());
   //map_.fuseArea(requestedSubmapPosition, requestedSubmapLength);
 
-  std::cout << "HEREIWAS!!!" << std::endl;
-
   bool isSuccess;
   Index index;
   GridMap subMap = map_.getSupportSurfaceGridMap().getSubmap(requestedSubmapPosition, requestedSubmapLength, index, isSuccess);
@@ -504,7 +502,6 @@ bool ElevationMapping::getSupportSurfaceSubmap(grid_map_msgs::GetGridMap::Reques
     }
     GridMapRosConverter::toMessage(subMap, layers, response.map);
   }
-  std::cout << "HEREIWAS!!!" << std::endl;
 
   //ROS_DEBUG("Elevation submap responded with timestamp %f.", map_.getTimeOfLastFusion().toSec());
   return isSuccess;
@@ -568,40 +565,61 @@ void ElevationMapping::footTipStanceCallback(const quadruped_msgs::QuadrupedStat
   }
 
   // Detect start and end of stances for each of the two front foot tips.
-  stanceProcessor_.detectStancePhase();
+  std::string triggeredStance = stanceProcessor_.detectStancePhase();
 
-  // Broadcast frame transform for drift adjustment.
-  frameCorrection();
+  //std::cout << " Looping: tip: " << triggeredStance << std::endl;
 
-  bool trigger = getFootTipTrigger();
-  std::string tip = getTriggeredTip();
-  if (trigger) {
-
-      //if (tip != "lefthind" && tip != "righthind") {
-          grid_map::Position tipPosition(stanceProcessor_.meanStance_(0), stanceProcessor_.meanStance_(1));
-          // Do function get ellipsis axes for clarity..
-          Eigen::Array2d ellipseAxes;
-          ellipseAxes[0] = ellipseAxes[1] = std::max(6 * sqrt(map_.rawMap_.atPosition("horizontal_variance_x",tipPosition)),
-                                    6 * sqrt(map_.rawMap_.atPosition("horizontal_variance_y",tipPosition)));
-
-          map_.fuseArea(tipPosition, ellipseAxes);
-          // TODO: elevation map bound fusion here. and pass fused map as reference to the comparison function..
-          stanceProcessor_.driftRefinement_.footTipElevationMapComparison(tip, stanceProcessor_.meanStance_, map_.getRawGridMap(), map_.getFusedGridMap(), map_.supportMapGP_);
-      //}
-      stanceProcessor_.footTipTrigger_ = false;
-
-      stanceProcessor_.driftRefinement_.publishAveragedFootTipPositionMarkers(map_.getRawGridMap(), stanceProcessor_.meanStance_, tip);
-
-      // Shift mean stance by the estimated total drift.
-
-
-      // Support Surface Estimation.
-      if (runSupportSurfaceEstimation_){
-          supportSurfaceEstimation_.updateSupportSurfaceEstimation(tip, map_.getRawGridMap(), map_.supportMapGP_, map_.getFusedGridMap(), stanceProcessor_.meanStance_, stanceProcessor_.driftRefinement_.heightDifferenceFromComparison_);
-      }
-
+  if (triggeredStance != "none") {
+    //  std::cout << " BEFORE PROCESSING!!! " << triggeredStance << std::endl;
+      processTip(triggeredStance);
+    //  std::cout << " AFTER!!! => PROCESSING!!! " << triggeredStance << std::endl;
   }
+
+  //if (triggeredStance != "none") processTip(triggeredStance);
+  //std::cout << "De string isch:"  << triggeredStance << std::endl;
+  // Broadcast frame transform for drift adjustment.
+
+  frameCorrection();
+  //bool trigger = getFootTipTrigger();
+  //std::string tip = getTriggeredTip();
+  //if (trigger) {
+  //    std::cout << "TIPTIPTIP:::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::: " << tip << std::endl;
+  //    std::cout << " \n ENDEND " << std::endl;
+  //    processTip(tip);
+  //}
 }
+
+bool ElevationMapping::processTip(std::string tip) {
+    //if (tip != "lefthind" && tip != "righthind") {
+
+        std::cout << "TIP PROCESSED: -> " << tip << std::endl;
+
+        grid_map::Position tipPosition(stanceProcessor_.meanStance_(0), stanceProcessor_.meanStance_(1));
+        // Do function get ellipsis axes for clarity..
+        Eigen::Array2d ellipseAxes;
+        ellipseAxes[0] = ellipseAxes[1] = std::max(6 * sqrt(map_.rawMap_.atPosition("horizontal_variance_x",tipPosition)),
+                                  6 * sqrt(map_.rawMap_.atPosition("horizontal_variance_y",tipPosition)));
+
+        map_.fuseArea(tipPosition, ellipseAxes);
+        // TODO: elevation map bound fusion here. and pass fused map as reference to the comparison function..
+        stanceProcessor_.driftRefinement_.footTipElevationMapComparison(tip, stanceProcessor_.meanStance_, map_.getRawGridMap(), map_.getFusedGridMap(), map_.supportMapGP_);
+    //}
+    stanceProcessor_.footTipTrigger_ = false;
+
+    stanceProcessor_.driftRefinement_.publishAveragedFootTipPositionMarkers(map_.getRawGridMap(), stanceProcessor_.meanStance_, tip);
+
+    // Shift mean stance by the estimated total drift.
+
+    // Always apply frame correction before support Surface Estimation.
+    frameCorrection();
+
+    // Support Surface Estimation.
+    if (runSupportSurfaceEstimation_){
+        supportSurfaceEstimation_.updateSupportSurfaceEstimation(tip, map_.getRawGridMap(), map_.supportMapGP_, map_.getFusedGridMap(), stanceProcessor_.meanStance_, stanceProcessor_.driftRefinement_.heightDifferenceFromComparison_);
+    }
+    return true;
+}
+
 
 bool ElevationMapping::frameCorrection()
 {

@@ -187,8 +187,10 @@ void StanceProcessor::footTipStanceCallback(const quadruped_msgs::QuadrupedState
   detectStancePhase();
 }
 
-bool StanceProcessor::detectStancePhase()
+std::string StanceProcessor::detectStancePhase()
 {
+
+    std::string triggerString = "none";
     //boost::recursive_mutex::scoped_lock scopedLockForFootTipStanceProcessor(footTipStanceProcessorMutex_);
 
     //! TEST about the two threads
@@ -197,17 +199,17 @@ bool StanceProcessor::detectStancePhase()
     //! END TEST
     //!<
 
-
+    //std::cout << "ISINSTANCE LEFT: " << isInStanceLeft_ << std::endl;
 
     // Collect State Data for stance phase detection
     processStanceTriggerLeft_.push_back(LFTipState_);
     processStanceTriggerRight_.push_back(RFTipState_);
 
     // Constrain the size of the state arrays.
-    if (processStanceTriggerLeft_.size() > 2000) {
+    if (processStanceTriggerLeft_.size() > 300) {
         processStanceTriggerLeft_.erase(processStanceTriggerLeft_.begin());
     }
-    if (processStanceTriggerRight_.size() > 2000) {
+    if (processStanceTriggerRight_.size() > 300) {
         processStanceTriggerRight_.erase(processStanceTriggerRight_.begin());
     }
 
@@ -222,11 +224,17 @@ bool StanceProcessor::detectStancePhase()
     //std::cout << " robustStanceTriggerLF_: " << robustStanceTriggerLF_ << std::endl;
     if (stanceDetectionMethod_ == "robust" && robustStanceTriggerLF_) {
         robustStanceCounterLF_++;
-    //    std::cout << "robustStanceCounterLF_: " << robustStanceCounterLF_ << " robustStanceTriggerLF_: " << robustStanceTriggerLF_ << std::endl;
-        if (robustStanceCounterLF_ > 20) {
+        //std::cout << "robustStanceTrigger: " << robustStanceTriggerLF_ << std::endl;
+        //std::cout << "ISINSTANCE LEFT FRONT:::::::: " << isInStanceLeft_ << std::endl;
 
-            robustStanceTriggerLF_ = false;
-            if(!processStance("left")) return false;
+        //std::cout << "ISINSTANCE LEFT:  TRIGGEREDDDD" << isInStanceLeft_ << std::endl;
+    //    std::cout << "robustStanceCounterLF_: " << robustStanceCounterLF_ << " robustStanceTriggerLF_: " << robustStanceTriggerLF_ << std::endl;
+        if (robustStanceCounterLF_ > 15) {
+            if (triggerString == "none") {
+                robustStanceTriggerLF_ = false;
+                if(!processStance("left")) return "none";
+                triggerString = "left";
+            }
         }
     }
     if (RFTipState_ && isInStanceRight_) {
@@ -239,16 +247,24 @@ bool StanceProcessor::detectStancePhase()
     if (stanceDetectionMethod_ == "robust" && robustStanceTriggerRF_) {
         robustStanceCounterRF_++;
     //    std::cout << "robustStanceCounterRF_: " << robustStanceCounterRF_ << " robustStanceTriggerRF_: " << robustStanceTriggerRF_ << std::endl;
-        if (robustStanceCounterRF_ > 20) {
-
-            robustStanceTriggerRF_ = false;
-            if(!processStance("right")) return false;
+        if (robustStanceCounterRF_ > 15) {
+            if (triggerString == "none") {
+                robustStanceTriggerRF_ = false;
+                if(!processStance("right")) return "none";
+                triggerString = "right";
+            }
         }
     }
 
     // Stance Detection
+    //if (LFTipState_ && !isInStanceLeft_) templateMatchingForStanceDetection("left", processStanceTriggerLeft_);
+    //if (LFTipState_ == 0 && isInStanceLeft_) templateMatchingForStanceDetection("left", processStanceTriggerLeft_);
     templateMatchingForStanceDetection("left", processStanceTriggerLeft_);
+    //if (RFTipState_ && !isInStanceRight_) templateMatchingForStanceDetection("right", processStanceTriggerRight_);
+    //if (RFTipState_ == 0 && isInStanceRight_) templateMatchingForStanceDetection("right", processStanceTriggerRight_);
     templateMatchingForStanceDetection("right", processStanceTriggerRight_);
+
+
 
     // Here again for hind legs..
     if (runHindLegStanceDetection_) {
@@ -258,10 +274,10 @@ bool StanceProcessor::detectStancePhase()
         processStanceTriggerRightHind_.push_back(RHTipState_);
 
         // Constrain the size of the state arrays.
-        if (processStanceTriggerLeftHind_.size() > 2000) {
+        if (processStanceTriggerLeftHind_.size() > 300) {
             processStanceTriggerLeftHind_.erase(processStanceTriggerLeftHind_.begin());
         }
-        if (processStanceTriggerRightHind_.size() > 2000) {
+        if (processStanceTriggerRightHind_.size() > 300) {
             processStanceTriggerRightHind_.erase(processStanceTriggerRightHind_.begin());
         }
 
@@ -273,9 +289,12 @@ bool StanceProcessor::detectStancePhase()
         //    LHTipStance_.push_back(LHTipPosition_);
         if (stanceDetectionMethod_ == "robust" && robustStanceTriggerLH_) {
             robustStanceCounterLH_++;
-            if (robustStanceCounterLH_ > 20) {
-                robustStanceTriggerLH_ = false;
-                if(!processStance("lefthind")) return false;
+            if (robustStanceCounterLH_ > 15) {
+                if (triggerString == "none") {
+                    robustStanceTriggerLH_ = false;
+                    if(!processStance("lefthind")) return "none";
+                     triggerString = "lefthind";
+                }
             }
         }
 
@@ -286,25 +305,35 @@ bool StanceProcessor::detectStancePhase()
         //    RHTipStance_.push_back(RHTipPosition_);
         if (stanceDetectionMethod_ == "robust" && robustStanceTriggerRH_) {
             robustStanceCounterRH_++;
-            if (robustStanceCounterRH_ > 20) {
-                robustStanceTriggerRH_ = false;
-                if(!processStance("righthind")) return false;
+            if (robustStanceCounterRH_ > 15) {
+                if (triggerString == "none") {
+                    robustStanceTriggerRH_ = false;
+                    if(!processStance("righthind")) return "none";
+                     triggerString = "righthind";
+                }
             }
         }
 
         // Stance Detection
+        // if (LHTipState_ && !isInStanceLeftHind_) templateMatchingForStanceDetection("lefthind", processStanceTriggerLeftHind_);
+        //if (LHTipState_ == 0 && isInStanceLeftHind_) templateMatchingForStanceDetection("lefthind", processStanceTriggerLeftHind_);
         templateMatchingForStanceDetection("lefthind", processStanceTriggerLeftHind_);
+
+        //if (RHTipState_ && !isInStanceRightHind_) templateMatchingForStanceDetection("righthind", processStanceTriggerRightHind_);
+        //if (RHTipState_ == 0 && isInStanceRightHind_) templateMatchingForStanceDetection("righthind", processStanceTriggerRightHind_);
         templateMatchingForStanceDetection("righthind", processStanceTriggerRightHind_);
     }
-    return true;
+    return triggerString;
 }
 
-bool StanceProcessor::templateMatchingForStanceDetection(std::string tip, std::vector<bool> &stateVector)
+bool StanceProcessor::templateMatchingForStanceDetection(std::string tip, std::vector<bool> &stateVector) // MEssed around with the stance detection temlpate accuracy -> check !!! TODO
 {
+    //std::cout << "ISINSTANCE LEFT: " << isInStanceLeft_ << std::endl;
+
     // Recognition of the start of a stance phase.
     if(stateVector.size() >= 16 && stateVector.end()[-1]+stateVector.end()[-2]+
             stateVector.end()[-3]+stateVector.end()[-4]+stateVector.end()[-5]+
-            stateVector.end()[-6]+stateVector.end()[-7]+stateVector.end()[-8] >= 6 &&
+            stateVector.end()[-6]+stateVector.end()[-7]+stateVector.end()[-8] >= 4 &&
             stateVector.end()[-9]+stateVector.end()[-10] +
             stateVector.end()[-11]+stateVector.end()[-12]+ stateVector.end()[-13]+
             stateVector.end()[-14]+stateVector.end()[-15] <= 4){  // Hacked from 6 to 4
@@ -313,7 +342,7 @@ bool StanceProcessor::templateMatchingForStanceDetection(std::string tip, std::v
             isInStanceLeft_ = 1;
             if (stanceDetectionMethod_ == "start") if(!processStance(tip)) return false;
             if (stanceDetectionMethod_ == "robust") {
-                std::cout << "triggering LF!!" << std::endl;
+                std::cout << "triggering LF!! :::::::::::::::::::::::::::::::::::::::::::---------------------------------------------------" << std::endl;
                 robustStanceTriggerLF_ = true;
                 robustStanceCounterLF_ = 0;
             }
@@ -349,27 +378,28 @@ bool StanceProcessor::templateMatchingForStanceDetection(std::string tip, std::v
     if(stateVector.size() >= 16 &&
             stateVector.end()[-1] + stateVector.end()[-2] + stateVector.end()[-3]+
             stateVector.end()[-4]+stateVector.end()[-5] + stateVector.end()[-6]+
-            stateVector.end()[-7]+stateVector.end()[-8] <= 3 &&
+            stateVector.end()[-7]+stateVector.end()[-8] <= 1 &&
             stateVector.end()[-9]+stateVector.end()[-10] +
             stateVector.end()[-11]+stateVector.end()[-12]+ stateVector.end()[-13]+
-            stateVector.end()[-14]+stateVector.end()[-15] >=1){
+            stateVector.end()[-14]+stateVector.end()[-15] >= 1){
 
         if(tip == "left" && isInStanceLeft_){
             if (stanceDetectionMethod_ == "average") if(!processStance(tip)) return false;
+            std::cout << "StanceLeft ENDED HERE!!   -> -> -> -> ->-> ->              -> ->->-> -> ->-> -> ->    ->" << std::endl;
             isInStanceLeft_ = 0;
             processStanceTriggerLeft_.clear();
         }
-        if(tip == "lefthind" && isInStanceLeftHind_){
+        else if(tip == "lefthind" && isInStanceLeftHind_){
             if (stanceDetectionMethod_ == "average") if(!processStance(tip)) return false;
             isInStanceLeftHind_ = 0;
             processStanceTriggerLeftHind_.clear();
         }
-        if(tip == "right" && isInStanceRight_){
+        else if(tip == "right" && isInStanceRight_){
             if (stanceDetectionMethod_ == "average") if(!processStance(tip)) return false;
             isInStanceRight_ = 0;
             processStanceTriggerRight_.clear();
         }
-        if(tip == "righthind" && isInStanceRightHind_){
+        else if(tip == "righthind" && isInStanceRightHind_){
             if (stanceDetectionMethod_ == "average") if(!processStance(tip)) return false;
             isInStanceRightHind_ = 0;
             processStanceTriggerRightHind_.clear();
@@ -381,26 +411,25 @@ bool StanceProcessor::templateMatchingForStanceDetection(std::string tip, std::v
 bool StanceProcessor::processStance(std::string tip)
 {
 
+    std::cout << "Process Stance: " << tip << std::endl;
+
+
 //    // Delete the last 10 entries of the Foot Stance Position Vector, as these are used for transition detection
     if (stanceDetectionMethod_ == "start" || stanceDetectionMethod_ == "robust") deleteFirstEntriesOfStances(tip);
     if (stanceDetectionMethod_ == "average") deleteLastEntriesOfStances(tip);
-
     Eigen::Vector3f meanStance = getAverageFootTipPositions(tip);
-
 //    bool runProprioceptiveRoughnessEstimation = true;
 //    if(runProprioceptiveRoughnessEstimation) proprioceptiveRoughnessEstimation(tip);
-
     // Introduce a trigger here and call the foot tip elevation map comparison from elevation mapping class -> pass raw map as a reference with each call.
-
+    std::cout << "Process Stance: " << tip << std::endl;
+    // Better transition, that is not prone to faults..
     setFootTipTrigger(tip);
-    //driftRefinement_.publishAveragedFootTipPositionMarkers(hind);
 
+    //driftRefinement_.publishAveragedFootTipPositionMarkers(hind);
 //    // Performance Assessment, sensible if wanting to tune the system while walking on flat surface.
 //    //bool runPreformanceAssessmentForFlatGround = false;
 //    //if(runPreformanceAssessmentForFlatGround) performanceAssessmentMeanElevationMap();
-
     std::cout << "Process Stance: " << tip << std::endl;
-
     return true;
 }
 
@@ -409,7 +438,7 @@ bool StanceProcessor::deleteFirstEntriesOfStances(std::string tip)
 
     int consideredFootStepNumber;
     if (stanceDetectionMethod_ == "start") consideredFootStepNumber = 6;
-    if (stanceDetectionMethod_ == "robust") consideredFootStepNumber = 9;
+    if (stanceDetectionMethod_ == "robust") consideredFootStepNumber = 17;
 
     // All stance entries are deleted except the last 3 ones are stored -> this gives start detection
     if (tip == "left" && LFTipStance_.size() < consideredFootStepNumber + 1){

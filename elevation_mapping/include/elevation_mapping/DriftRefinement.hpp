@@ -483,6 +483,9 @@ private:
  //! TODO: Description:
  bool sinkageDepthMapLayerGP(std::string tip, double& tipDifference);
 
+ //! TODO: Description:
+ double sigmoid(const double & sigmoidCenter, const double & widthFactor, const double & footTipHeight, const double & upperBound, const double & lowerBound);
+
 
  //! ROS nodehandle.
  ros::NodeHandle nodeHandle_;

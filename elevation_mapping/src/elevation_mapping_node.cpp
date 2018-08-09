@@ -28,7 +28,7 @@ int main(int argc, char** argv)
     //}
 
     // Spin
-    ros::AsyncSpinner spinner(2); // Use n threads // MANIPULATED!!!!!
+    ros::AsyncSpinner spinner(10); // Use n threads // MANIPULATED!!!!!
     spinner.start();
 
     ros::waitForShutdown();

@@ -259,7 +259,7 @@ double SupportSurfaceEstimation::getFootTipElevationMapDifferenceGP(std::string 
         }
     }
     else verticalDifference = std::numeric_limits<double>::quiet_NaN();
-    std::cout << "Vertical Difference!! -> ->: " << verticalDifference << std::endl;
+   // std::cout << "Vertical Difference!! -> ->: " << verticalDifference << std::endl;
     return verticalDifference;
 }
 
@@ -272,7 +272,7 @@ double SupportSurfaceEstimation::getClosestMapValueUsingSpiralIteratorElevation(
         Position pos;
         MapReference.getPosition(index, pos);
         if (MapReference.isInside(pos) && !isnan(MapReference.at("smoothed_top_layer_gp", index)) && MapReference.isValid(index)){
-            std::cout << "RETURNED DIFFERENCE TO A CLOSE NEIGHBOR USING SPIRALLING!!!" << std::endl;
+          //  std::cout << "RETURNED DIFFERENCE TO A CLOSE NEIGHBOR USING SPIRALLING!!!" << std::endl;
             return tipHeight - MapReference.at("smoothed_top_layer_gp", index); // && MapReference.isValid(index)
         }
         counter++;
@@ -367,7 +367,7 @@ bool SupportSurfaceEstimation::sinkageDepthVarianceEstimation(std::string tip, d
         double penetrationDepthVariance = squaredTotalVerticalDifference / double(count) -
                 pow(totalVerticalDifference / double(count), 2);
 
-        std::cout << " HINDHINDHIND: " << penetrationDepthVariance << std::endl;
+     //   std::cout << " HINDHINDHIND: " << penetrationDepthVariance << std::endl;
 
         // Differential Version.
         double differentialPenetrationDepthVariance = squaredTotalVerticalDifferenceChange / double(count) -
@@ -395,7 +395,7 @@ void SupportSurfaceEstimation::setPenetrationDepthVariance(double penetrationDep
         if (!isnan(penetrationDepthVariance)) penetrationDepthVariance_ = penetrationDepthVariance;
     if (tip == "lefthind" || tip == "righthind") {
         if (!isnan(penetrationDepthVariance)) {
-            std::cout << "SET THE HIND PEN DEPTH VARIANCE ESTIMATION!!!!!!: \n \n \n \n \n " << penetrationDepthVariance << std::endl;
+         //   std::cout << "SET THE HIND PEN DEPTH VARIANCE ESTIMATION!!!!!!: \n \n \n \n \n " << penetrationDepthVariance << std::endl;
             penetrationDepthVarianceHind_ = penetrationDepthVariance;
         }
     }
@@ -489,9 +489,6 @@ bool SupportSurfaceEstimation::proprioceptiveRoughnessEstimation(std::string tip
     if (tip == "right") frontRightFootTip_ = meanStance;
     if (tip == "lefthind") hindLeftFootTip_ = meanStance;
     if (tip == "righthind") hindRightFootTip_ = meanStance;
-
-
-    std::cout << "tip inside proprioceptive: " << tip << std::endl;
 
     bool writeHorizontalFootTipEstimationStatisticsToFile = false;
     if(writeHorizontalFootTipEstimationStatisticsToFile){
@@ -733,13 +730,12 @@ bool SupportSurfaceEstimation::mainGPRegression(double tileResolution, double ti
     }
     if (tip == "lefthind" || tip == "righthind") {
 
-        std::cout << "terr vat hind:   -> -> -> ................................." << terrainVarianceHind << std::endl;
-        std::cout << "sink vat hind:   -> -> -> ................................." << sinkageVarianceHind << std::endl;
+      //  std::cout << "terr vat hind:   -> -> -> ................................." << terrainVarianceHind << std::endl;
+      //  std::cout << "sink vat hind:   -> -> -> ................................." << sinkageVarianceHind << std::endl;
 
         // Calculate characteristic Value.
         double characteristicValue = (weightTerrainContinuity_ * terrainVarianceHind) / pow(sinkageVarianceHind, exponentCharacteristicValue_);
 
-        std::cout << "hind characteristic value!!" << characteristicValue << std::endl;
 
         // Low pass filtering and bounding of the continuity caracteristic value.
         if (useSignSelectiveContinuityFilter_) {
@@ -1179,7 +1175,7 @@ bool SupportSurfaceEstimation::simpleSinkageDepthLayer(std::string& tip, const d
                 if (runHindLegSupportSurfaceEstimation_) maxSizeFootTipHistory = 20;
                 else maxSizeFootTipHistory = 10;
 
-                std::cout << "TIP DIFFERENCE::::::::::::::::::::::::::::::::::::::::::::::: " << -tipDifference << std::endl;
+                //std::cout << "TIP DIFFERENCE::::::::::::::::::::::::::::::::::::::::::::::: " << -tipDifference << std::endl;
                 // DEBUG:
                 //if (-tipDifference < 0.0) std::cout << "Attention, negative tip DIfference found!!: " << -tipDifference << std::endl;
                 //if (initializedLeftSinkageDepth_ && leftFrontSinkageDepth_ < 0.0) std::cout << "Attention, negative leftfrontsd found!!: " << leftFrontSinkageDepth_ << std::endl;
@@ -1247,8 +1243,6 @@ bool SupportSurfaceEstimation::simpleSinkageDepthLayer(std::string& tip, const d
                 if (sinkageFootTipHistoryGP_.size() != sinkageDepthHistory_.size()) {
                     std::cout << "Attention, having issues \n \n \n \n ISSUES i said!!" << std::endl;
                 }
-
-                std::cout << "here i was still 1" << std::endl;
 
                 Position center(footTip(0), footTip(1));
 
@@ -1386,7 +1380,7 @@ bool SupportSurfaceEstimation::sinkageDepthLayerGP(std::string& tip, const doubl
 
         double l, n, f;
         sinkageGPR.GetHyperParams(l, n, f);
-        std::cout << "hyperparams: l: " << l << " n: " << n << " f: " << f << std::endl;
+        //std::cout << "hyperparams: l: " << l << " n: " << n << " f: " << f << std::endl;
 
 
         if (sinkageGPR.get_n_data() > 0) {
@@ -1488,7 +1482,7 @@ bool SupportSurfaceEstimation::simpleTerrainContinuityLayer(std::string& tip, Gr
 
                             double triangleArea = get2DTriangleArea(footTipHistoryGP_[i-2], footTipHistoryGP_[i-1], footTipHistoryGP_[i]);
 
-                            std::cout << "Crazy triangle area overflow:!! " << triangleArea << std::endl;
+                            //std::cout << "Crazy triangle area overflow:!! " << triangleArea << std::endl;
                             // TODO: Evaluate Plane spun by three points and get do the same, but with the point value, that would have been gained by the plane
 
                             // An issue is here if trotting on the spot!! then may get very steep!!
@@ -1586,8 +1580,8 @@ bool SupportSurfaceEstimation::terrainContinuityLayerGP(std::string& tip, GridMa
             continuityGPNNLengthscale2_ = continuityGPOUSQELengthscale_;
         }
 
-        std::cout << "lscale::::::::::::::::::::::::::::::::                                           :::::::::::::::::::::: "
-                  << continuityGPOUSQELengthscale_ << std::endl;
+       // std::cout << "lscale::::::::::::::::::::::::::::::::                                           :::::::::::::::::::::: "
+         //         << continuityGPOUSQELengthscale_ << std::endl;
 
 
         // lengthscale, sigma_n, sigma_f, betaNN, a_RQ, cConst, kernel
@@ -1857,7 +1851,7 @@ bool SupportSurfaceEstimation::testTrackMeanSupportErrorEvaluation(GridMap& supp
     if (localCellCounter > 0) {
         double meanElevationDifference = localTotalDifference / localCellCounter;
         overallConsideredStanceCounter_++;
-        std::cout << "global cell counter: " << overallConsideredStanceCounter_ << std::endl;
+        //std::cout << "global cell counter: " << overallConsideredStanceCounter_ << std::endl;
         overallSummedMeanElevationDifference_ += meanElevationDifference;
         std::cout << "overall Deviance: " << overallSummedMeanElevationDifference_ << std::endl;
         if (overallConsideredStanceCounter_ > 0) overallMeanElevationDifference_ =
@@ -1940,13 +1934,13 @@ double SupportSurfaceEstimation::get2DTriangleArea(const grid_map::Position3& Po
 
 double SupportSurfaceEstimation::signSelectiveLowPassFilter(double lowPassFilteredValue, double newValue, double filterGainDown, double filterGainUp){
 
-    std::cout << "lowPassFilteredValue:     ..........................: " << lowPassFilteredValue << std::endl;
+   // std::cout << "lowPassFilteredValue:     ..........................: " << lowPassFilteredValue << std::endl;
 
     // Low pass filter (sign selective.)
     if (lowPassFilteredValue < newValue) lowPassFilteredValue = filterGainUp * lowPassFilteredValue + (1 - filterGainUp) * newValue;
     else lowPassFilteredValue = filterGainDown * lowPassFilteredValue + (1 - filterGainDown) * newValue;
 
-    std::cout << "lowPassFilteredValue:     ..........................: " << lowPassFilteredValue << std::endl;
+  //  std::cout << "lowPassFilteredValue:     ..........................: " << lowPassFilteredValue << std::endl;
     return lowPassFilteredValue;
 }
 

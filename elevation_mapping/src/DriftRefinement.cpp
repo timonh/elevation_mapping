@@ -107,7 +107,6 @@ DriftRefinement::DriftRefinement(ros::NodeHandle nodeHandle)
   // Initialize the markers for publishing the confidence bounds of the fused map and the foot tip positions within them.
   initializeVisualizationMarkers();
 
-  std::cout << "called the drift refinement Constructor" << std::endl;
 }
 
 DriftRefinement::~DriftRefinement()
@@ -136,8 +135,6 @@ bool DriftRefinement::footTipElevationMapComparison(std::string tip, Eigen::Vect
     // Horizontal position of the foot tip.
     Position tipPosition(xTip, yTip);
 
-    std::cout << "is it inside????? " << rawMap.isInside(tipPosition) << std::endl;
-
     // Make sure that the state is 1 and the foot tip is inside area covered by the elevation map.
     if(rawMap.isInside(tipPosition) && !isnan(heightDifferenceFromComparison_)){ // HACKED FOR TESTS!!!
 
@@ -148,7 +145,7 @@ bool DriftRefinement::footTipElevationMapComparison(std::string tip, Eigen::Vect
         float varianceMapRaw = rawMap.atPosition("variance", tipPosition);
         float heightMapRawElevationCorrected = heightMapRaw + heightDifferenceFromComparison_; // Changed, since frame transformed grid map used.
 
-        std::cout << "got into the function isnan: " << isnan(heightMapRaw) << " the tip: " << tip << std::endl;
+        //std::cout << "got into the function isnan: " << isnan(heightMapRaw) << " the tip: " << tip << std::endl;
 
         //Index ind;
         //rawMap_.getIndex(tipPosition, ind);
@@ -157,8 +154,6 @@ bool DriftRefinement::footTipElevationMapComparison(std::string tip, Eigen::Vect
 
         // Supress nans.
         if(!isnan(heightMapRaw)){
-
-            std::cout << "got into the function 2: " << heightMapRaw << std::endl;
 
             // Calculate difference.
             verticalDifference = zTip - heightMapRaw;
@@ -203,7 +198,7 @@ bool DriftRefinement::footTipElevationMapComparison(std::string tip, Eigen::Vect
                 std::cout << "ELEVATION: " << elevationFused << std::endl;
             }
 
-            std::cout << "VERTICAL DIFFERENCE DRIFT ADJUSTMENT: " << verticalDifference << std::endl;
+            //std::cout << "VERTICAL DIFFERENCE DRIFT ADJUSTMENT: " << verticalDifference << std::endl;
 
            // std::cout << "lower: " << lowerBoundFused << " elev: " << elevationFused << " upper: " << upperBoundFused << std::endl;
             weightedVerticalDifferenceIncrement = gaussianWeightedDifferenceIncrement(lowerBoundFused, elevationFused, upperBoundFused, verticalDifference);
@@ -217,11 +212,11 @@ bool DriftRefinement::footTipElevationMapComparison(std::string tip, Eigen::Vect
             // TODO: test validity of these:
 
             // DEBUG
-            std::cout << "heightDiff befor weighted difference vector creation: " << heightDifferenceFromComparison_ <<
-                         " weightedVerticalDiffIncrement: " << weightedVerticalDifferenceIncrement << std::endl;
+           // std::cout << "heightDiff befor weighted difference vector creation: " << heightDifferenceFromComparison_ <<
+           //              " weightedVerticalDiffIncrement: " << weightedVerticalDifferenceIncrement << std::endl;
 
 
-            std::cout << "\n \n \n " << std::endl;
+           // std::cout << "\n \n \n " << std::endl;
 
 
 
@@ -327,7 +322,7 @@ bool DriftRefinement::footTipElevationMapComparison(std::string tip, Eigen::Vect
     }
 
 
-    std::cout << "foot Tip Elev Comparison:  XYXYXYXYXYXYXYXYXY:::::::::::" << heightDifferenceFromComparison_ << std::endl;
+    //std::cout << "foot Tip Elev Comparison:  XYXYXYXYXYXYXYXYXY:::::::::::" << heightDifferenceFromComparison_ << std::endl;
 
     // Publish frame, offset by the height difference parameter.
     //frameCorrection(); // Published here also.. (Hacked)
@@ -433,8 +428,8 @@ float DriftRefinement::gaussianWeightedDifferenceIncrement(double lowerBound, do
 {
     diff -= heightDifferenceFromComparison_;
 
-    std::cout << "LOWER         BOUND: " << lowerBound << std::endl;
-    std::cout << "UPPER         BOUND: " << upperBound << std::endl;
+   // std::cout << "LOWER         BOUND: " << lowerBound << std::endl;
+   // std::cout << "UPPER         BOUND: " << upperBound << std::endl;
 
     // New Stuff for testing!! ********************************************************************************************************
     //! For testing
@@ -510,7 +505,11 @@ float DriftRefinement::gaussianWeightedDifferenceIncrement(double lowerBound, do
         else footTipOutsideBounds_ = false;
 
         if (elevation + diff < elevation + 1.5 * (lowerBound - elevation)) {
-            std::cout << "SIGMOID DROPPOFF LOWER ACTIVATED!! " << std::endl;
+         //   std::cout << "SIGMOID DROPPOFF LOWER ACTIVATED!!  \n\n\n\n\n\n\n\n\n\n\n\n\n\n " << std::endl;
+            double sigmoidCenter = 2.0 * (lowerBound - elevation);
+            double widthFactor = 5.0;
+            weight = weight * sigmoid(sigmoidCenter, widthFactor, diff, upperBound, lowerBound);
+
 
         }
 
@@ -523,24 +522,23 @@ float DriftRefinement::gaussianWeightedDifferenceIncrement(double lowerBound, do
         else footTipOutsideBounds_ = false;
 
         if (elevation + diff > elevation + 1.5 * (upperBound - elevation)) {
-            std::cout << "SIGMOID DROPPOFF UPPER ACTIVATED!! " << std::endl;
+          //  std::cout << "SIGMOID DROPPOFF UPPER ACTIVATED!! \n\n\n\n\n\n\n\n\n\n\n\n\n\n " << std::endl;
+            double sigmoidCenter = 2.0 * (upperBound - elevation);
+            double widthFactor = 5.0;
+            weight = weight * sigmoid(sigmoidCenter, widthFactor, diff, upperBound, lowerBound);
 
         }
     }
 
     // Constrain to be maximally 1.
     if(weight > 1.0) weight = 1.0; // For security, basically not necessary (as the weighting term is left away in the normalDistribution function)
-
     usedWeight_ = (1.0 - weight);
 
 
     // TOOD: code function that does sigmoid droppoff between 1.5 and 2 times the confidence bound -> no weight in this case -> no correction (Marco Hutters comment..)
 
-
-
-
-    std::cout << "WEIGHT: " << (1-weight) << " diff: " << diff << " elevation: " << elevation <<
-                 " lower: " << lowerBound << " upper: " << upperBound << std::endl;
+   // std::cout << "WEIGHT: " << (1-weight) << " diff: " << diff << " elevation: " << elevation <<
+   //              " lower: " << lowerBound << " upper: " << upperBound << std::endl;
     return (1.0 - weight) * diff;
 }
 
@@ -599,7 +597,6 @@ bool DriftRefinement::publishAveragedFootTipPositionMarkers(const GridMap& rawMa
         c.b = 1;
         c.r = 1;
         c.a = 1;
-        std::cout << "Hind!!!" << std::endl;
     }
 
     //boost::recursive_mutex::scoped_lock scopedLock(rawMapMutex_);
@@ -637,6 +634,24 @@ bool DriftRefinement::publishAveragedFootTipPositionMarkers(const GridMap& rawMa
     //updateFootTipBasedElevationMapLayer(numberOfConsideredFootTips);
 
     return true;
+}
+
+double DriftRefinement::sigmoid(const double & sigmoidCenter, const double & widthFactor, const double & footTipHeight, const double & upperBound, const double & lowerBound) {
+
+    double sigmoidOutput;
+    double argument;
+    if (sigmoidCenter > 0.0) {
+        argument = (footTipHeight - sigmoidCenter)/fabs(upperBound - sigmoidCenter);
+    }
+    else if (sigmoidCenter < 0.0) {
+        argument = (footTipHeight - sigmoidCenter)/fabs(lowerBound - sigmoidCenter);
+    }
+    sigmoidOutput = exp(widthFactor * argument) / (1 + exp(widthFactor * argument));
+
+//    std::cout << "sigmoidCenter: " << sigmoidCenter << " footTipHeight:  " << footTipHeight << " sigmoidOutput: " << sigmoidOutput << std::endl;
+//    std::cout << "argument: " << argument << " widthfactor * argument " << widthFactor * argument << std::endl;
+
+    return sigmoidOutput;
 }
 
 } /* namespace */

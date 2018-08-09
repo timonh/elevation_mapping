@@ -318,7 +318,7 @@ private:
                                   double& elevationFused, double& upperBoundFused, double& lowerBoundFused);
 
  //! TODO: Description:
- bool detectStancePhase();
+ std::string detectStancePhase();
 
  bool templateMatchingForStanceDetection(std::string tip, std::vector<bool> &stateVector);
 
