@@ -89,7 +89,7 @@ StanceProcessor::StanceProcessor(ros::NodeHandle nodeHandle)
   nodeHandle_.param("run_support_surface_estimation", runSupportSurfaceEstimation_, false); // DR, SS??
 
 
-  stanceProcessorTriggerPublisher_ = nodeHandle_.advertise<std_msgs::String>("stance_trigger", 1000);
+  stanceProcessorTriggerPublisher_ = nodeHandle_.advertise<geometry_msgs::Twist>("stance_trigger", 20);
 
   //if(runFootTipElevationMapEnhancements_){ TODO: uncomment
   //    if(!useBag_) footTipStanceSubscriber_ = nodeHandle_.subscribe("/state_estimator/quadruped_state", 1, &StanceProcessor::footTipStanceCallback, this);
@@ -196,6 +196,8 @@ void StanceProcessor::footTipStanceCallback(const quadruped_msgs::QuadrupedState
 std::string StanceProcessor::detectStancePhase()
 {
 
+
+
     std::string triggerString = "none";
     //std::cout << "continuing to loop" << std::endl;
     //boost::recursive_mutex::scoped_lock scopedLockForFootTipStanceProcessor(footTipStanceProcessorMutex_);
@@ -228,6 +230,8 @@ std::string StanceProcessor::detectStancePhase()
     //else if (LFTipState_ && (stanceDetectionMethod_ == "start" || stanceDetectionMethod_ == "robust"))
     //    LFTipStance_.push_back(LFTipPosition_);
 
+
+
     //std::cout << " robustStanceTriggerLF_: " << robustStanceTriggerLF_ << std::endl;
     if (stanceDetectionMethod_ == "robust" && robustStanceTriggerLF_) {
         robustStanceCounterLF_++;
@@ -238,11 +242,12 @@ std::string StanceProcessor::detectStancePhase()
     //    std::cout << "robustStanceCounterLF_: " << robustStanceCounterLF_ << " robustStanceTriggerLF_: " << robustStanceTriggerLF_ << std::endl;
         if (robustStanceCounterLF_ > 15) {
             //if (triggerString == "none") {
-                robustStanceTriggerLF_ = false; // move this to callback for better performance
+                // // move this to callback for better performance
                 if(!processStance("left")) return "none";
-                std_msgs::String publisherTrigger;
-                publisherTrigger.data = "left";
-                stanceProcessorTriggerPublisher_.publish(publisherTrigger);
+                robustStanceTriggerLF_ = false;
+                //std_msgs::String publisherTrigger;
+                //publisherTrigger.data = "left";
+                //stanceProcessorTriggerPublisher_.publish(publisherTrigger);
                 triggerString = "left";
             //}
         }
@@ -259,11 +264,12 @@ std::string StanceProcessor::detectStancePhase()
     //    std::cout << "robustStanceCounterRF_: " << robustStanceCounterRF_ << " robustStanceTriggerRF_: " << robustStanceTriggerRF_ << std::endl;
         if (robustStanceCounterRF_ > 15) {
             //if (triggerString == "none") {
-                robustStanceTriggerRF_ = false;
+                //
                 if(!processStance("right")) return "none";
-                std_msgs::String publisherTrigger;
-                publisherTrigger.data = "right";
-                stanceProcessorTriggerPublisher_.publish(publisherTrigger);
+                robustStanceTriggerRF_ = false;
+                //std_msgs::String publisherTrigger;
+                //publisherTrigger.data = "right";
+                //stanceProcessorTriggerPublisher_.publish(publisherTrigger);
                 triggerString = "right";
             //}
         }
@@ -304,11 +310,12 @@ std::string StanceProcessor::detectStancePhase()
             robustStanceCounterLH_++;
             if (robustStanceCounterLH_ > 15) {
                 //if (triggerString == "none") { // prefer front feet..
-                    robustStanceTriggerLH_ = false;
+
                     if(!processStance("lefthind")) return "none";
-                    std_msgs::String publisherTrigger;
-                    publisherTrigger.data = "lefthind";
-                    stanceProcessorTriggerPublisher_.publish(publisherTrigger);
+                    robustStanceTriggerLH_ = false;
+                    //std_msgs::String publisherTrigger;
+                    //publisherTrigger.data = "lefthind";
+                    //stanceProcessorTriggerPublisher_.publish(publisherTrigger);
                     triggerString = "lefthind";
                 //}
             }
@@ -323,11 +330,9 @@ std::string StanceProcessor::detectStancePhase()
             robustStanceCounterRH_++;
             if (robustStanceCounterRH_ > 15) {
                 //if (triggerString == "none") {
-                    robustStanceTriggerRH_ = false;
+                    //robustStanceTriggerRH_ = false;
                     if(!processStance("righthind")) return "none";
-                    std_msgs::String publisherTrigger;
-                    publisherTrigger.data = "righthind";
-                    stanceProcessorTriggerPublisher_.publish(publisherTrigger);
+                    robustStanceTriggerRH_ = false;
                     triggerString = "righthind";
                 //}
             }
@@ -352,10 +357,10 @@ bool StanceProcessor::templateMatchingForStanceDetection(std::string tip, std::v
     // Recognition of the start of a stance phase.
     if(stateVector.size() >= 16 && stateVector.end()[-1]+stateVector.end()[-2]+
             stateVector.end()[-3]+stateVector.end()[-4]+stateVector.end()[-5]+
-            stateVector.end()[-6]+stateVector.end()[-7]+stateVector.end()[-8] >= 5 &&
+            stateVector.end()[-6]+stateVector.end()[-7]+stateVector.end()[-8] >= 7 &&
             stateVector.end()[-9]+stateVector.end()[-10] +
             stateVector.end()[-11]+stateVector.end()[-12]+ stateVector.end()[-13]+
-            stateVector.end()[-14]+stateVector.end()[-15] <= 6){  // Hacked from 6 to 4
+            stateVector.end()[-14]+stateVector.end()[-15] <= 3){  // Hacked from 6 to 4
         if(tip == "left" && !isInStanceLeft_){
            // std::cout << "Start of LEFT stance" << std::endl;
             isInStanceLeft_ = 1;
@@ -397,10 +402,10 @@ bool StanceProcessor::templateMatchingForStanceDetection(std::string tip, std::v
     if(stateVector.size() >= 16 &&
             stateVector.end()[-1] + stateVector.end()[-2] + stateVector.end()[-3]+
             stateVector.end()[-4]+stateVector.end()[-5] + stateVector.end()[-6]+
-            stateVector.end()[-7]+stateVector.end()[-8] <= 1 &&
+            stateVector.end()[-7]+stateVector.end()[-8] <= 2 &&
             stateVector.end()[-9]+stateVector.end()[-10] +
             stateVector.end()[-11]+stateVector.end()[-12]+ stateVector.end()[-13]+
-            stateVector.end()[-14]+stateVector.end()[-15] >= 2){
+            stateVector.end()[-14]+stateVector.end()[-15] >= 4){
 
         if(tip == "left" && isInStanceLeft_){
             if (stanceDetectionMethod_ == "average") if(!processStance(tip)) return false;
@@ -576,13 +581,37 @@ Eigen::Vector3f StanceProcessor::getAverageFootTipPositions(std::string tip)
         meanStance_ = totalStance / float(stance.size());
     }
 
+    geometry_msgs::Twist triggerTwist;
     // Save the mean tip positions for simple foot tip embedding into high grass detection
-    if (tip == "left") frontLeftFootTip_ = meanStance_;
-    if (tip == "right") frontRightFootTip_ = meanStance_;
-    if (tip == "lefthind") hindLeftFootTip_ = meanStance_;
-    if (tip == "righthind") hindRightFootTip_ = meanStance_;
-
-    return meanStance_;
+    if (tip == "left") {
+        frontLeftFootTip_ = meanStance_;
+        triggerTwist.linear.x = meanStance_(0);
+        triggerTwist.linear.y = meanStance_(1);
+        triggerTwist.linear.z = meanStance_(2);
+        triggerTwist.angular.x = 1.0;
+    }
+    else if (tip == "right") {
+        frontRightFootTip_ = meanStance_;
+        triggerTwist.linear.x = meanStance_(0);
+        triggerTwist.linear.y = meanStance_(1);
+        triggerTwist.linear.z = meanStance_(2);
+        triggerTwist.angular.x = 2.0;
+    }
+    else if (tip == "lefthind") {
+        hindLeftFootTip_ = meanStance_;
+        triggerTwist.linear.x = meanStance_(0);
+        triggerTwist.linear.y = meanStance_(1);
+        triggerTwist.linear.z = meanStance_(2);
+        triggerTwist.angular.x = 3.0;
+    }
+    else if (tip == "righthind") {
+        hindRightFootTip_ = meanStance_;
+        triggerTwist.linear.x = meanStance_(0);
+        triggerTwist.linear.y = meanStance_(1);
+        triggerTwist.linear.z = meanStance_(2);
+        triggerTwist.angular.x = 4.0;
+    }
+    stanceProcessorTriggerPublisher_.publish(triggerTwist);
 }
 
 void StanceProcessor::setFootTipTrigger(std::string tip){

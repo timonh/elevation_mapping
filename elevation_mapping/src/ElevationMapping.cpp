@@ -129,7 +129,7 @@ ElevationMapping::ElevationMapping(ros::NodeHandle& nodeHandle)
   //! End of newly introduced section
 
   // Do adjust the queue size if needed TODO:
-  processTriggerSubscriber_ = nodeHandle_.subscribe("stance_trigger", 7, &ElevationMapping::processTriggerCallback, this);
+  processTriggerSubscriber_ = nodeHandle_.subscribe("stance_trigger", 20, &ElevationMapping::processTriggerCallback, this);
 
   // Publisher for data on continuity assumption negotiation.
   varianceTwistPublisher_ = nodeHandle_.advertise<geometry_msgs::TwistStamped>("variances", 1000);
@@ -592,26 +592,52 @@ void ElevationMapping::footTipStanceCallback(const quadruped_msgs::QuadrupedStat
   //}
 }
 
-void ElevationMapping::processTriggerCallback(const std_msgs::String triggeredTip) {
+void ElevationMapping::processTriggerCallback(const geometry_msgs::Twist triggerTwist) {
+
+    // TODO: this with custom message : string and eigenVector.
+
     //if (tip != "lefthind" && tip != "righthind") {
+    std::string tip;
+    if (triggerTwist.angular.x < 1.5) tip = "left";
+    else if (triggerTwist.angular.x > 1.5 && triggerTwist.angular.x < 2.5) tip = "right";
+    else if (triggerTwist.angular.x > 2.5 && triggerTwist.angular.x < 3.5) tip = "lefthind";
+    else if (triggerTwist.angular.x > 3.5) tip = "righthind";
 
-    std::string tip = triggeredTip.data;
 
-        std::cout << "TIP PROCESSED: -> " << tip << std::endl;
 
-        grid_map::Position tipPosition(stanceProcessor_.meanStance_(0), stanceProcessor_.meanStance_(1));
-        // Do function get ellipsis axes for clarity..
-        Eigen::Array2d ellipseAxes;
-        ellipseAxes[0] = ellipseAxes[1] = std::max(6 * sqrt(map_.rawMap_.atPosition("horizontal_variance_x",tipPosition)),
-                                  6 * sqrt(map_.rawMap_.atPosition("horizontal_variance_y",tipPosition)));
+    Eigen::Vector3f meanStance;
+    meanStance(0) = triggerTwist.linear.x;  // Check timing!!!! TODO TODO
+    meanStance(1) = triggerTwist.linear.y;
+    meanStance(2) = triggerTwist.linear.z;
 
-        map_.fuseArea(tipPosition, ellipseAxes);
-        // TODO: elevation map bound fusion here. and pass fused map as reference to the comparison function..
-        stanceProcessor_.driftRefinement_.footTipElevationMapComparison(tip, stanceProcessor_.meanStance_, map_.getRawGridMap(), map_.getFusedGridMap(), map_.supportMapGP_);
+//    if (tip == "left") {
+//        stanceProcessor_.robustStanceTriggerLF_ = false;
+//    }
+//    else if (tip == "right") {
+//        stanceProcessor_.robustStanceTriggerRF_ = false;
+//    }
+//    else if (tip == "lefthind") {
+//        stanceProcessor_.robustStanceTriggerLH_ = false;
+//    }
+//    else if (tip == "righthind") {
+//        stanceProcessor_.robustStanceTriggerRH_ = false;
+//    }
+
+    std::cout << "TIP PROCESSED: -> " << tip << " X value of meanstance " << meanStance(0) << std::endl;
+
+    grid_map::Position tipPosition(meanStance(0), meanStance(1));
+    // Do function get ellipsis axes for clarity..
+    Eigen::Array2d ellipseAxes;
+    ellipseAxes[0] = ellipseAxes[1] = std::max(6 * sqrt(map_.rawMap_.atPosition("horizontal_variance_x",tipPosition)),
+                              6 * sqrt(map_.rawMap_.atPosition("horizontal_variance_y",tipPosition)));
+
+    map_.fuseArea(tipPosition, ellipseAxes);
+    // TODO: elevation map bound fusion here. and pass fused map as reference to the comparison function..
+    stanceProcessor_.driftRefinement_.footTipElevationMapComparison(tip, meanStance, map_.getRawGridMap(), map_.getFusedGridMap(), map_.supportMapGP_);
     //}
     stanceProcessor_.footTipTrigger_ = false;
 
-    stanceProcessor_.driftRefinement_.publishAveragedFootTipPositionMarkers(map_.getRawGridMap(), stanceProcessor_.meanStance_, tip);
+    stanceProcessor_.driftRefinement_.publishAveragedFootTipPositionMarkers(map_.getRawGridMap(), meanStance, tip);
 
     // Shift mean stance by the estimated total drift.
 
@@ -620,7 +646,7 @@ void ElevationMapping::processTriggerCallback(const std_msgs::String triggeredTi
 
     // Support Surface Estimation.
     if (runSupportSurfaceEstimation_){
-        supportSurfaceEstimation_.updateSupportSurfaceEstimation(tip, map_.getRawGridMap(), map_.supportMapGP_, map_.getFusedGridMap(), stanceProcessor_.meanStance_, stanceProcessor_.driftRefinement_.heightDifferenceFromComparison_);
+        supportSurfaceEstimation_.updateSupportSurfaceEstimation(tip, map_.getRawGridMap(), map_.supportMapGP_, map_.getFusedGridMap(), meanStance, stanceProcessor_.driftRefinement_.heightDifferenceFromComparison_);
     }
 }
 

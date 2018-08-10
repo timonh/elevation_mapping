@@ -200,7 +200,7 @@ class ElevationMapping
 
   std::string getTriggeredTip();
 
-  void processTriggerCallback(const std_msgs::String triggeredTip);
+  void processTriggerCallback(const geometry_msgs::Twist triggerTwist);
 
   //! ROS nodehandle.
   ros::NodeHandle& nodeHandle_;
