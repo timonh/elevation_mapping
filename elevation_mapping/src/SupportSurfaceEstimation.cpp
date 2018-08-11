@@ -101,8 +101,6 @@ void SupportSurfaceEstimation::setParameters(){
     nodeHandle_.param("continuity_gp_ou_sigma_n", continuityGPOUSigmaN_, 0.1);
     nodeHandle_.param("continuity_gp_ou_sigma_f", continuityGPOUSigmaF_, 0.001);
 
-
-
     nodeHandle_.param("use_sign_selective_continuity_filter", useSignSelectiveContinuityFilter_, true);
     nodeHandle_.param("sign_selective_continuity_filter_gain", signSelectiveContinuityFilterGain_, 0.5);
     nodeHandle_.param("sinkage_depth_filter_gain_up", sinkageDepthFilterGainUp_, 0.1);
@@ -111,17 +109,24 @@ void SupportSurfaceEstimation::setParameters(){
     nodeHandle_.param("run_drift_refinement_support_surface", runDriftRefinementSupportSurface_, false);
     nodeHandle_.param("add_estimated_sinkage_depth_data_ahead", addEstimatedSinkageDepthDataAhead_, false);
 
-
+    nodeHandle_.param("size_support_surface_update", sizeSupportSurfaceUpdate_, std::string("large"));
 
     // Initializations.
     supportSurfaceInitializationTrigger_ = false;
     cumulativeSupportSurfaceUncertaintyEstimation_ = 0.0;
     leftFrontSinkageDepth_ = 0.0;
     rightFrontSinkageDepth_ = 0.0;
+    leftHindSinkageDepth_ = 0.0;
+    rightHindSinkageDepth_ = 0.0;
     lowPassFilteredSinkageDepthVariance_ = 0.0;
     terrainVarianceFront_ = 0.0;
     terrainVarianceHind_ = 0.0;
     initializedLeftSinkageDepth_ = initializedRightSinkageDepth_ = initializedLeftHindSinkageDepth_ = initializedRightHindSinkageDepth_ = false;
+
+    totalMeanDuration_ = 0.0;
+    meanDurationCounter_ = 0;
+
+    supportSurfaceUncertaintyEstimationCounter_ = 0;
 
     // Initializations for ground truth comparison in simulation.
     if (!useBag_) {
@@ -178,7 +183,11 @@ bool SupportSurfaceEstimation::updateSupportSurfaceEstimation(std::string tip, G
                 //! Yes all this!
 
                 // Uncertainty Estimation based on low pass filtered error between foot tip height and predicted support Surface.
-                if (tip == "left" || tip == "right") setSupportSurfaceUncertaintyEstimation(tip, supportMap); //! TODO: uncomment whats inside of this function.
+                //if (tip == "left" || tip == "right") setSupportSurfaceUncertaintyEstimation(tip, supportMap); //! TODO: uncomment whats inside of this function.
+                setSupportSurfaceUncertaintyEstimation(tip, supportMap);
+
+
+                if (sizeSupportSurfaceUpdate_ == "large") sideLengthAddingPatch_ = 1.37;
 
                 // Main gaussian process regression.
                 mainGPRegression(tileResolution_, tileDiameter_, sideLengthAddingPatch_,
@@ -238,9 +247,13 @@ bool SupportSurfaceEstimation::setSupportSurfaceUncertaintyEstimation(std::strin
     grid_map::Position latestTipPosition(latestTip(0), latestTip(1));
     double diff = fabs(latestTip(2) - supportMap.atPosition("elevation", latestTipPosition));
     if (!isnan(diff)) {
+        supportSurfaceUncertaintyEstimationCounter_++;
         supportSurfaceUncertaintyEstimation_ = diff;
         cumulativeSupportSurfaceUncertaintyEstimation_ += diff;
+
     }
+    double meanFootTipPlacementUncertainty = cumulativeSupportSurfaceUncertaintyEstimation_ / supportSurfaceUncertaintyEstimationCounter_;
+    std::cout << "### +++ Mean SUPPORT SURFACE UNCERTAINTY ESTIMATION: " << meanFootTipPlacementUncertainty << "   tip:::: " << tip << std::endl;
     return true;
 }
 
@@ -694,9 +707,24 @@ bool SupportSurfaceEstimation::mainGPRegression(double tileResolution, double ti
         return false;
     }
 
+
+    const ros::WallDuration duration21 = ros::WallTime::now() - mainGPStartTime;
+    ROS_INFO("MAIN:::::::::iterated through all the tiles in %f s.", duration21.toSec());
+
     // Update sinkage depth map.
-    //simpleSinkageDepthLayer(tip, tipDifference, supportMap, rawMap);
-    sinkageDepthLayerGP(tip, tipDifference, supportMap);
+    simpleSinkageDepthLayer(tip, tipDifference, supportMap, rawMap);
+    //sinkageDepthLayerGP(tip, tipDifference, supportMap);
+
+    const ros::WallDuration duration22 = ros::WallTime::now() - mainGPStartTime;
+    ROS_INFO("MAIN:::::::::iterated through all the tiles in %f s.", duration22.toSec());
+
+    // Tests..
+    meanDurationCounter_++;
+    totalMeanDuration_ += (duration22.toSec() - duration21.toSec());
+    std::cout << "local now duration: " << (duration22.toSec() - duration21.toSec()) << std::endl;
+    std::cout << "meanTotalDuration: ######################::::    #######:  "
+              << totalMeanDuration_ / (double)meanDurationCounter_ << std::endl;
+
 
     // Subparams of tiling.
     int noOfTilesPerHalfSide = floor((sideLengthAddingPatch / 2.0) / tileResolution);
@@ -1170,7 +1198,7 @@ bool SupportSurfaceEstimation::simpleSinkageDepthLayer(std::string& tip, const d
 
             if (!isnan(tipDifference)) {
 
-                double radius = 0.7;
+                double radius = 1.2;
                 int maxSizeFootTipHistory;
                 if (runHindLegSupportSurfaceEstimation_) maxSizeFootTipHistory = 20;
                 else maxSizeFootTipHistory = 10;
@@ -1312,7 +1340,7 @@ bool SupportSurfaceEstimation::sinkageDepthLayerGP(std::string& tip, const doubl
 
     if (leftStanceVector_.size() > 0 && rightStanceVector_.size() > 0 && leftHindStanceVector_.size() > 0 && rightHindStanceVector_.size() > 0){
 
-        double radius = 0.7;
+        double radius = 1.2;
         int maxSizeFootTipHistory;
         if (runHindLegSupportSurfaceEstimation_) maxSizeFootTipHistory = 20;
         else maxSizeFootTipHistory = 10;
@@ -1536,7 +1564,7 @@ bool SupportSurfaceEstimation::terrainContinuityLayerGP(std::string& tip, GridMa
 
 
         // Option to change into corrected frame..
-        if (runDriftRefinementSupportSurface_) tipPos3(2) += totalEstimatedDrift; // Check if sensible..
+        if (runDriftRefinementSupportSurface_) tipPos3(2) += 0.0 * totalEstimatedDrift; // Check if sensible.. TODO, cleaner concept for this!!
         footTipHistoryGP_.push_back(tipPos3);
 
         if (footTipHistoryGP_.size() > maxSizeFootTipHistory)
@@ -1545,6 +1573,7 @@ bool SupportSurfaceEstimation::terrainContinuityLayerGP(std::string& tip, GridMa
         int inputDim = 2;
         int outputDim = 1;
         float radius = 0.7;
+        if (sizeSupportSurfaceUpdate_ == "large") radius = 0.9;
 
         Eigen::VectorXf trainInput(inputDim);
         Eigen::VectorXf trainOutput(outputDim);

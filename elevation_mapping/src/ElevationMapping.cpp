@@ -623,7 +623,7 @@ void ElevationMapping::processTriggerCallback(const geometry_msgs::Twist trigger
 //        stanceProcessor_.robustStanceTriggerRH_ = false;
 //    }
 
-    std::cout << "TIP PROCESSED: -> " << tip << " X value of meanstance " << meanStance(0) << std::endl;
+    //std::cout << "TIP PROCESSED: -> " << tip << " X value of meanstance " << meanStance(0) << std::endl;
 
     grid_map::Position tipPosition(meanStance(0), meanStance(1));
     // Do function get ellipsis axes for clarity..

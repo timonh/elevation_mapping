@@ -101,7 +101,7 @@ StanceProcessor::StanceProcessor(ros::NodeHandle nodeHandle)
 
   // Initializing Stance Bools.
   isInStanceLeft_ = false;
-  isInStanceLeftHind_ = false;
+  isInStanceLeftHind_ = false; // HAcked!!!
   isInStanceRight_ = false;
   isInStanceRightHind_ = false;
   footTipTrigger_ = false;
@@ -226,6 +226,7 @@ std::string StanceProcessor::detectStancePhase()
     if (LFTipState_ && isInStanceLeft_) {
         LFTipStance_.push_back(LFTipPosition_);
     }
+
     // For start detection scheme.
     //else if (LFTipState_ && (stanceDetectionMethod_ == "start" || stanceDetectionMethod_ == "robust"))
     //    LFTipStance_.push_back(LFTipPosition_);
@@ -435,7 +436,8 @@ bool StanceProcessor::templateMatchingForStanceDetection(std::string tip, std::v
 bool StanceProcessor::processStance(std::string tip)
 {
 
-    std::cout << "Process Stance: " << tip << std::endl;
+    //stanceDetectionMethod_std::cout << "Process Stance: " << tip << std::endl;
+
 
 
 //    // Delete the last 10 entries of the Foot Stance Position Vector, as these are used for transition detection
@@ -445,7 +447,7 @@ bool StanceProcessor::processStance(std::string tip)
 //    bool runProprioceptiveRoughnessEstimation = true;
 //    if(runProprioceptiveRoughnessEstimation) proprioceptiveRoughnessEstimation(tip);
     // Introduce a trigger here and call the foot tip elevation map comparison from elevation mapping class -> pass raw map as a reference with each call.
-    std::cout << "Process Stance: " << tip << std::endl;
+    //std::cout << "Process Stance: " << tip << std::endl;
     // Better transition, that is not prone to faults..
     setFootTipTrigger(tip);
 
@@ -453,7 +455,7 @@ bool StanceProcessor::processStance(std::string tip)
 //    // Performance Assessment, sensible if wanting to tune the system while walking on flat surface.
 //    //bool runPreformanceAssessmentForFlatGround = false;
 //    //if(runPreformanceAssessmentForFlatGround) performanceAssessmentMeanElevationMap();
-    std::cout << "Process Stance: " << tip << std::endl;
+    //std::cout << "Process Stance: " << tip << std::endl;
     return true;
 }
 
@@ -461,7 +463,7 @@ bool StanceProcessor::deleteFirstEntriesOfStances(std::string tip)
 {
 
     int consideredFootStepNumber;
-    if (stanceDetectionMethod_ == "start") consideredFootStepNumber = 6;
+    if (stanceDetectionMethod_ == "start") consideredFootStepNumber = 4;
     if (stanceDetectionMethod_ == "robust") consideredFootStepNumber = 8;
 
     // All stance entries are deleted except the last 3 ones are stored -> this gives start detection

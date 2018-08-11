@@ -756,6 +756,7 @@ private:
  double PenetrationDepthVariance_;
  double supportSurfaceUncertaintyEstimation_;
  double cumulativeSupportSurfaceUncertaintyEstimation_;
+ int supportSurfaceUncertaintyEstimationCounter_;
 
  // Foot tip position history for GP.
  std::vector<grid_map::Position3> footTipHistoryGP_;
@@ -854,6 +855,12 @@ private:
 
  // Param for increased data in support Surface layer (obtained by constant sinkage depth assumption only)
  bool addEstimatedSinkageDepthDataAhead_;
+
+ std::string sizeSupportSurfaceUpdate_;
+
+ // For timing comparisons.
+ double totalMeanDuration_;
+ int meanDurationCounter_;
 };
 
 } /* namespace */

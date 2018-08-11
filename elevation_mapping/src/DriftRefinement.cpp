@@ -190,8 +190,8 @@ bool DriftRefinement::footTipElevationMapComparison(std::string tip, Eigen::Vect
                 double variance = supportMap.atPosition("variance", tipPosition);
 
                 elevationFused = supportMap.atPosition("elevation", tipPosition);
-                lowerBoundFused = elevationFused - 0.002 * sqrt(fabs(variance)); // Testing here..
-                upperBoundFused = elevationFused + 0.002 * sqrt(fabs(variance));
+                lowerBoundFused = elevationFused - 0.2 * sqrt(fabs(variance)); // Testing here..
+                upperBoundFused = elevationFused + 0.2 * sqrt(fabs(variance));
                 verticalDifference = zTip - supportMap.atPosition("elevation", tipPosition);
                 std::cout << "LOWER BOUND BEFORE: " << lowerBoundFused << std::endl;
                 std::cout << "UPPER BOUND BEFORE: " << upperBoundFused << std::endl;
