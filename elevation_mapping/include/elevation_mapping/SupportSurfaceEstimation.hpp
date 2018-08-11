@@ -861,6 +861,11 @@ private:
  // For timing comparisons.
  double totalMeanDuration_;
  int meanDurationCounter_;
+
+ bool averagingVersion_;
+
+ double mainGPTotalDuration_;
+ int mainGPDurationCounter_;
 };
 
 } /* namespace */

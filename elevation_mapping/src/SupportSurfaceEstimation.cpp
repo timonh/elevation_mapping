@@ -111,6 +111,8 @@ void SupportSurfaceEstimation::setParameters(){
 
     nodeHandle_.param("size_support_surface_update", sizeSupportSurfaceUpdate_, std::string("large"));
 
+    nodeHandle_.param("averaging_version", averagingVersion_, false);
+
     // Initializations.
     supportSurfaceInitializationTrigger_ = false;
     cumulativeSupportSurfaceUncertaintyEstimation_ = 0.0;
@@ -125,6 +127,9 @@ void SupportSurfaceEstimation::setParameters(){
 
     totalMeanDuration_ = 0.0;
     meanDurationCounter_ = 0;
+
+    mainGPTotalDuration_ = 0.0;
+    mainGPDurationCounter_ = 0;
 
     supportSurfaceUncertaintyEstimationCounter_ = 0;
 
@@ -186,7 +191,7 @@ bool SupportSurfaceEstimation::updateSupportSurfaceEstimation(std::string tip, G
                 //if (tip == "left" || tip == "right") setSupportSurfaceUncertaintyEstimation(tip, supportMap); //! TODO: uncomment whats inside of this function.
                 setSupportSurfaceUncertaintyEstimation(tip, supportMap);
 
-
+                // If choosing "large" make the size of the GP larger.
                 if (sizeSupportSurfaceUpdate_ == "large") sideLengthAddingPatch_ = 1.37;
 
                 // Main gaussian process regression.
@@ -699,6 +704,9 @@ bool SupportSurfaceEstimation::mainGPRegression(double tileResolution, double ti
                                                 const double tipDifference, GridMap& rawMap, GridMap& supportMap, GridMap& fusedMap){
 
 
+    double directOutput;
+
+
     // Set start time for time calculation for main GP regression.
     const ros::WallTime mainGPStartTime(ros::WallTime::now());
 
@@ -835,15 +843,22 @@ bool SupportSurfaceEstimation::mainGPRegression(double tileResolution, double ti
                     if (tip == "left" || tip == "right") samplingValue = lowPassFilteredTerrainContinuityValue_;
                     if (tip == "lefthind" || tip == "righthind") samplingValue = lowPassFilteredHindTerrainContinuityValue_;
 
-                    //std::cout << "this is the sampling value..." << samplingValue << std::endl;
 
                     bool insert = sampleContinuityPlaneToTrainingData(cellPos, footTip, samplingValue);
                     if (insert) {
                         trainOutput(0) = supportMap.at("terrain_continuity_gp", index);
                     }
+                    if (averagingVersion_) {
+                        double distance = sqrt(pow(cellPos(0) - footTip(0), 2) + pow(cellPos(1) - footTip(1), 2));
+                        double prob = exp(-(samplingValue * distance));
+                        trainOutput(0) = (rawMap.at("elevation", index) - supportMap.at("sinkage_depth_gp", index)) * (1.0 - prob) +
+                                supportMap.at("terrain_continuity_gp", index) * prob;
+                    }
+                    if (isnan(trainOutput(0))) trainOutput(0) = supportMap.at("terrain_continuity_gp", index);
 
                     // Add the training data to GP regression.
                     if (!isnan(trainOutput(0))) myGPR.AddTrainingData(trainInput, trainOutput);
+                    //if (!isnan(trainOutput(0))) directOutput = trainOutput(0);
                 }
                 //std::cout << "The Number of Data in this tile is: " << myGPR.get_n_data() << std::endl;
 
@@ -933,6 +948,13 @@ bool SupportSurfaceEstimation::mainGPRegression(double tileResolution, double ti
             supportMapElevationGPAdded = supportMapElevationGP;
         }
 
+//        if (!isnan(supportMapElevationGPAdded)) {
+//            supportMapElevationGPAdded = (1 - weight) * supportMapElevationGPAdded + directOutput * weight;
+//        }
+//        else {
+//            supportMapElevationGPAdded = directOutput;
+//        }
+
         double distanceVarianceExponent = 1.0;
         double heightVarianceExponent = 0.2;
 
@@ -972,8 +994,11 @@ bool SupportSurfaceEstimation::mainGPRegression(double tileResolution, double ti
     }
 
     const ros::WallDuration duration = ros::WallTime::now() - mainGPStartTime;
-    ROS_INFO("MAIN:::::::::::: GP regression was run totally in %f s.", duration.toSec());
+    ROS_INFO("MAIN:::::::::::: GP regression was run totally, TOTALLYTOTALLY::::::::::: in %f s.", duration.toSec());
 
+    mainGPDurationCounter_++;
+    mainGPTotalDuration_ += duration.toSec();
+    std::cout << "THE OVERALL MEAN TIME FOR MAIN GP REGRESSION: " << mainGPTotalDuration_ / double(mainGPDurationCounter_) << std::endl;
 
     // Publish adaptation Parameters
     varianceTwistPublisher_.publish(adaptationMsg);
@@ -1191,7 +1216,8 @@ bool SupportSurfaceEstimation::mainGPRegressionNoTiles(double tileResolution, do
 }
 
 
-bool SupportSurfaceEstimation::simpleSinkageDepthLayer(std::string& tip, const double& tipDifference, GridMap& supportMap, GridMap& rawMap){
+bool SupportSurfaceEstimation::simpleSinkageDepthLayer(std::string& tip, const double& tipDifference,
+                                                       GridMap& supportMap, GridMap& rawMap){
 
     //if (tip == "left" || tip == "right") {
         if (leftStanceVector_.size() > 0 && rightStanceVector_.size() > 0 && leftHindStanceVector_.size() > 0 && rightHindStanceVector_.size() > 0){
@@ -1308,11 +1334,14 @@ bool SupportSurfaceEstimation::simpleSinkageDepthLayer(std::string& tip, const d
                     else if (!isnan(tipDifference)) output = tipDifference;
                     else output = 0.0;
 
-
-
                     // TODO: use the nonsimple weighting scheme here..
 
                     float addingWeight = fmax(1 - (addingDistance / radius), 0.0);
+
+                    if (addingDistance <= weightDecayThreshold_ * radius) addingWeight = 1.0 - (1.0 - weightDecayThreshold_) * (addingDistance / radius);
+                    else addingWeight = weightDecayThreshold_ - weightDecayThreshold_ * (addingDistance - weightDecayThreshold_ * radius)
+                            / ((1.0 - weightDecayThreshold_) * radius);
+
                     if (!isnan(output)){
 
                         if (!isnan(supportMapElevationGPSinkage))  // Hacked away, attention!!
