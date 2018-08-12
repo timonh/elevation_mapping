@@ -646,7 +646,11 @@ void ElevationMapping::processTriggerCallback(const geometry_msgs::Twist trigger
 
     // Support Surface Estimation.
     if (runSupportSurfaceEstimation_){
-        supportSurfaceEstimation_.updateSupportSurfaceEstimation(tip, map_.getRawGridMap(), map_.supportMapGP_, map_.getFusedGridMap(), meanStance, stanceProcessor_.driftRefinement_.heightDifferenceFromComparison_);
+        //map_.rawMap_.add("frame_correction", stanceProcessor_.driftRefinement_.heightDifferenceFromComparison_);
+        //map_.rawMap_["elevation"] = map_.rawMap_["elevation"] - map_.rawMap_["frame_correction"];
+        map_.rawMap_.setFrameId("odom_drift_adjusted");
+        supportSurfaceEstimation_.updateSupportSurfaceEstimation(tip, map_.getRawGridMap(), map_.supportMapGP_, map_.getFusedGridMap(),
+                                                                 meanStance, stanceProcessor_.driftRefinement_.heightDifferenceFromComparison_);
     }
 }
 

@@ -29,19 +29,8 @@ SupportSurfaceEstimation::SupportSurfaceEstimation(ros::NodeHandle nodeHandle)
   // Publisher for visualization of tile centers for gaussian process regression.
   supportSurfaceAddingAreaPublisher_ = nodeHandle_.advertise<visualization_msgs::Marker>("adding_area", 1000);
 
-  // Filter chain initialization.
-  nodeHandle_.param("filter_chain_parameter_name", filterChainParametersName_, std::string("/grid_map_filter_chain_one"));
-  if(!filterChain_.configure("/grid_map_filter_chain_one", nodeHandle_)){
-      std::cout << "Could not configure the filter chain!!" << std::endl;
-      return;
-  }
-  if(!filterChain2_.configure("/grid_map_filter_chain_two", nodeHandle_)){
-      std::cout << "Could not configure the filter chain!!" << std::endl;
-      return;
-  }
-
+  // Set the constructor parameters.
   setParameters();
-  //initialTime_ = ros::Time::now();
 }
 
 SupportSurfaceEstimation::~SupportSurfaceEstimation()
@@ -162,7 +151,7 @@ void SupportSurfaceEstimation::setParameters(){
 
 bool SupportSurfaceEstimation::updateSupportSurfaceEstimation(std::string tip, GridMap& rawMap,
                                                               GridMap& supportMap, GridMap& fusedMap, Eigen::Vector3f& stance, const double totalEstimatedDrift){
-    // Check if foot tip is inside of the elevation map.
+    // Check if foot tip is inside the elevation map.
     Position tipPosition(stance(0), stance(1));
     if(rawMap.isInside(tipPosition)) {
 
@@ -305,6 +294,17 @@ bool SupportSurfaceEstimation::sinkageDepthVarianceEstimation(std::string tip, d
     int maxHistory = 5; // Hacking!!
 
     if (tip == "left" || tip == "right") {
+
+        // New, for weighting the sinkage depth variance by horizontal translation
+        double horDiff;
+
+        if (leftStanceVector_.size() > 1 && tip == "left"){
+            horDiff = double(sqrt(pow(leftStanceVector_[1](0) - leftStanceVector_[0](0),2.0)+pow(leftStanceVector_[1](1) - leftStanceVector_[0](1),2.0)));
+        }
+        else if(rightStanceVector_.size() > 1 && tip == "right"){
+            horDiff = double(sqrt(pow(rightStanceVector_[1](0) - rightStanceVector_[0](0),2.0)+pow(rightStanceVector_[1](1) - rightStanceVector_[0](1),2.0)));
+        }
+
         // Initializations.
         double totalVerticalDifference = 0.0;
         double squaredTotalVerticalDifference = 0.0;
@@ -312,7 +312,7 @@ bool SupportSurfaceEstimation::sinkageDepthVarianceEstimation(std::string tip, d
         double squaredTotalVerticalDifferenceChange = 0.0;
 
         // Populate Vector of vertical Difference Values.
-        if (!isnan(verticalDifference)) verticalDifferenceVector_.push_back(verticalDifference);
+        if (!isnan(verticalDifference)) verticalDifferenceVector_.push_back(verticalDifference); // Just Hacked in, TODO, check what it does!!
         if (verticalDifferenceVector_.size() > maxHistory) verticalDifferenceVector_.erase(verticalDifferenceVector_.begin());
 
         // Get the number of sinkage depth values considered.
@@ -354,6 +354,15 @@ bool SupportSurfaceEstimation::sinkageDepthVarianceEstimation(std::string tip, d
         //setDifferentialPenetrationDepthVariance(differentialPenetrationDepthVariance);
     }
     if (tip == "lefthind" || tip == "righthind") {
+
+        double horDiff;
+        if (leftHindStanceVector_.size() > 1 && tip == "lefthind"){
+            horDiff = double(sqrt(pow(leftHindStanceVector_[1](0) - leftHindStanceVector_[0](0), 2.0)+pow(leftHindStanceVector_[1](1) - leftHindStanceVector_[0](1), 2.0)));
+        }
+        else if(rightHindStanceVector_.size() > 1 && tip == "righthind"){
+            horDiff = double(sqrt(pow(rightHindStanceVector_[1](0) - rightHindStanceVector_[0](0), 2.0)+pow(rightHindStanceVector_[1](1) - rightHindStanceVector_[0](1), 2.0)));
+        }
+
         // Initializations.
         double totalVerticalDifference = 0.0;
         double squaredTotalVerticalDifference = 0.0;
@@ -361,7 +370,7 @@ bool SupportSurfaceEstimation::sinkageDepthVarianceEstimation(std::string tip, d
         double squaredTotalVerticalDifferenceChange = 0.0;
 
         // Populate Vector of vertical Difference Values.
-        if (!isnan(verticalDifference)) verticalDifferenceVectorHind_.push_back(verticalDifference);
+        if (!isnan(verticalDifference)) verticalDifferenceVectorHind_.push_back(verticalDifference); // Just Hacked in!!
         if (verticalDifferenceVectorHind_.size() > maxHistory) verticalDifferenceVectorHind_.erase(verticalDifferenceVectorHind_.begin());
 
         // Get the number of sinkage depth values considered.
@@ -533,6 +542,9 @@ bool SupportSurfaceEstimation::proprioceptiveRoughnessEstimation(std::string tip
 bool SupportSurfaceEstimation::proprioceptiveVariance(std::string tip){
 
     double diff = 0.0;
+
+    // New to weigh the
+
     double meanDrift = 0.467;
     if (leftStanceVector_.size() > 1 && tip == "left"){
         diff = double((leftStanceVector_[1](2) - leftStanceVector_[0](2)));
@@ -769,6 +781,8 @@ bool SupportSurfaceEstimation::mainGPRegression(double tileResolution, double ti
       //  std::cout << "terr vat hind:   -> -> -> ................................." << terrainVarianceHind << std::endl;
       //  std::cout << "sink vat hind:   -> -> -> ................................." << sinkageVarianceHind << std::endl;
 
+
+
         // Calculate characteristic Value.
         double characteristicValue = (weightTerrainContinuity_ * terrainVarianceHind) / pow(sinkageVarianceHind, exponentCharacteristicValue_);
 
@@ -797,6 +811,7 @@ bool SupportSurfaceEstimation::mainGPRegression(double tileResolution, double ti
     // Get the foot Tip Position.
     Position3 footTip3 = getFootTipPosition3(tip);
     Position footTip(footTip3(0), footTip3(1));
+
 
 
     const ros::WallDuration duration1 = ros::WallTime::now() - mainGPStartTime;

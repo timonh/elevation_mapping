@@ -241,7 +241,7 @@ std::string StanceProcessor::detectStancePhase()
 
         //std::cout << "ISINSTANCE LEFT:  TRIGGEREDDDD" << isInStanceLeft_ << std::endl;
     //    std::cout << "robustStanceCounterLF_: " << robustStanceCounterLF_ << " robustStanceTriggerLF_: " << robustStanceTriggerLF_ << std::endl;
-        if (robustStanceCounterLF_ > 15) {
+        if (robustStanceCounterLF_ > 20) {
             //if (triggerString == "none") {
                 // // move this to callback for better performance
                 if(!processStance("left")) return "none";
@@ -263,7 +263,7 @@ std::string StanceProcessor::detectStancePhase()
     if (stanceDetectionMethod_ == "robust" && robustStanceTriggerRF_) {
         robustStanceCounterRF_++;
     //    std::cout << "robustStanceCounterRF_: " << robustStanceCounterRF_ << " robustStanceTriggerRF_: " << robustStanceTriggerRF_ << std::endl;
-        if (robustStanceCounterRF_ > 15) {
+        if (robustStanceCounterRF_ > 20) {
             //if (triggerString == "none") {
                 //
                 if(!processStance("right")) return "none";
@@ -309,7 +309,7 @@ std::string StanceProcessor::detectStancePhase()
         //    LHTipStance_.push_back(LHTipPosition_);
         if (stanceDetectionMethod_ == "robust" && robustStanceTriggerLH_) {
             robustStanceCounterLH_++;
-            if (robustStanceCounterLH_ > 15) {
+            if (robustStanceCounterLH_ > 20) {
                 //if (triggerString == "none") { // prefer front feet..
 
                     if(!processStance("lefthind")) return "none";
@@ -329,7 +329,7 @@ std::string StanceProcessor::detectStancePhase()
         //    RHTipStance_.push_back(RHTipPosition_);
         if (stanceDetectionMethod_ == "robust" && robustStanceTriggerRH_) {
             robustStanceCounterRH_++;
-            if (robustStanceCounterRH_ > 15) {
+            if (robustStanceCounterRH_ > 20) {
                 //if (triggerString == "none") {
                     //robustStanceTriggerRH_ = false;
                     if(!processStance("righthind")) return "none";
