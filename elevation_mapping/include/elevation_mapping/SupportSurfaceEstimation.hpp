@@ -871,6 +871,9 @@ private:
  // Point cloud for frame transformation of the GP input points.
  sensor_msgs::PointCloud sinkageDepthPoints_;
  sensor_msgs::PointCloud continuityPoints_;
+
+ // Proportionality Factor for terrain Continuity variance
+ double continuityVarianceFactor_;
 };
 
 } /* namespace */

@@ -102,6 +102,8 @@ void SupportSurfaceEstimation::setParameters(){
 
     nodeHandle_.param("averaging_version", averagingVersion_, false);
 
+    nodeHandle_.param("continuity_variance_factor", continuityVarianceFactor_, 0.15);
+
     // Initializations.
     supportSurfaceInitializationTrigger_ = false;
     cumulativeSupportSurfaceUncertaintyEstimation_ = 0.0;
@@ -1831,7 +1833,7 @@ bool SupportSurfaceEstimation::terrainContinuityLayerGP(std::string& tip, GridMa
                     double distVar = sqrt(pow(tipPosLoc(0) - cellPos(0), 2) + pow(tipPosLoc(1) - cellPos(1), 2));
                     if (distVar < minDist) minDist = distVar;
                 }
-                supportMapContinuityVarianceGP = minDist;
+                supportMapContinuityVarianceGP = continuityVarianceFactor_ * minDist;
             }
             else {
                 double minDist = 10000;
@@ -1840,7 +1842,7 @@ bool SupportSurfaceEstimation::terrainContinuityLayerGP(std::string& tip, GridMa
                     double distVar = sqrt(pow(tipPosLoc(0) - cellPos(0), 2) + pow(tipPosLoc(1) - cellPos(1), 2));
                     if (distVar < minDist) minDist = distVar;
                 }
-                supportMapContinuityVarianceGP = minDist;
+                supportMapContinuityVarianceGP = continuityVarianceFactor_ * minDist;
             }
 
 

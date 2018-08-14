@@ -190,8 +190,8 @@ bool DriftRefinement::footTipElevationMapComparison(std::string tip, Eigen::Vect
                 double variance = supportMap.atPosition("variance", tipPosition);
 
                 elevationFused = supportMap.atPosition("elevation", tipPosition);
-                lowerBoundFused = elevationFused - 0.15 * sqrt(fabs(variance)); // Testing here..
-                upperBoundFused = elevationFused + 0.15 * sqrt(fabs(variance));
+                lowerBoundFused = elevationFused - sqrt(fabs(variance)); // Testing here..
+                upperBoundFused = elevationFused + sqrt(fabs(variance));
                 verticalDifference = zTip - supportMap.atPosition("elevation", tipPosition);
                 std::cout << "LOWER BOUND BEFORE: " << lowerBoundFused << std::endl;
                 std::cout << "UPPER BOUND BEFORE: " << upperBoundFused << std::endl;
@@ -504,12 +504,12 @@ float DriftRefinement::gaussianWeightedDifferenceIncrement(double lowerBound, do
         }
         else footTipOutsideBounds_ = false;
 
-        if (elevation + diff < elevation + 1.5 * (lowerBound - elevation)) {
-         //   std::cout << "SIGMOID DROPPOFF LOWER ACTIVATED!!  \n\n\n\n\n\n\n\n\n\n\n\n\n\n " << std::endl;
-            double sigmoidCenter = 2.0 * (lowerBound - elevation);
-            double widthFactor = 5.0;
-            weight = weight * sigmoid(sigmoidCenter, widthFactor, diff, upperBound, lowerBound);
+        if (elevation + diff < elevation + 1.35 * (lowerBound - elevation)) {
 
+            double sigmoidCenter = 1.7 * (lowerBound - elevation);
+            double widthFactor = 3.0;
+            weight = weight * (1.0 - sigmoid(sigmoidCenter, widthFactor, diff, upperBound, lowerBound));
+            std::cout << "SIGMOID DROPPOFF LOWER ACTIVATED!!  \n\n\n\n\n\n\n\n\n\n\n\n\n\n " << weight << std::endl;
 
         }
 
@@ -521,12 +521,12 @@ float DriftRefinement::gaussianWeightedDifferenceIncrement(double lowerBound, do
         if(elevation + diff > upperBound) footTipOutsideBounds_ = true;
         else footTipOutsideBounds_ = false;
 
-        if (elevation + diff > elevation + 1.5 * (upperBound - elevation)) {
-          //  std::cout << "SIGMOID DROPPOFF UPPER ACTIVATED!! \n\n\n\n\n\n\n\n\n\n\n\n\n\n " << std::endl;
-            double sigmoidCenter = 2.0 * (upperBound - elevation);
-            double widthFactor = 5.0;
-            weight = weight * sigmoid(sigmoidCenter, widthFactor, diff, upperBound, lowerBound);
+        if (elevation + diff > elevation + 1.35 * (upperBound - elevation)) {
 
+            double sigmoidCenter = 1.7 * (upperBound - elevation);
+            double widthFactor = 3.0;
+            weight = weight *(1.0 - sigmoid(sigmoidCenter, widthFactor, diff, upperBound, lowerBound));
+            std::cout << "SIGMOID DROPPOFF UPPER ACTIVATED!! \n\n\n\n\n\n\n\n\n\n\n\n\n\n " << weight << std::endl;
         }
     }
 
@@ -646,7 +646,7 @@ double DriftRefinement::sigmoid(const double & sigmoidCenter, const double & wid
     else if (sigmoidCenter < 0.0) {
         argument = (footTipHeight - sigmoidCenter)/fabs(lowerBound - sigmoidCenter);
     }
-    sigmoidOutput = exp(widthFactor * argument) / (1 + exp(widthFactor * argument));
+    sigmoidOutput = exp(widthFactor * argument) / (1 + exp(widthFactor * argument)); // Negative argument to get the opposite function .. TEST!!
 
 //    std::cout << "sigmoidCenter: " << sigmoidCenter << " footTipHeight:  " << footTipHeight << " sigmoidOutput: " << sigmoidOutput << std::endl;
 //    std::cout << "argument: " << argument << " widthfactor * argument " << widthFactor * argument << std::endl;
