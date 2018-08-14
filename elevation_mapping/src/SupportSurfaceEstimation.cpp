@@ -178,7 +178,7 @@ bool SupportSurfaceEstimation::updateSupportSurfaceEstimation(std::string tip, G
 
                 // Uncertainty Estimation based on low pass filtered error between foot tip height and predicted support Surface.
                 //if (tip == "left" || tip == "right") setSupportSurfaceUncertaintyEstimation(tip, supportMap); //! TODO: uncomment whats inside of this function.
-                setSupportSurfaceUncertaintyEstimation(tip, supportMap);
+                setSupportSurfaceUncertaintyEstimation(tip, supportMap, totalEstimatedDrift);
 
                 // If choosing "large" make the size of the GP larger.
                 if (sizeSupportSurfaceUpdate_ == "large") sideLengthAddingPatch_ = 1.37;
@@ -234,17 +234,19 @@ Position3 SupportSurfaceEstimation::getHindRightFootTipPosition(){
     return tipPos;
 }
 
-bool SupportSurfaceEstimation::setSupportSurfaceUncertaintyEstimation(std::string tip, GridMap& supportMap){
+bool SupportSurfaceEstimation::setSupportSurfaceUncertaintyEstimation(std::string tip, GridMap& supportMap, const double & totalEstimatedDrift){
 
     Position3 latestTip = getFootTipPosition3(tip);
     // So far not low pass filtered!! -> create Vector for that (TODO)
     grid_map::Position latestTipPosition(latestTip(0), latestTip(1));
-    double diff = fabs(latestTip(2) - supportMap.atPosition("elevation", latestTipPosition));
+
+    // As support Map lives in the corrected frame.
+    double diff = fabs((latestTip(2) - totalEstimatedDrift) - supportMap.atPosition("elevation", latestTipPosition));
+
     if (!isnan(diff)) {
         supportSurfaceUncertaintyEstimationCounter_++;
         supportSurfaceUncertaintyEstimation_ = diff;
         cumulativeSupportSurfaceUncertaintyEstimation_ += diff;
-
     }
     double meanFootTipPlacementUncertainty = cumulativeSupportSurfaceUncertaintyEstimation_ / supportSurfaceUncertaintyEstimationCounter_;
     std::cout << "### +++ Mean SUPPORT SURFACE UNCERTAINTY ESTIMATION: " << meanFootTipPlacementUncertainty << "   tip:::: " << tip << std::endl;
@@ -1253,6 +1255,23 @@ bool SupportSurfaceEstimation::simpleSinkageDepthLayer(std::string& tip, const d
 
                 // Do history vector.
                 Position3 footTip = getFootTipPosition3(tip);
+
+                sinkageDepthPoints_.header.frame_id = "odom_drift_adjusted";
+                bool pointCloudVersion = false;
+                if (pointCloudVersion) {
+                    geometry_msgs::Point32 point;
+                    point.x = footTip(0);
+                    point.y = footTip(1);
+                    point.z = -tipDifference;
+                    //pointcloud.data.push_back(point);
+                    sinkageDepthPoints_.points.push_back(point);
+                    sinkageDepthPoints_.header.frame_id = "odom_drift_adjusted";
+                    if (sinkageDepthPoints_.points.size() > maxSizeFootTipHistory)
+                        sinkageDepthPoints_.points.erase(sinkageDepthPoints_.points.begin());
+                }
+
+                // Pointcloud version of the foot contact points.
+
                 sinkageDepthHistory_.push_back(-tipDifference);
                 sinkageFootTipHistoryGP_.push_back(footTip);
 
@@ -1330,19 +1349,40 @@ bool SupportSurfaceEstimation::simpleSinkageDepthLayer(std::string& tip, const d
                     float totalWeight = 0.0;
                     float tempHeight = 0.0;
 
-                    int maxIter = min(sinkageFootTipHistoryGP_.size(), sinkageDepthHistory_.size());
-
-                    for (unsigned int i = 0; i < maxIter; ++i) {
-                        double distance = sqrt(pow(sinkageFootTipHistoryGP_[i](0) - footTip(0), 2) + pow(sinkageFootTipHistoryGP_[i](1) - footTip(1), 2));
-                        if (distance < radius) {
-                            float localDistance = sqrt(pow(sinkageFootTipHistoryGP_[i](0) - pos(0), 2) + pow(sinkageFootTipHistoryGP_[i](1) - pos(1), 2));
-                            float weight;
-                            if (localDistance > 0.0001) weight = 1 / pow(localDistance, exponentSinkageDepthWeight_); // Hacking here to test the range of the power.
-                            else weight = 0.0;
-                            totalWeight += weight;
-                            if (!isnan(sinkageDepthHistory_[i])) tempHeight += sinkageDepthHistory_[i] * weight;
+                    // TODO: Publish them for rviz visualization!
+                    if (pointCloudVersion) {
+                        int maxIter = sinkageDepthPoints_.points.size();
+                        for (unsigned int i = 0; i < maxIter; ++i) {
+                            double distance = sqrt(pow(sinkageDepthPoints_.points[i].x - footTip(0), 2) + pow(sinkageDepthPoints_.points[i].y - footTip(1), 2));
+                            if (distance < radius) {
+                                float localDistance = sqrt(pow(sinkageDepthPoints_.points[i].x - pos(0), 2) + pow(sinkageDepthPoints_.points[i].y - pos(1), 2));
+                                float weight;
+                                if (localDistance > 0.0001) weight = 1 / pow(localDistance, exponentSinkageDepthWeight_); // Hacking here to test the range of the power.
+                                else weight = 0.0;
+                                totalWeight += weight;
+                                if (!isnan(sinkageDepthPoints_.points[i].z)) tempHeight += sinkageDepthPoints_.points[i].z * weight;
+                            }
                         }
                     }
+
+                    else {
+                        int maxIter = min(sinkageFootTipHistoryGP_.size(), sinkageDepthHistory_.size());
+
+
+                        for (unsigned int i = 0; i < maxIter; ++i) {
+                            double distance = sqrt(pow(sinkageFootTipHistoryGP_[i](0) - footTip(0), 2) + pow(sinkageFootTipHistoryGP_[i](1) - footTip(1), 2));
+                            if (distance < radius) {
+                                float localDistance = sqrt(pow(sinkageFootTipHistoryGP_[i](0) - pos(0), 2) + pow(sinkageFootTipHistoryGP_[i](1) - pos(1), 2));
+                                float weight;
+                                if (localDistance > 0.0001) weight = 1 / pow(localDistance, exponentSinkageDepthWeight_); // Hacking here to test the range of the power.
+                                else weight = 0.0;
+                                totalWeight += weight;
+                                if (!isnan(sinkageDepthHistory_[i])) tempHeight += sinkageDepthHistory_[i] * weight;
+                            }
+                        }
+                    }
+
+
 
                     double output;
                     if (totalWeight > 0.0001) output = tempHeight / totalWeight;
@@ -1611,6 +1651,20 @@ bool SupportSurfaceEstimation::terrainContinuityLayerGP(std::string& tip, GridMa
         if (runDriftRefinementSupportSurface_) tipPos3(2) += 0.0 * totalEstimatedDrift; // Check if sensible.. TODO, cleaner concept for this!!
         footTipHistoryGP_.push_back(tipPos3);
 
+        // PointCloud Version for frame transform.
+        bool pointCloudVersion = true;
+        if (pointCloudVersion) {
+            geometry_msgs::Point32 point;
+            point.x = tipPos3(0);
+            point.y = tipPos3(1);
+            point.z = tipPos3(2) - totalEstimatedDrift;  // TODO: think if this has to be adjusted by the total drift..
+            continuityPoints_.points.push_back(point);
+            if (continuityPoints_.points.size() > maxSizeFootTipHistory)
+                continuityPoints_.points.erase(continuityPoints_.points.begin());
+            continuityPoints_.header.frame_id = "odom_drift_adjusted";
+        }
+
+
         if (footTipHistoryGP_.size() > maxSizeFootTipHistory)
             footTipHistoryGP_.erase(footTipHistoryGP_.begin());
 
@@ -1663,31 +1717,64 @@ bool SupportSurfaceEstimation::terrainContinuityLayerGP(std::string& tip, GridMa
                                         continuityGPKernel_);
         //continuityGPR.SetHyperParams(continuityGPLengthscale_, continuityGPSigmaN_, continuityGPSigmaF_);
 
-        double totalHeight = 0.0;
-        int counter = 0;
-        // Version of gaussian kernel with zero mean.
-        for (unsigned int j = 0; j < footTipHistoryGP_.size(); ++j) {
-            Position tipPosLoc(footTipHistoryGP_[j](0), footTipHistoryGP_[j](1));
-            double localDistance = sqrt(pow(tipPosLoc(0) - tipPos(0), 2) + pow(tipPosLoc(1) - tipPos(1), 2));
+        double meanGP;
 
-            if (localDistance < radius + 0.3) {
-                // To calculate the mean.
-                totalHeight += footTipHistoryGP_[j](2);
-                counter++;
+        if (pointCloudVersion) {
+            double totalHeight = 0.0;
+            int counter = 0;
+            // Version of gaussian kernel with zero mean.
+            for (unsigned int j = 0; j < continuityPoints_.points.size(); ++j) {
+                Position tipPosLoc(continuityPoints_.points[j].x, continuityPoints_.points[j].y);
+                double localDistance = sqrt(pow(tipPosLoc(0) - tipPos(0), 2) + pow(tipPosLoc(1) - tipPos(1), 2));
+
+                if (localDistance < radius + 0.3) {
+                    // To calculate the mean.
+                    totalHeight += continuityPoints_.points[j].z;
+                    counter++;
+                }
+            }
+            meanGP = totalHeight / double(counter);
+
+            for (unsigned int j = 0; j < continuityPoints_.points.size(); ++j) {
+                Position tipPosLoc(continuityPoints_.points[j].x, continuityPoints_.points[j].y);
+                double localDistance = sqrt(pow(tipPosLoc(0) - tipPos(0), 2) + pow(tipPosLoc(1) - tipPos(1), 2));
+
+                if (localDistance < radius + 0.3) {
+                    trainInput(0) = tipPosLoc(0);
+                    trainInput(1) = tipPosLoc(1);
+                    //trainOutput(0) = footTipHistoryGP_[j](2);
+                    trainOutput(0) = continuityPoints_.points[j].z - meanGP;
+                    continuityGPR.AddTrainingData(trainInput, trainOutput);
+                }
             }
         }
-        double meanGP = totalHeight / double(counter);
+        else {
+            double totalHeight = 0.0;
+            int counter = 0;
+            // Version of gaussian kernel with zero mean.
+            for (unsigned int j = 0; j < footTipHistoryGP_.size(); ++j) {
+                Position tipPosLoc(footTipHistoryGP_[j](0), footTipHistoryGP_[j](1));
+                double localDistance = sqrt(pow(tipPosLoc(0) - tipPos(0), 2) + pow(tipPosLoc(1) - tipPos(1), 2));
 
-        for (unsigned int j = 0; j < footTipHistoryGP_.size(); ++j) {
-            Position tipPosLoc(footTipHistoryGP_[j](0), footTipHistoryGP_[j](1));
-            double localDistance = sqrt(pow(tipPosLoc(0) - tipPos(0), 2) + pow(tipPosLoc(1) - tipPos(1), 2));
+                if (localDistance < radius + 0.3) {
+                    // To calculate the mean.
+                    totalHeight += footTipHistoryGP_[j](2);
+                    counter++;
+                }
+            }
+            meanGP = totalHeight / double(counter);
 
-            if (localDistance < radius + 0.3) {
-                trainInput(0) = tipPosLoc(0);
-                trainInput(1) = tipPosLoc(1);
-                //trainOutput(0) = footTipHistoryGP_[j](2);
-                trainOutput(0) = footTipHistoryGP_[j](2) - meanGP;
-                continuityGPR.AddTrainingData(trainInput, trainOutput);
+            for (unsigned int j = 0; j < footTipHistoryGP_.size(); ++j) {
+                Position tipPosLoc(footTipHistoryGP_[j](0), footTipHistoryGP_[j](1));
+                double localDistance = sqrt(pow(tipPosLoc(0) - tipPos(0), 2) + pow(tipPosLoc(1) - tipPos(1), 2));
+
+                if (localDistance < radius + 0.3) {
+                    trainInput(0) = tipPosLoc(0);
+                    trainInput(1) = tipPosLoc(1);
+                    //trainOutput(0) = footTipHistoryGP_[j](2);
+                    trainOutput(0) = footTipHistoryGP_[j](2) - meanGP;
+                    continuityGPR.AddTrainingData(trainInput, trainOutput);
+                }
             }
         }
 
@@ -1737,14 +1824,24 @@ bool SupportSurfaceEstimation::terrainContinuityLayerGP(std::string& tip, GridMa
                 }
             }
 
-
-            double minDist = 10000;
-            for (unsigned int j = 0; j < footTipHistoryGP_.size(); ++j) {
-                Position tipPosLoc(footTipHistoryGP_[j](0), footTipHistoryGP_[j](1));
-                double distVar = sqrt(pow(tipPosLoc(0) - cellPos(0), 2) + pow(tipPosLoc(1) - cellPos(1), 2));
-                if (distVar < minDist) minDist = distVar;
+            if (pointCloudVersion) {
+                double minDist = 10000;
+                for (unsigned int j = 0; j < continuityPoints_.points.size(); ++j) {
+                    Position tipPosLoc(continuityPoints_.points[j].x, continuityPoints_.points[j].y);
+                    double distVar = sqrt(pow(tipPosLoc(0) - cellPos(0), 2) + pow(tipPosLoc(1) - cellPos(1), 2));
+                    if (distVar < minDist) minDist = distVar;
+                }
+                supportMapContinuityVarianceGP = minDist;
             }
-            supportMapContinuityVarianceGP = minDist;
+            else {
+                double minDist = 10000;
+                for (unsigned int j = 0; j < footTipHistoryGP_.size(); ++j) {
+                    Position tipPosLoc(footTipHistoryGP_[j](0), footTipHistoryGP_[j](1));
+                    double distVar = sqrt(pow(tipPosLoc(0) - cellPos(0), 2) + pow(tipPosLoc(1) - cellPos(1), 2));
+                    if (distVar < minDist) minDist = distVar;
+                }
+                supportMapContinuityVarianceGP = minDist;
+            }
 
 
 //            if (!isnan(outputVariance)){

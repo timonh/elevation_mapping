@@ -504,7 +504,7 @@ private:
  double getTerrainVariance(std::string tips);
 
  //! TODO: Description:
- bool setSupportSurfaceUncertaintyEstimation(std::string tip, grid_map::GridMap& supportMap);
+ bool setSupportSurfaceUncertaintyEstimation(std::string tip, grid_map::GridMap& supportMap, const double & totalEstimatedDrift);
 
  //! TODO: Description:
  double getSupportSurfaceUncertaintyEstimation();
@@ -762,6 +762,7 @@ private:
  std::vector<grid_map::Position3> footTipHistoryGP_;
  std::vector<float> sinkageDepthHistory_;
 
+
  // Quadruped velocity for low pass filtered velocity.
  Eigen::Vector3f quadrupedBaseVelocity_;
 
@@ -866,6 +867,10 @@ private:
 
  double mainGPTotalDuration_;
  int mainGPDurationCounter_;
+
+ // Point cloud for frame transformation of the GP input points.
+ sensor_msgs::PointCloud sinkageDepthPoints_;
+ sensor_msgs::PointCloud continuityPoints_;
 };
 
 } /* namespace */

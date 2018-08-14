@@ -594,6 +594,8 @@ void ElevationMapping::footTipStanceCallback(const quadruped_msgs::QuadrupedStat
 
 void ElevationMapping::processTriggerCallback(const geometry_msgs::Twist triggerTwist) {
 
+
+
     // TODO: this with custom message : string and eigenVector.
 
     //if (tip != "lefthind" && tip != "righthind") {
@@ -609,6 +611,20 @@ void ElevationMapping::processTriggerCallback(const geometry_msgs::Twist trigger
     meanStance(0) = triggerTwist.linear.x;  // Check timing!!!! TODO TODO
     meanStance(1) = triggerTwist.linear.y;
     meanStance(2) = triggerTwist.linear.z;
+
+    //! Changed the order here -> check if it still reduces the prediction error..
+    // Support Surface Estimation.
+    if (runSupportSurfaceEstimation_){
+        map_.rawMap_.setFrameId("odom_drift_adjusted");
+        map_.supportMap_.setFrameId("odom_drift_adjusted");
+        supportSurfaceEstimation_.updateSupportSurfaceEstimation(tip, map_.getRawGridMap(), map_.supportMapGP_, map_.getFusedGridMap(),
+                                                                 meanStance, stanceProcessor_.driftRefinement_.heightDifferenceFromComparison_);
+    }
+
+    // What oes this do???
+    map_.setFrameId("odom");
+
+
 
 //    if (tip == "left") {
 //        stanceProcessor_.robustStanceTriggerLF_ = false;
@@ -643,15 +659,6 @@ void ElevationMapping::processTriggerCallback(const geometry_msgs::Twist trigger
 
     // Always apply frame correction before support Surface Estimation.
     frameCorrection();
-
-    // Support Surface Estimation.
-    if (runSupportSurfaceEstimation_){
-        //map_.rawMap_.add("frame_correction", stanceProcessor_.driftRefinement_.heightDifferenceFromComparison_);
-        //map_.rawMap_["elevation"] = map_.rawMap_["elevation"] - map_.rawMap_["frame_correction"];
-        map_.rawMap_.setFrameId("odom_drift_adjusted");
-        supportSurfaceEstimation_.updateSupportSurfaceEstimation(tip, map_.getRawGridMap(), map_.supportMapGP_, map_.getFusedGridMap(),
-                                                                 meanStance, stanceProcessor_.driftRefinement_.heightDifferenceFromComparison_);
-    }
 }
 
 
