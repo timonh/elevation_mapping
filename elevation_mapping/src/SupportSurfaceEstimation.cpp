@@ -797,11 +797,11 @@ bool SupportSurfaceEstimation::mainGPRegression(double tileResolution, double ti
         if (useSignSelectiveContinuityFilter_) {
             // Sign Selective low pass filter.
             if (lowPassFilteredHindTerrainContinuityValue_ < characteristicValue) lowPassFilteredHindTerrainContinuityValue_ = fmin(fmax(continuityFilterGain_ * lowPassFilteredHindTerrainContinuityValue_ + (1 - continuityFilterGain_)
-                                                                    * characteristicValue, 0.44), 3.5); // TODO: reason about bounding.
+                                                                    * characteristicValue, 0.44), 4.5); // TODO: reason about bounding.
             else lowPassFilteredHindTerrainContinuityValue_ = characteristicValue;
         }
         else lowPassFilteredHindTerrainContinuityValue_ = fmin(fmax(continuityFilterGain_ * lowPassFilteredHindTerrainContinuityValue_ + (1 - continuityFilterGain_)
-                                                            * characteristicValue, 0.44), 3.5); // TODO: reason about bounding.
+                                                            * characteristicValue, 0.44), 4.5); // TODO: reason about bounding.
     }
 
     // Set adaptation message values.
