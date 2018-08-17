@@ -1,0 +1,9 @@
+grid_map_topic: /elevation_mapping/support_surface_gp
+
+grid_map_visualizations:
+
+  - name: elevation_points_support
+    type: point_cloud
+    params:
+     layer: elevation
+     flat: false

@@ -496,9 +496,12 @@ float DriftRefinement::gaussianWeightedDifferenceIncrement(double lowerBound, do
     if(diff < 0.0){
         weight = normalDistribution(diff, 0.0, fabs(elevation-lowerBound)*standardDeviationFactor);
 
+        std::cout << "THIS IS THE CONFIDENCE BOUND!!: " << fabs(elevation-lowerBound) << std::endl;
+
+        //weight = weight * fmin(((1.0 / fabs(elevation-lowerBound)) / 10.0), 1.0);
+
         // For Coloration
         if(elevation + diff < lowerBound){
-
         //    std::cout << "******************************************** LOWER ******************************" << std::endl;
             footTipOutsideBounds_ = true;
         }
@@ -510,12 +513,14 @@ float DriftRefinement::gaussianWeightedDifferenceIncrement(double lowerBound, do
             double widthFactor = 3.0;
             weight = weight * (1.0 - sigmoid(sigmoidCenter, widthFactor, diff, upperBound, lowerBound));
             std::cout << "SIGMOID DROPPOFF LOWER ACTIVATED!!  \n\n\n\n\n\n\n\n\n\n\n\n\n\n " << weight << std::endl;
-
         }
-
     }
     else{
         weight = normalDistribution(diff, 0.0, fabs(elevation-upperBound)*standardDeviationFactor);
+
+        std::cout << "THIS IS THE CONFIDENCE BOUND!!: " << fabs(elevation-upperBound) << std::endl;
+
+        //weight = weight * fmin(((1.0 / fabs(elevation-upperBound)) / 10.0), 1.0);
 
         // For Coloration
         if(elevation + diff > upperBound) footTipOutsideBounds_ = true;
@@ -530,6 +535,9 @@ float DriftRefinement::gaussianWeightedDifferenceIncrement(double lowerBound, do
         }
     }
 
+
+    std::cout << "This is the overall confidence bound!!: " << fabs(upperBound - lowerBound) << std::endl;
+
     // Constrain to be maximally 1.
     if(weight > 1.0) weight = 1.0; // For security, basically not necessary (as the weighting term is left away in the normalDistribution function)
     usedWeight_ = (1.0 - weight);
@@ -537,8 +545,8 @@ float DriftRefinement::gaussianWeightedDifferenceIncrement(double lowerBound, do
 
     // TOOD: code function that does sigmoid droppoff between 1.5 and 2 times the confidence bound -> no weight in this case -> no correction (Marco Hutters comment..)
 
-   // std::cout << "WEIGHT: " << (1-weight) << " diff: " << diff << " elevation: " << elevation <<
-   //              " lower: " << lowerBound << " upper: " << upperBound << std::endl;
+    // std::cout << "WEIGHT: " << (1-weight) << " diff: " << diff << " elevation: " << elevation <<
+    //              " lower: " << lowerBound << " upper: " << upperBound << std::endl;
     return (1.0 - weight) * diff;
 }
 
@@ -561,9 +569,9 @@ void DriftRefinement::initializeVisualizationMarkers() {
     footContactMarkerList_.pose.orientation.y = elevationMapBoundMarkerList_.pose.orientation.y = 0.0;
     footContactMarkerList_.pose.orientation.z = elevationMapBoundMarkerList_.pose.orientation.z = 0.0;
     footContactMarkerList_.pose.orientation.w = elevationMapBoundMarkerList_.pose.orientation.w = 1.0;
-    footContactMarkerList_.scale.x = 0.03;
-    footContactMarkerList_.scale.y = 0.03;
-    footContactMarkerList_.scale.z = 0.03;
+    footContactMarkerList_.scale.x = 0.07;
+    footContactMarkerList_.scale.y = 0.07;
+    footContactMarkerList_.scale.z = 0.07;
     elevationMapBoundMarkerList_.scale.x = 0.02;
     elevationMapBoundMarkerList_.scale.y = 0.02;
     elevationMapBoundMarkerList_.scale.z = 0.02;
@@ -589,6 +597,12 @@ bool DriftRefinement::publishAveragedFootTipPositionMarkers(const GridMap& rawMa
     c.b = max(0.0, 1 - coloring_factor * usedWeight_); // TODO set after tuning to get sensible results..
     c.r = min(1.0, coloring_factor * usedWeight_);
     c.a = 0.5;
+
+    if (driftAdjustment_ == false) {
+        c.g = 0.8;
+        c.b = 0.8;
+        c.r = 0.8;
+    }
 
     bool hind = false;
     if (tip == "lefthind" || tip == "righthind") hind = true;

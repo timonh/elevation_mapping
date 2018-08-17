@@ -874,6 +874,9 @@ private:
 
  // Proportionality Factor for terrain Continuity variance
  double continuityVarianceFactor_;
+
+ // Parameter, if y constraint for gazebo visualization.
+ bool yConstraintForVisualization_;
 };
 
 } /* namespace */

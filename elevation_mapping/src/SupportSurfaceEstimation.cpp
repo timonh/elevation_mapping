@@ -104,6 +104,8 @@ void SupportSurfaceEstimation::setParameters(){
 
     nodeHandle_.param("continuity_variance_factor", continuityVarianceFactor_, 0.15);
 
+    nodeHandle_.param("y_constraint_for_visualization", yConstraintForVisualization_, false);
+
     // Initializations.
     supportSurfaceInitializationTrigger_ = false;
     cumulativeSupportSurfaceUncertaintyEstimation_ = 0.0;
@@ -295,7 +297,7 @@ double SupportSurfaceEstimation::getClosestMapValueUsingSpiralIteratorElevation(
 bool SupportSurfaceEstimation::sinkageDepthVarianceEstimation(std::string tip, double verticalDifference){
 
     // Parameter, number of considered sinkage depth values.
-    int maxHistory = 5; // Hacking!!
+    int maxHistory = 7; // Hacking!!
 
     if (tip == "left" || tip == "right") {
 
@@ -564,9 +566,9 @@ bool SupportSurfaceEstimation::proprioceptiveVariance(std::string tip){
     }
 
     if (tip == "left" || tip == "right") proprioceptiveDiffVectorFront_.push_back(diff);
-    if (proprioceptiveDiffVectorFront_.size() > 12) proprioceptiveDiffVectorFront_.erase(proprioceptiveDiffVectorFront_.begin());
+    if (proprioceptiveDiffVectorFront_.size() > 7) proprioceptiveDiffVectorFront_.erase(proprioceptiveDiffVectorFront_.begin());
     if (tip == "lefthind" || tip == "righthind") proprioceptiveDiffVectorHind_.push_back(diff);
-    if (proprioceptiveDiffVectorHind_.size() > 12) proprioceptiveDiffVectorHind_.erase(proprioceptiveDiffVectorHind_.begin());
+    if (proprioceptiveDiffVectorHind_.size() > 7) proprioceptiveDiffVectorHind_.erase(proprioceptiveDiffVectorHind_.begin());
 
     //proprioceptiveDiffVector_.push_back(diff);
     //if (proprioceptiveDiffVector_.size() > 12) proprioceptiveDiffVector_.erase(proprioceptiveDiffVector_.begin());
@@ -774,11 +776,11 @@ bool SupportSurfaceEstimation::mainGPRegression(double tileResolution, double ti
         if (useSignSelectiveContinuityFilter_) {
             // Sign Selective low pass filter.
             if (lowPassFilteredTerrainContinuityValue_ < characteristicValue) lowPassFilteredTerrainContinuityValue_ = fmin(fmax(continuityFilterGain_ * lowPassFilteredTerrainContinuityValue_ + (1 - continuityFilterGain_)
-                                                                    * characteristicValue, 0.44), 3.5); // TODO: reason about bounding.
+                                                                    * characteristicValue, 0.44), 4.5); // TODO: reason about bounding.
             else lowPassFilteredTerrainContinuityValue_ = characteristicValue;
         }
         else lowPassFilteredTerrainContinuityValue_ = fmin(fmax(continuityFilterGain_ * lowPassFilteredTerrainContinuityValue_ + (1 - continuityFilterGain_)
-                                                            * characteristicValue, 0.44), 3.5); // TODO: reason about bounding.
+                                                            * characteristicValue, 0.44), 4.5); // TODO: reason about bounding.
     }
     if (tip == "lefthind" || tip == "righthind") {
 
@@ -959,12 +961,26 @@ bool SupportSurfaceEstimation::mainGPRegression(double tileResolution, double ti
         auto& supportMapVarianceGP = supportMap.at("variance_gp", index);
         auto& supportMapVarianceGPAdded = supportMap.at("variance", index);
 
-        // 
-        if (!isnan(supportMapElevationGPAdded)) {
-            supportMapElevationGPAdded = (1 - weight) * supportMapElevationGPAdded + supportMapElevationGP * weight;
+
+
+        // Added yConstraintVersion for orthonormal visualization in gazebo world.
+        if (yConstraintForVisualization_){
+            if (addingPosition(1) < 0.015 && addingPosition(1) > -0.015) {
+                if (!isnan(supportMapElevationGPAdded)) {
+                    supportMapElevationGPAdded = (1 - weight) * supportMapElevationGPAdded + supportMapElevationGP * weight;
+                }
+                else {
+                    supportMapElevationGPAdded = supportMapElevationGP;
+                }
+            }
         }
         else {
-            supportMapElevationGPAdded = supportMapElevationGP;
+            if (!isnan(supportMapElevationGPAdded)) {
+                supportMapElevationGPAdded = (1 - weight) * supportMapElevationGPAdded + supportMapElevationGP * weight;
+            }
+            else {
+                supportMapElevationGPAdded = supportMapElevationGP;
+            }
         }
 
 //        if (!isnan(supportMapElevationGPAdded)) {

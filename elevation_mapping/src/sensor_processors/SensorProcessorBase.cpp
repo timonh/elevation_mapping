@@ -175,5 +175,6 @@ void SensorProcessorBase::removePointsOutsideLimits(
   ROS_DEBUG("removePointsOutsideLimits() reduced point cloud to %i points.", (int) pointClouds[0]->size());
 }
 
+
 } /* namespace elevation_mapping */
 
