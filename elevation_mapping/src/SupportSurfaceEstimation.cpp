@@ -832,20 +832,42 @@ bool SupportSurfaceEstimation::mainGPRegression(double tileResolution, double ti
         for (int j = -noOfTilesPerHalfSide; j <= noOfTilesPerHalfSide; ++j){
             if (sqrt(pow(i * tileResolution,2) + pow(j * tileResolution,2)) < radius){
 
-                // GP Parameters -> to move outside of the loop and apply the data clear method (TODO!)
-                int inputDim = 2;
-                int outputDim = 1;
-                GaussianProcessRegression<float> myGPR(inputDim, outputDim);
-                myGPR.SetHyperParams(GPLengthscale_, GPSigmaN_, GPSigmaF_);
-
                 // Get the tile position.
                 Position posTile;
                 posTile(0) = footTip(0) + i * tileResolution;
                 posTile(1) = footTip(1) + j * tileResolution;
 
-
                 // Counter Variable for thresholding smoothing in case of occlusions.
                 int occlusionCounter = 0;
+
+                // Check for occlusions and adjust GP hyperparams.
+                for (CircleIterator iterator(supportMap, posTile, tileDiameter/2.0); !iterator.isPastEnd(); ++iterator) {
+                    const Index index(*iterator);
+                    if (isnan(rawMap.at("elevation", index))) occlusionCounter++;
+                }
+
+                double occlusionAdjustedLengthscale;
+                if (occlusionCounter == 0) occlusionAdjustedLengthscale = GPLengthscale_ /5.0;
+                else occlusionAdjustedLengthscale = GPLengthscale_ * (double(occlusionCounter)/5.0);
+
+                // TEST:
+                //occlusionAdjustedLengthscale = GPLengthscale_/20.0;
+
+
+
+
+                // GP Parameters -> to move outside of the loop and apply the data clear method (TODO!)
+                int inputDim = 2;
+                int outputDim = 1;
+                GaussianProcessRegression<float> myGPR(inputDim, outputDim);
+                myGPR.SetHyperParams(occlusionAdjustedLengthscale, GPSigmaN_, GPSigmaF_);
+
+
+
+
+
+
+
 
                 // Loop to add training data to GP regression.
                 for (CircleIterator iterator(supportMap, posTile, tileDiameter/2.0); !iterator.isPastEnd(); ++iterator) {
@@ -881,11 +903,11 @@ bool SupportSurfaceEstimation::mainGPRegression(double tileResolution, double ti
                         double prob = exp(-(samplingValue * distance));
                         trainOutput(0) = (rawMap.at("elevation", index) - supportMap.at("sinkage_depth_gp", index)) * (1.0 - prob) +
                                 supportMap.at("terrain_continuity_gp", index) * prob;
-                        supportMap.at("occlusion_layer", index) = trainOutput(0);
+                        //supportMap.at("occlusion_layer", index) = trainOutput(0);
                     }
                     if (isnan(trainOutput(0))) {
                         trainOutput(0) = supportMap.at("terrain_continuity_gp", index);
-                        occlusionCounter++;
+                        //occlusionCounter++;
                     }
 
                     // Add the training data to GP regression.
@@ -893,6 +915,8 @@ bool SupportSurfaceEstimation::mainGPRegression(double tileResolution, double ti
                     //if (!isnan(trainOutput(0))) directOutput = trainOutput(0);
                 }
                 //std::cout << "The Number of Data in this tile is: " << myGPR.get_n_data() << std::endl;
+
+
 
                 // Only perform regression if no. of Data is sufficiently high.
                 if (myGPR.get_n_data() > 0){
@@ -914,7 +938,7 @@ bool SupportSurfaceEstimation::mainGPRegression(double tileResolution, double ti
                         double regressionOutput = myGPR.DoRegression(testInput)(0);
                         double regressionOutputVariance = 0.0; // * sinkage / dist
 
-                        if (occlusionCounter < 6) regressionOutput = supportMap.at("occlusion_layer", index);
+                        //if (occlusionCounter < 2) regressionOutput = supportMap.at("occlusion_layer", index);
 
                         // Hacked away to check if it speeds things up..
                         //double regressionOutput = myGPR.DoRegressionVariance(testInput)(0);
