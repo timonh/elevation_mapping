@@ -127,9 +127,9 @@ bool StanceProcessor::initializeFootTipMarkers()
     footContactMarkerList_.pose.orientation.y = elevationMapBoundMarkerList_.pose.orientation.y = 0.0;
     footContactMarkerList_.pose.orientation.z = elevationMapBoundMarkerList_.pose.orientation.z = 0.0;
     footContactMarkerList_.pose.orientation.w = elevationMapBoundMarkerList_.pose.orientation.w = 1.0;
-    footContactMarkerList_.scale.x = 0.03;
-    footContactMarkerList_.scale.y = 0.03;
-    footContactMarkerList_.scale.z = 0.03;
+    footContactMarkerList_.scale.x = 0.02;
+    footContactMarkerList_.scale.y = 0.02;
+    footContactMarkerList_.scale.z = 0.02;
     elevationMapBoundMarkerList_.scale.x = 0.02;
     elevationMapBoundMarkerList_.scale.y = 0.02;
     elevationMapBoundMarkerList_.scale.z = 0.02;

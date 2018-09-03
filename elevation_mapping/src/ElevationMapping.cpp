@@ -123,7 +123,7 @@ ElevationMapping::ElevationMapping(ros::NodeHandle& nodeHandle)
   if (true) {
     if(runFootTipElevationMapEnhancements_){ // SP
       if(!useBag_) footTipStanceSubscriber_ = nodeHandle_.subscribe("/state_estimator/quadruped_state", 28, &ElevationMapping::footTipStanceCallback, this);
-      else footTipStanceSubscriber_ = nodeHandle_.subscribe("/state_estimator/quadruped_state_remapped", 28, &ElevationMapping::footTipStanceCallback, this);
+      else footTipStanceSubscriber_ = nodeHandle_.subscribe("/state_estimator/quadruped_state", 28, &ElevationMapping::footTipStanceCallback, this); // remapped is removed for quadrupedstate
     } // SP
   }
   //! End of newly introduced section

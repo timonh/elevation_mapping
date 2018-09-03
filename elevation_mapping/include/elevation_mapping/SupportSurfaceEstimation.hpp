@@ -484,6 +484,11 @@ private:
                        grid_map::GridMap& rawMap, grid_map::GridMap& supportMap, grid_map::GridMap& fusedMap);
 
  //! TODO: Description:
+ bool mainGPRegressionLinearCombination(double tileResolution, double tileDiameter,
+                       double sideLengthAddingPatch, std::string tip, const double tipDifference,
+                       grid_map::GridMap& rawMap, grid_map::GridMap& supportMap, grid_map::GridMap& fusedMap);
+
+ //! TODO: Description:
  bool mainGPRegressionNoTiles(double tileResolution, double tileDiameter,
                        double sideLengthAddingPatch, std::string tip, const double tipDifference,
                        grid_map::GridMap& rawMap, grid_map::GridMap& supportMap, grid_map::GridMap& fusedMap);
@@ -877,6 +882,7 @@ private:
 
  // Parameter, if y constraint for gazebo visualization.
  bool yConstraintForVisualization_;
+ bool yConstraintForVisualizationTerrCont_;
 };
 
 } /* namespace */

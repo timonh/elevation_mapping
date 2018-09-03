@@ -85,7 +85,7 @@ DriftRefinement::DriftRefinement(ros::NodeHandle nodeHandle)
   nodeHandle_.param("run_drift_refinement_support_surface", runDriftRefinementSupportSurface_, false);
 
   //planeFitVisualizationPublisher_ = nodeHandle_.advertise<visualization_msgs::Marker>("plane_fit_visualization_marker_list", 1000); // DR
-  footContactPublisher_ = nodeHandle_.advertise<visualization_msgs::Marker>("mean_foot_contact_markers_rviz", 1000);
+  footContactPublisher_ = nodeHandle_.advertise<visualization_msgs::Marker>("mean_foot_contact_markers_rviz", 25);
   elevationMapBoundPublisher_ = nodeHandle_.advertise<visualization_msgs::Marker>("map_bound_markers_rviz", 1000);
 
   // Initializing some class variables.
@@ -569,9 +569,9 @@ void DriftRefinement::initializeVisualizationMarkers() {
     footContactMarkerList_.pose.orientation.y = elevationMapBoundMarkerList_.pose.orientation.y = 0.0;
     footContactMarkerList_.pose.orientation.z = elevationMapBoundMarkerList_.pose.orientation.z = 0.0;
     footContactMarkerList_.pose.orientation.w = elevationMapBoundMarkerList_.pose.orientation.w = 1.0;
-    footContactMarkerList_.scale.x = 0.07;
-    footContactMarkerList_.scale.y = 0.07;
-    footContactMarkerList_.scale.z = 0.07;
+    footContactMarkerList_.scale.x = 0.04;
+    footContactMarkerList_.scale.y = 0.04;
+    footContactMarkerList_.scale.z = 0.04;
     elevationMapBoundMarkerList_.scale.x = 0.02;
     elevationMapBoundMarkerList_.scale.y = 0.02;
     elevationMapBoundMarkerList_.scale.z = 0.02;
@@ -613,6 +613,18 @@ bool DriftRefinement::publishAveragedFootTipPositionMarkers(const GridMap& rawMa
         c.a = 1;
     }
 
+    //c.r = 0.35;
+    //c.b = 0.35;
+    //c.g = 0.35;
+    c.a = 1.0;
+
+    bool displayOnlyLeftFootTipMarkers = false;
+    if (displayOnlyLeftFootTipMarkers) {
+        if (tip == "right" || tip == "righthind") {
+            c.a = 0.0;
+        }
+    }
+
     //boost::recursive_mutex::scoped_lock scopedLock(rawMapMutex_);
 
     // If outside the area, where comparison can be made (i.e. no elevation map value is found) set black color.
@@ -636,6 +648,10 @@ bool DriftRefinement::publishAveragedFootTipPositionMarkers(const GridMap& rawMa
         if(footTipColoring)footContactMarkerList_.colors.push_back(c);
     }
 
+    if (footContactMarkerList_.points.size() > 40){
+        footContactMarkerList_.points.erase(footContactMarkerList_.points.begin());
+        footContactMarkerList_.colors.erase(footContactMarkerList_.colors.begin());
+    }
     // Publish averaged foot tip positions
     footContactPublisher_.publish(footContactMarkerList_);
 

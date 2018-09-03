@@ -81,7 +81,7 @@ ElevationMap::ElevationMap(ros::NodeHandle nodeHandle)
       fusedMap_({"elevation", "upper_bound", "lower_bound", "color"}),
       supportMap_({"elevation", "variance", "elevation_gp", "elevation_gp_added"}),
       supportMapGP_({"elevation", "variance", "elevation_gp", "variance_gp", "sinkage_depth_gp", "sinkage_depth_variance_gp",
-                    "terrain_continuity_gp", "terrain_continuity_variance_gp", "smoothed_top_layer_gp", "ground_truth"}),
+                    "terrain_continuity_gp", "terrain_continuity_variance_gp", "smoothed_top_layer_gp", "ground_truth", "occlusion_layer"}),
       hasUnderlyingMap_(false),
       visibilityCleanupDuration_(0.0),
       filterChain_("grid_map::GridMap"), // New
@@ -152,12 +152,12 @@ ElevationMap::ElevationMap(ros::NodeHandle nodeHandle)
   // SS
 
   //! Commented as moved to Stance Processor
-  if (false) {
-      if(runFootTipElevationMapEnhancements_){ // SP
-          if(!useBag_) footTipStanceSubscriber_ = nodeHandle_.subscribe("/state_estimator/quadruped_state", 1, &ElevationMap::footTipStanceCallback, this);
-          else footTipStanceSubscriber_ = nodeHandle_.subscribe("/state_estimator/quadruped_state_remapped", 1, &ElevationMap::footTipStanceCallback, this);
-      } // SP
-  }
+  //if (false) {
+  //    if(runFootTipElevationMapEnhancements_){ // SP
+  //        if(!useBag_) footTipStanceSubscriber_ = nodeHandle_.subscribe("/state_estimator/quadruped_state", 1, &ElevationMap::footTipStanceCallback, this);
+  //        else footTipStanceSubscriber_ = nodeHandle_.subscribe("/state_estimator/quadruped_state_remapped", 1, &ElevationMap::footTipStanceCallback, this);
+  //    } // SP
+  //}
 
   //! end of commented section
 
