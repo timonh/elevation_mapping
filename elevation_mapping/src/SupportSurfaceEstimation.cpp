@@ -16,12 +16,10 @@ using namespace grid_map;
 namespace elevation_mapping {
 
 SupportSurfaceEstimation::SupportSurfaceEstimation(ros::NodeHandle nodeHandle)
-    : nodeHandle_(nodeHandle),
-      filterChain_("grid_map::GridMap"),
-      filterChain2_("grid_map::GridMap")
+    : nodeHandle_(nodeHandle)
 {
   // Publisher for support surface map.
-  elevationMapGPPublisher_ = nodeHandle_.advertise<grid_map_msgs::GridMap>("support_surface_gp", 1);
+  supportSurfacePublisher_ = nodeHandle_.advertise<grid_map_msgs::GridMap>("support_surface_gp", 1);
 
   // Publisher for plotting dynamic values, such as terrain variance, characteristic value and sinkage depth variance.
   varianceTwistPublisher_ = nodeHandle_.advertise<geometry_msgs::TwistStamped>("variances", 1000);
@@ -126,6 +124,20 @@ void SupportSurfaceEstimation::setParameters(){
     mainGPDurationCounter_ = 0;
 
     supportSurfaceUncertaintyEstimationCounter_ = 0;
+    supportSurfaceUncertaintyEstimation_ = 0.0;
+    cumulativeSupportSurfaceUncertaintyEstimation_ = 0.0;
+    supportSurfaceUncertaintyEstimationCounterBlind_ = 0;
+    supportSurfaceUncertaintyEstimationBlind_ = 0.0;
+    cumulativeSupportSurfaceUncertaintyEstimationBlind_ = 0.0;
+    supportSurfaceUncertaintyEstimationCounterEM_ = 0;
+    supportSurfaceUncertaintyEstimationEM_ = 0.0;
+    cumulativeSupportSurfaceUncertaintyEstimationEM_ = 0.0;
+
+    // Initialization for blind locomotion planner error estimation:
+    blindTriggerFrontLeft_ = false;
+    blindTriggerFrontRight_ = false;
+    blindTriggerHindLeft_ = false;
+    blindTriggerHindRight_ = false;
 
     // Initializations for ground truth comparison in simulation.
     if (!useBag_) {
@@ -183,10 +195,12 @@ bool SupportSurfaceEstimation::updateSupportSurfaceEstimation(std::string tip, G
 
                 // Uncertainty Estimation based on low pass filtered error between foot tip height and predicted support Surface.
                 //if (tip == "left" || tip == "right") setSupportSurfaceUncertaintyEstimation(tip, supportMap); //! TODO: uncomment whats inside of this function.
-                setSupportSurfaceUncertaintyEstimation(tip, supportMap, totalEstimatedDrift);
+                setSupportSurfaceUncertaintyEstimation(tip, supportMap, rawMap, totalEstimatedDrift);
 
                 // If choosing "large" make the size of the GP larger.
                 if (sizeSupportSurfaceUpdate_ == "large") sideLengthAddingPatch_ = 1.37;
+
+                sideLengthAddingPatch_ = 1.1;
 
                 // Main gaussian process regression.
                 mainGPRegression(tileResolution_, tileDiameter_, sideLengthAddingPatch_,
@@ -208,7 +222,7 @@ bool SupportSurfaceEstimation::updateSupportSurfaceEstimation(std::string tip, G
     grid_map_msgs::GridMap mapMessageGP;
     GridMapRosConverter::toMessage(supportMap, mapMessageGP);
     mapMessageGP.info.header.frame_id = "odom_drift_adjusted";
-    elevationMapGPPublisher_.publish(mapMessageGP);
+    supportSurfacePublisher_.publish(mapMessageGP);
     return true;
 }
 
@@ -241,7 +255,7 @@ Position3 SupportSurfaceEstimation::getHindRightFootTipPosition(){
     return tipPos;
 }
 
-bool SupportSurfaceEstimation::setSupportSurfaceUncertaintyEstimation(std::string tip, GridMap& supportMap, const double & totalEstimatedDrift){
+bool SupportSurfaceEstimation::setSupportSurfaceUncertaintyEstimation(std::string tip, GridMap& supportMap, GridMap& rawMap, const double & totalEstimatedDrift){
 
     Position3 latestTip = getFootTipPosition3(tip);
     // So far not low pass filtered!! -> create Vector for that (TODO)
@@ -250,13 +264,110 @@ bool SupportSurfaceEstimation::setSupportSurfaceUncertaintyEstimation(std::strin
     // As support Map lives in the corrected frame.
     double diff = fabs((latestTip(2) - totalEstimatedDrift) - supportMap.atPosition("elevation", latestTipPosition));
 
-    if (!isnan(diff)) {
-        supportSurfaceUncertaintyEstimationCounter_++;
-        supportSurfaceUncertaintyEstimation_ = diff;
-        cumulativeSupportSurfaceUncertaintyEstimation_ += diff;
+    double diffEM = fabs(latestTip(2) - rawMap.atPosition("elevation", latestTipPosition));
+
+    double diffBlind;
+    //Eigen::Vector3f secondLastFrontLeftFootTip_, secondLastFrontRightFootTip_, secondLastHindLeftFootTip_, secondLastHindRightFootTip_;
+    if (tip == "left") {
+        diffBlind = fabs(latestTip(2) - secondLastFrontLeftFootTip_(2));
+        secondLastFrontLeftFootTip_ = latestTip;
+        blindTriggerFrontLeft_ = true;
     }
-    double meanFootTipPlacementUncertainty = cumulativeSupportSurfaceUncertaintyEstimation_ / supportSurfaceUncertaintyEstimationCounter_;
-    std::cout << "### +++ Mean SUPPORT SURFACE UNCERTAINTY ESTIMATION: " << meanFootTipPlacementUncertainty << "   tip:::: " << tip << std::endl;
+    if (tip == "right") {
+        diffBlind = fabs(latestTip(2) - secondLastFrontRightFootTip_(2));
+        secondLastFrontRightFootTip_ = latestTip;
+        blindTriggerFrontRight_ = true;
+    }
+    if (tip == "lefthind") {
+        diffBlind = fabs(latestTip(2) - secondLastHindLeftFootTip_(2));
+        secondLastHindLeftFootTip_ = latestTip;
+        blindTriggerHindLeft_ = true;
+    }
+    if (tip == "righthind") {
+        diffBlind = fabs(latestTip(2) - secondLastHindRightFootTip_(2));
+        secondLastHindRightFootTip_ = latestTip;
+        blindTriggerHindRight_ = true;
+    }
+
+    if (blindTriggerFrontLeft_ == true && blindTriggerFrontRight_ == true &&
+            blindTriggerHindLeft_ == true && blindTriggerHindRight_ == true) {
+        if (!isnan(diff)) {
+            supportSurfaceUncertaintyEstimationCounter_++;
+            supportSurfaceUncertaintyEstimation_ = diff;
+            cumulativeSupportSurfaceUncertaintyEstimation_ += diff;
+        }
+        if (!isnan(diffBlind)) {
+            supportSurfaceUncertaintyEstimationCounterBlind_++;
+            supportSurfaceUncertaintyEstimationBlind_ = diffBlind;
+            cumulativeSupportSurfaceUncertaintyEstimationBlind_ += diffBlind;
+        }
+        if (!isnan(diffEM)) {
+            supportSurfaceUncertaintyEstimationCounterEM_++;
+            supportSurfaceUncertaintyEstimationEM_ = diffEM;
+            cumulativeSupportSurfaceUncertaintyEstimationEM_ += diffEM;
+        }
+        double meanFootTipPlacementUncertainty = cumulativeSupportSurfaceUncertaintyEstimation_ / supportSurfaceUncertaintyEstimationCounter_;
+        std::cout << "### +++ Mean SUPPORT SURFACE UNCERTAINTY ESTIMATION: " << meanFootTipPlacementUncertainty << "   tip:::: " << tip << std::endl;
+
+        double meanFootTipPlacementUncertaintyBlind = cumulativeSupportSurfaceUncertaintyEstimationBlind_ / supportSurfaceUncertaintyEstimationCounterBlind_;
+        std::cout << "### +++ Mean SUPPORT SURFACE UNCERTAINTY ESTIMATION BLIND!!: " << meanFootTipPlacementUncertaintyBlind << "   tip:::: " << tip << std::endl;
+
+        double meanFootTipPlacementUncertaintyEM = cumulativeSupportSurfaceUncertaintyEstimationEM_ / supportSurfaceUncertaintyEstimationCounterEM_;
+        std::cout << "### +++ Mean SUPPORT SURFACE UNCERTAINTY ESTIMATION EM!!: " << meanFootTipPlacementUncertaintyEM << "   tip:::: " << tip << std::endl;
+
+        double vegetationVarianceFront = getPenetrationDepthVariance("front");
+        double terrVarianceFront = getTerrainVariance("front");
+        double vegetationVarianceHind = getPenetrationDepthVariance("hind");
+        double terrVarianceHind = getTerrainVariance("hind");
+
+        std::cout << "WRITING TO FILE" << std::endl;
+
+        // Open the writing file.
+        std::string filename = "/home/timon/resultoutputfiles/testfile.txt";
+        ofstream myfile;
+        myfile.open (filename, ios::app);
+        myfile << "\n" << supportSurfaceUncertaintyEstimation_;
+        myfile.close();
+        myfile.open ("/home/timon/resultoutputfiles/testfileblind.txt", ios::app);
+        myfile << "\n" << supportSurfaceUncertaintyEstimationBlind_;
+        myfile.close();
+        myfile.open ("/home/timon/resultoutputfiles/testfileEM.txt", ios::app);
+        myfile << "\n" << supportSurfaceUncertaintyEstimationEM_;
+        myfile.close();
+        myfile.open ("/home/timon/resultoutputfiles/testfilemean.txt", ios::app);
+        myfile << "\n" << supportSurfaceUncertaintyEstimation_;
+        myfile.close();
+        myfile.open ("/home/timon/resultoutputfiles/testfilemeanblind.txt", ios::app);
+        myfile << "\n" << supportSurfaceUncertaintyEstimationBlind_;
+        myfile.close();
+        myfile.open ("/home/timon/resultoutputfiles/testfilemeanEM.txt", ios::app);
+        myfile << "\n" << supportSurfaceUncertaintyEstimationEM_;
+        myfile.close();
+        myfile.open ("/home/timon/resultoutputfiles/testfiletime.txt", ios::app);
+        myfile << "\n" << ros::Time::now();
+        myfile.close();
+        myfile.open ("/home/timon/resultoutputfiles/testfilevhf.txt", ios::app);
+        myfile << "\n" << vegetationVarianceFront;
+        myfile.close();
+        myfile.open ("/home/timon/resultoutputfiles/testfilevhh.txt", ios::app);
+        myfile << "\n" << vegetationVarianceHind;
+        myfile.close();
+        myfile.open ("/home/timon/resultoutputfiles/testfiletf.txt", ios::app);
+        myfile << "\n" << terrVarianceFront;
+        myfile.close();
+        myfile.open ("/home/timon/resultoutputfiles/testfileth.txt", ios::app);
+        myfile << "\n" << terrVarianceHind;
+        myfile.close();
+        myfile.open ("/home/timon/resultoutputfiles/testfileMeanLengthscale.txt", ios::app);
+        myfile << "\n" << meanLengthscale_;
+        myfile.close();
+        myfile.open ("/home/timon/resultoutputfiles/testfileMeanLengthscaleFront.txt", ios::app);
+        myfile << "\n" << meanLengthscaleFront_;
+        myfile.close();
+        myfile.open ("/home/timon/resultoutputfiles/testfileMeanLengthscaleHind.txt", ios::app);
+        myfile << "\n" << meanLengthscaleHind_;
+        myfile.close();
+    }
     return true;
 }
 
@@ -826,6 +937,14 @@ bool SupportSurfaceEstimation::mainGPRegression(double tileResolution, double ti
     const ros::WallDuration duration1 = ros::WallTime::now() - mainGPStartTime;
     ROS_INFO("MAIN::::::::::::: GP regression initialization was done in %f s.", duration1.toSec());
 
+    // Visualization purpose.
+    double totalLengthscale = 0.0;
+    int lengthscaleCounter = 0;
+    double totalLengthscaleFront = 0.0;
+    int lengthscaleCounterFront = 0;
+    double totalLengthscaleHind = 0.0;
+    int lengthscaleCounterHind = 0;
+
 
     // Iterate through the model tiles.
     for (int i = -noOfTilesPerHalfSide; i <= noOfTilesPerHalfSide; ++i){
@@ -847,8 +966,8 @@ bool SupportSurfaceEstimation::mainGPRegression(double tileResolution, double ti
                 }
 
                 double occlusionAdjustedLengthscale;
-                if (occlusionCounter == 0) occlusionAdjustedLengthscale = GPLengthscale_ /5.0;
-                else occlusionAdjustedLengthscale = GPLengthscale_ * (double(occlusionCounter)/5.0);
+                if (occlusionCounter == 0) occlusionAdjustedLengthscale = GPLengthscale_ /20.0;
+                else occlusionAdjustedLengthscale = GPLengthscale_ * (double(occlusionCounter)/20.0);
 
                 // TEST:
                 //occlusionAdjustedLengthscale = GPLengthscale_/20.0;
@@ -862,11 +981,17 @@ bool SupportSurfaceEstimation::mainGPRegression(double tileResolution, double ti
                 GaussianProcessRegression<float> myGPR(inputDim, outputDim);
                 myGPR.SetHyperParams(occlusionAdjustedLengthscale, GPSigmaN_, GPSigmaF_);
 
-
-
-
-
-
+                if (tip == "left" || tip == "right") {
+                    totalLengthscaleFront += occlusionAdjustedLengthscale;
+                    lengthscaleCounterFront++;
+                }
+                if (tip == "lefthind" || tip == "righthind") {
+                    totalLengthscaleHind += occlusionAdjustedLengthscale;
+                    lengthscaleCounterHind++;
+                }
+                totalLengthscale += occlusionAdjustedLengthscale;
+                lengthscaleCounter++;
+                // Derive Mean lengthscale here for visualization in Paper.
 
 
                 // Loop to add training data to GP regression.
@@ -962,6 +1087,13 @@ bool SupportSurfaceEstimation::mainGPRegression(double tileResolution, double ti
             }
         }
     }
+
+
+    if (lengthscaleCounterFront >= 1 && !isnan(totalLengthscaleFront / lengthscaleCounterFront))
+        meanLengthscaleFront_ = totalLengthscaleFront / lengthscaleCounterFront;
+    meanLengthscale_ = totalLengthscale / lengthscaleCounter;
+    if (lengthscaleCounterHind >= 1 && !isnan(totalLengthscaleHind / lengthscaleCounterHind))
+        meanLengthscaleHind_ = totalLengthscaleHind / lengthscaleCounterHind;
 
     const ros::WallDuration duration2 = ros::WallTime::now() - mainGPStartTime;
     ROS_INFO("MAIN:::::::::iterated through all the tiles in %f s.", duration2.toSec());
@@ -2195,7 +2327,7 @@ bool SupportSurfaceEstimation::terrainContinuityLayerGP(std::string& tip, GridMa
             else weight = weightDecayThreshold_ - weightDecayThreshold_ * (distance - weightDecayThreshold_ * radius)
                     / ((1.0 - weightDecayThreshold_) * radius);
             if (yConstraintForVisualizationTerrCont_) {
-                if (cellPos(1) < 0.13 + 0.015 && cellPos(1) > 0.13 - 0.015) {
+                if (cellPos(1) < 0.12 + 0.015 && cellPos(1) > 0.12 - 0.015) {
                     if (!isnan(outputHeight)){
                         if (isnan(supportMapContinuityGP)){
                             supportMapContinuityGP = outputHeight;

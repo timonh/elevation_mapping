@@ -91,11 +91,6 @@ StanceProcessor::StanceProcessor(ros::NodeHandle nodeHandle)
 
   stanceProcessorTriggerPublisher_ = nodeHandle_.advertise<geometry_msgs::Twist>("stance_trigger", 20);
 
-  //if(runFootTipElevationMapEnhancements_){ TODO: uncomment
-  //    if(!useBag_) footTipStanceSubscriber_ = nodeHandle_.subscribe("/state_estimator/quadruped_state", 1, &StanceProcessor::footTipStanceCallback, this);
-  //    else footTipStanceSubscriber_ = nodeHandle_.subscribe("/state_estimator/quadruped_state_remapped", 1, &StanceProcessor::footTipStanceCallback, this);
-  //} TODO: uncomment
-
   // Publish Foot Tip Markers.
   initializeFootTipMarkers();
 
@@ -160,38 +155,38 @@ bool StanceProcessor::initializeFootTipMarkers()
     return true;
 }
 
-void StanceProcessor::footTipStanceCallback(const quadruped_msgs::QuadrupedState& quadrupedState)
-{
+//void StanceProcessor::footTipStanceCallback(const quadruped_msgs::QuadrupedState& quadrupedState)
+//{
 
-  //std::cout << "Calling Back still!!! STANCE PROCESSOR" << std::endl;
+//  //std::cout << "Calling Back still!!! STANCE PROCESSOR" << std::endl;
 
-  //boost::recursive_mutex::scoped_lock scopedLockForFootTipStanceProcessor(footTipStanceProcessorMutex_);
-  // Set class variables.
-  LFTipPosition_(0) = (double)quadrupedState.contacts[0].position.x;
-  LFTipPosition_(1) = (double)quadrupedState.contacts[0].position.y;
-  LFTipPosition_(2) = (double)quadrupedState.contacts[0].position.z;
-  RFTipPosition_(0) = (double)quadrupedState.contacts[1].position.x;
-  RFTipPosition_(1) = (double)quadrupedState.contacts[1].position.y;
-  RFTipPosition_(2) = (double)quadrupedState.contacts[1].position.z;
-  LFTipState_ = quadrupedState.contacts[0].state;
-  RFTipState_ = quadrupedState.contacts[1].state;
+//  //boost::recursive_mutex::scoped_lock scopedLockForFootTipStanceProcessor(footTipStanceProcessorMutex_);
+//  // Set class variables.
+//  LFTipPosition_(0) = (double)quadrupedState.contacts[0].position.x;
+//  LFTipPosition_(1) = (double)quadrupedState.contacts[0].position.y;
+//  LFTipPosition_(2) = (double)quadrupedState.contacts[0].position.z;
+//  RFTipPosition_(0) = (double)quadrupedState.contacts[1].position.x;
+//  RFTipPosition_(1) = (double)quadrupedState.contacts[1].position.y;
+//  RFTipPosition_(2) = (double)quadrupedState.contacts[1].position.z;
+//  LFTipState_ = quadrupedState.contacts[0].state;
+//  RFTipState_ = quadrupedState.contacts[1].state;
 
 
-  if(runHindLegStanceDetection_){
-      // Add hind legs for proprioceptive variance estimation.
-      LHTipPosition_(0) = (double)quadrupedState.contacts[2].position.x;
-      LHTipPosition_(1) = (double)quadrupedState.contacts[2].position.y;
-      LHTipPosition_(2) = (double)quadrupedState.contacts[2].position.z;
-      RHTipPosition_(0) = (double)quadrupedState.contacts[3].position.x;
-      RHTipPosition_(1) = (double)quadrupedState.contacts[3].position.y;
-      RHTipPosition_(2) = (double)quadrupedState.contacts[3].position.z;
-      LHTipState_ = quadrupedState.contacts[2].state;
-      RHTipState_ = quadrupedState.contacts[3].state;
-  }
+//  if(runHindLegStanceDetection_){
+//      // Add hind legs for proprioceptive variance estimation.
+//      LHTipPosition_(0) = (double)quadrupedState.contacts[2].position.x;
+//      LHTipPosition_(1) = (double)quadrupedState.contacts[2].position.y;
+//      LHTipPosition_(2) = (double)quadrupedState.contacts[2].position.z;
+//      RHTipPosition_(0) = (double)quadrupedState.contacts[3].position.x;
+//      RHTipPosition_(1) = (double)quadrupedState.contacts[3].position.y;
+//      RHTipPosition_(2) = (double)quadrupedState.contacts[3].position.z;
+//      LHTipState_ = quadrupedState.contacts[2].state;
+//      RHTipState_ = quadrupedState.contacts[3].state;
+//  }
 
-  // Detect start and end of stances for each of the two front foot tips.
-  detectStancePhase();
-}
+//  // Detect start and end of stances for each of the two front foot tips.
+//  detectStancePhase();
+//}
 
 std::string StanceProcessor::detectStancePhase()
 {

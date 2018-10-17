@@ -221,6 +221,12 @@ bool ElevationMapping::readParameters()
   nodeHandle_.param("enable_visibility_cleanup", map_.enableVisibilityCleanup_, true);
   nodeHandle_.param("scanning_duration", map_.scanningDuration_, 1.0);
 
+  // New by timon for visualization.
+  nodeHandle_.param("stance_z_bias_for_video", stanceZBiasForVideo_, 0.02);
+
+
+  // End New
+
   // SensorProcessor parameters.
   string sensorType;
   nodeHandle_.param("sensor_processor/type", sensorType, string("structured_light"));
@@ -543,6 +549,9 @@ void ElevationMapping::stopMapUpdateTimer()
 
 void ElevationMapping::footTipStanceCallback(const quadruped_msgs::QuadrupedState& quadrupedState) // SP
 {
+
+  // TODO: write all as Positions, so no scrupulous conversions are necessary anymore.
+
   //boost::recursive_mutex::scoped_lock scopedLockForFootTipStanceProcessor(footTipStanceProcessorMutex_);
   // Set class variables.
 
@@ -610,7 +619,7 @@ void ElevationMapping::processTriggerCallback(const geometry_msgs::Twist trigger
     Eigen::Vector3f meanStance;
     meanStance(0) = triggerTwist.linear.x;  // Check timing!!!! TODO TODO
     meanStance(1) = triggerTwist.linear.y;
-    meanStance(2) = triggerTwist.linear.z;
+    meanStance(2) = triggerTwist.linear.z + stanceZBiasForVideo_;
 
     //! Changed the order here -> check if it still reduces the prediction error..
     // Support Surface Estimation.

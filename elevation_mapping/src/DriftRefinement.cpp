@@ -569,9 +569,9 @@ void DriftRefinement::initializeVisualizationMarkers() {
     footContactMarkerList_.pose.orientation.y = elevationMapBoundMarkerList_.pose.orientation.y = 0.0;
     footContactMarkerList_.pose.orientation.z = elevationMapBoundMarkerList_.pose.orientation.z = 0.0;
     footContactMarkerList_.pose.orientation.w = elevationMapBoundMarkerList_.pose.orientation.w = 1.0;
-    footContactMarkerList_.scale.x = 0.04;
-    footContactMarkerList_.scale.y = 0.04;
-    footContactMarkerList_.scale.z = 0.04;
+    footContactMarkerList_.scale.x = 0.06;
+    footContactMarkerList_.scale.y = 0.06;
+    footContactMarkerList_.scale.z = 0.06;
     elevationMapBoundMarkerList_.scale.x = 0.02;
     elevationMapBoundMarkerList_.scale.y = 0.02;
     elevationMapBoundMarkerList_.scale.z = 0.02;
@@ -618,13 +618,6 @@ bool DriftRefinement::publishAveragedFootTipPositionMarkers(const GridMap& rawMa
     //c.g = 0.35;
     c.a = 1.0;
 
-    bool displayOnlyLeftFootTipMarkers = false;
-    if (displayOnlyLeftFootTipMarkers) {
-        if (tip == "right" || tip == "righthind") {
-            c.a = 0.0;
-        }
-    }
-
     //boost::recursive_mutex::scoped_lock scopedLock(rawMapMutex_);
 
     // If outside the area, where comparison can be made (i.e. no elevation map value is found) set black color.
@@ -637,6 +630,28 @@ bool DriftRefinement::publishAveragedFootTipPositionMarkers(const GridMap& rawMa
     }
     else if(footTipOutsideBounds_) c.g = 0.9;
 
+
+    bool displayOnlyLeftFootTipMarkers = false;
+    if (displayOnlyLeftFootTipMarkers) {
+        if (tip == "right" || tip == "righthind") {
+            c.a = 0.0;
+        }
+        else{
+            c.r = 0.8;
+            c.g = 0.8;
+            c.b = 0.8;
+            c.a = 1.0;
+        }
+    }
+
+    bool displayallmarkersequalcolor = true;
+    if (displayallmarkersequalcolor) {
+            c.r = 0.2;
+            c.g = 0.3;
+            c.b = 0.3;
+            c.a = 1.0;
+    }
+
     //scopedLock.unlock();
 
     // Check for nans
@@ -648,10 +663,11 @@ bool DriftRefinement::publishAveragedFootTipPositionMarkers(const GridMap& rawMa
         if(footTipColoring)footContactMarkerList_.colors.push_back(c);
     }
 
-    if (footContactMarkerList_.points.size() > 40){
+    if (footContactMarkerList_.points.size() > 24){
         footContactMarkerList_.points.erase(footContactMarkerList_.points.begin());
         footContactMarkerList_.colors.erase(footContactMarkerList_.colors.begin());
     }
+
     // Publish averaged foot tip positions
     footContactPublisher_.publish(footContactMarkerList_);
 

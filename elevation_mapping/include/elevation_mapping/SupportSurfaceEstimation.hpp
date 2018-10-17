@@ -509,7 +509,7 @@ private:
  double getTerrainVariance(std::string tips);
 
  //! TODO: Description:
- bool setSupportSurfaceUncertaintyEstimation(std::string tip, grid_map::GridMap& supportMap, const double & totalEstimatedDrift);
+ bool setSupportSurfaceUncertaintyEstimation(std::string tip, grid_map::GridMap& supportMap, grid_map::GridMap& rawMap, const double & totalEstimatedDrift);
 
  //! TODO: Description:
  double getSupportSurfaceUncertaintyEstimation();
@@ -727,7 +727,7 @@ private:
  ros::Publisher planeFitVisualizationPublisher_;
  ros::Publisher varianceTwistPublisher_;
  ros::Publisher supportSurfaceAddingAreaPublisher_;
- ros::Publisher elevationMapGPPublisher_;
+ ros::Publisher supportSurfacePublisher_;
 
  //! Publication of Markers:
  visualization_msgs::Marker footContactMarkerList_;
@@ -746,12 +746,14 @@ private:
  double penetrationDepthVariance_, penetrationDepthVarianceHind_, differentialPenetrationDepthVariance_;
  std::vector<double> verticalDifferenceVector_, verticalDifferenceVectorHind_;
 
- filters::FilterChain<grid_map::GridMap> filterChain_;
- filters::FilterChain<grid_map::GridMap> filterChain2_;
  std::string filterChainParametersName_;
 
  // storage of front left foottip position for simple foot tip embedding.
  Eigen::Vector3f frontLeftFootTip_, frontRightFootTip_, hindLeftFootTip_, hindRightFootTip_;
+
+ // Older version to simulate blind locomotion planner error.
+ grid_map::Position3 secondLastFrontLeftFootTip_, secondLastFrontRightFootTip_, secondLastHindLeftFootTip_, secondLastHindRightFootTip_;
+ bool blindTriggerFrontLeft_, blindTriggerFrontRight_, blindTriggerHindLeft_, blindTriggerHindRight_;
 
  // Footprint storage in class member:
  geometry_msgs::Transform footprint_;
@@ -762,6 +764,14 @@ private:
  double supportSurfaceUncertaintyEstimation_;
  double cumulativeSupportSurfaceUncertaintyEstimation_;
  int supportSurfaceUncertaintyEstimationCounter_;
+
+ double supportSurfaceUncertaintyEstimationBlind_;
+ double cumulativeSupportSurfaceUncertaintyEstimationBlind_;
+ int supportSurfaceUncertaintyEstimationCounterBlind_;
+
+ double supportSurfaceUncertaintyEstimationEM_;
+ double cumulativeSupportSurfaceUncertaintyEstimationEM_;
+ int supportSurfaceUncertaintyEstimationCounterEM_;
 
  // Foot tip position history for GP.
  std::vector<grid_map::Position3> footTipHistoryGP_;
@@ -883,6 +893,10 @@ private:
  // Parameter, if y constraint for gazebo visualization.
  bool yConstraintForVisualization_;
  bool yConstraintForVisualizationTerrCont_;
+
+ // For Visualization of the lengthscale.
+ double meanLengthscaleFront_, meanLengthscale_, meanLengthscaleHind_;
+
 };
 
 } /* namespace */

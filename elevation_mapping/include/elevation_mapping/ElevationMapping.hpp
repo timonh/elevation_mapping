@@ -307,6 +307,9 @@ class ElevationMapping
   // ROS publisher for adaptation data.
   ros::Publisher varianceTwistPublisher_;
 
+  // New by timon for visualization:
+  double stanceZBiasForVideo_;
+
 };
 
 } /* namespace */
