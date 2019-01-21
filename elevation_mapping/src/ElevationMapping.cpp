@@ -223,6 +223,8 @@ bool ElevationMapping::readParameters()
 
   // New by timon for visualization.
   nodeHandle_.param("stance_z_bias_for_video", stanceZBiasForVideo_, 0.02);
+  // Initialize stance calculation trigger.
+  stanceProcessor_.stanceProcessingTrigger_ = "none";
 
 
   // End New
@@ -488,7 +490,7 @@ bool ElevationMapping::getSubmap(grid_map_msgs::GetGridMap::Request& request, gr
   return isSuccess;
 }
 
-// New for Locomotion controller with support surface. TODO: check if the mapfusionqueue is suitable for this cause..
+// New for Locomotion controller with support surface.
 bool ElevationMapping::getSupportSurfaceSubmap(grid_map_msgs::GetGridMap::Request& request, grid_map_msgs::GetGridMap::Response& response)
 {
   grid_map::Position requestedSubmapPosition(request.position_x, request.position_y);
@@ -554,24 +556,23 @@ void ElevationMapping::footTipStanceCallback(const quadruped_msgs::QuadrupedStat
 
   //boost::recursive_mutex::scoped_lock scopedLockForFootTipStanceProcessor(footTipStanceProcessorMutex_);
   // Set class variables.
-
-  stanceProcessor_.LFTipPosition_(0) = (double)quadrupedState.contacts[0].position.x;
-  stanceProcessor_.LFTipPosition_(1) = (double)quadrupedState.contacts[0].position.y;
-  stanceProcessor_.LFTipPosition_(2) = (double)quadrupedState.contacts[0].position.z;
-  stanceProcessor_.RFTipPosition_(0) = (double)quadrupedState.contacts[1].position.x;
-  stanceProcessor_.RFTipPosition_(1) = (double)quadrupedState.contacts[1].position.y;
-  stanceProcessor_.RFTipPosition_(2) = (double)quadrupedState.contacts[1].position.z;
+  stanceProcessor_.LFTipPosition_(0) = quadrupedState.contacts[0].position.x;
+  stanceProcessor_.LFTipPosition_(1) = quadrupedState.contacts[0].position.y;
+  stanceProcessor_.LFTipPosition_(2) = quadrupedState.contacts[0].position.z;
+  stanceProcessor_.RFTipPosition_(0) = quadrupedState.contacts[1].position.x;
+  stanceProcessor_.RFTipPosition_(1) = quadrupedState.contacts[1].position.y;
+  stanceProcessor_.RFTipPosition_(2) = quadrupedState.contacts[1].position.z;
   stanceProcessor_.LFTipState_ = quadrupedState.contacts[0].state;
   stanceProcessor_.RFTipState_ = quadrupedState.contacts[1].state;
 
   if(runHindLegStanceDetection_){
       // Add hind legs for proprioceptive variance estimation.
-      stanceProcessor_.LHTipPosition_(0) = (double)quadrupedState.contacts[2].position.x;
-      stanceProcessor_.LHTipPosition_(1) = (double)quadrupedState.contacts[2].position.y;
-      stanceProcessor_.LHTipPosition_(2) = (double)quadrupedState.contacts[2].position.z;
-      stanceProcessor_.RHTipPosition_(0) = (double)quadrupedState.contacts[3].position.x;
-      stanceProcessor_.RHTipPosition_(1) = (double)quadrupedState.contacts[3].position.y;
-      stanceProcessor_.RHTipPosition_(2) = (double)quadrupedState.contacts[3].position.z;
+      stanceProcessor_.LHTipPosition_(0) = quadrupedState.contacts[2].position.x;
+      stanceProcessor_.LHTipPosition_(1) = quadrupedState.contacts[2].position.y;
+      stanceProcessor_.LHTipPosition_(2) = quadrupedState.contacts[2].position.z;
+      stanceProcessor_.RHTipPosition_(0) = quadrupedState.contacts[3].position.x;
+      stanceProcessor_.RHTipPosition_(1) = quadrupedState.contacts[3].position.y;
+      stanceProcessor_.RHTipPosition_(2) = quadrupedState.contacts[3].position.z;
       stanceProcessor_.LHTipState_ = quadrupedState.contacts[2].state;
       stanceProcessor_.RHTipState_ = quadrupedState.contacts[3].state;
   }
@@ -579,47 +580,37 @@ void ElevationMapping::footTipStanceCallback(const quadruped_msgs::QuadrupedStat
   // Detect start and end of stances for each of the two front foot tips.
   std::string triggeredStance = stanceProcessor_.detectStancePhase();
 
-  //std::cout << " Looping: tip: " << triggeredStance << std::endl;
-
-  if (triggeredStance != "none") {
-    //  std::cout << " BEFORE PROCESSING!!! " << triggeredStance << std::endl;
-     // processTip(triggeredStance);
-    //  std::cout << " AFTER!!! => PROCESSING!!! " << triggeredStance << std::endl;
-  }
-
-  //if (triggeredStance != "none") processTip(triggeredStance);
-  //std::cout << "De string isch:"  << triggeredStance << std::endl;
-  // Broadcast frame transform for drift adjustment.
-
+  // Perform frame correction to minimize impact of state estimator drift.
   frameCorrection();
-  //bool trigger = getFootTipTrigger();
-  //std::string tip = getTriggeredTip();
-  //if (trigger) {
-  //    std::cout << "TIPTIPTIP:::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::: " << tip << std::endl;
-  //    std::cout << " \n ENDEND " << std::endl;
-  //    processTip(tip);
-  //}
+
+  // For testing of publisherless triggering.
+  if (stanceProcessor_.stanceProcessingTrigger_ != "none") {
+
+      std::cout << " \n \n \n This tip was triggered: " << stanceProcessor_.stanceProcessingTrigger_ << std::endl;
+      std::cout << "This tip was triggered ST1: " << stanceProcessor_.triggeredPosition_(0) << std::endl;
+      std::cout << "This tip was triggered ST2 " << stanceProcessor_.triggeredPosition_(1) << std::endl;
+      std::cout << "This tip was triggered ST3: " << stanceProcessor_.triggeredPosition_(2) << " \n \n \n " << std::endl;
+      processStance(stanceProcessor_.stanceProcessingTrigger_, stanceProcessor_.triggeredPosition_);
+      stanceProcessor_.stanceProcessingTrigger_ = "none";
+  }
 }
 
 void ElevationMapping::processTriggerCallback(const geometry_msgs::Twist triggerTwist) {
 
+}
 
+void ElevationMapping::processStance(std::string tip, Position3 meanStancePosition) {
+//    if (triggerTwist.angular.x < 1.5) tip = "left";
+//    else if (triggerTwist.angular.x > 1.5 && triggerTwist.angular.x < 2.5) tip = "right";
+//    else if (triggerTwist.angular.x > 2.5 && triggerTwist.angular.x < 3.5) tip = "lefthind";
+//    else if (triggerTwist.angular.x > 3.5) tip = "righthind";
 
-    // TODO: this with custom message : string and eigenVector.
-
-    //if (tip != "lefthind" && tip != "righthind") {
-    std::string tip;
-    if (triggerTwist.angular.x < 1.5) tip = "left";
-    else if (triggerTwist.angular.x > 1.5 && triggerTwist.angular.x < 2.5) tip = "right";
-    else if (triggerTwist.angular.x > 2.5 && triggerTwist.angular.x < 3.5) tip = "lefthind";
-    else if (triggerTwist.angular.x > 3.5) tip = "righthind";
-
-
+    std::cout << "The tip: " << tip << std::endl;
 
     Eigen::Vector3f meanStance;
-    meanStance(0) = triggerTwist.linear.x;  // Check timing!!!! TODO TODO
-    meanStance(1) = triggerTwist.linear.y;
-    meanStance(2) = triggerTwist.linear.z + stanceZBiasForVideo_;
+    meanStance(0) = meanStancePosition(0);  // Check timing!!!! TODO TODO
+    meanStance(1) = meanStancePosition(1);
+    meanStance(2) = meanStancePosition(2) + stanceZBiasForVideo_;
 
     //! Changed the order here -> check if it still reduces the prediction error..
     // Support Surface Estimation.
@@ -630,10 +621,9 @@ void ElevationMapping::processTriggerCallback(const geometry_msgs::Twist trigger
                                                                  meanStance, stanceProcessor_.driftRefinement_.heightDifferenceFromComparison_);
     }
 
-    // What oes this do???
-    map_.setFrameId("odom");
-
-
+    // What does this do???
+    // map_.setFrameId("odom");
+    map_.setFrameId("odom_drift_adjusted"); // Hacked!!!
 
 //    if (tip == "left") {
 //        stanceProcessor_.robustStanceTriggerLF_ = false;
@@ -665,7 +655,6 @@ void ElevationMapping::processTriggerCallback(const geometry_msgs::Twist trigger
     stanceProcessor_.driftRefinement_.publishAveragedFootTipPositionMarkers(map_.getRawGridMap(), meanStance, tip);
 
     // Shift mean stance by the estimated total drift.
-
     // Always apply frame correction before support Surface Estimation.
     frameCorrection();
 }

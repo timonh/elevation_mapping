@@ -155,44 +155,8 @@ bool StanceProcessor::initializeFootTipMarkers()
     return true;
 }
 
-//void StanceProcessor::footTipStanceCallback(const quadruped_msgs::QuadrupedState& quadrupedState)
-//{
-
-//  //std::cout << "Calling Back still!!! STANCE PROCESSOR" << std::endl;
-
-//  //boost::recursive_mutex::scoped_lock scopedLockForFootTipStanceProcessor(footTipStanceProcessorMutex_);
-//  // Set class variables.
-//  LFTipPosition_(0) = (double)quadrupedState.contacts[0].position.x;
-//  LFTipPosition_(1) = (double)quadrupedState.contacts[0].position.y;
-//  LFTipPosition_(2) = (double)quadrupedState.contacts[0].position.z;
-//  RFTipPosition_(0) = (double)quadrupedState.contacts[1].position.x;
-//  RFTipPosition_(1) = (double)quadrupedState.contacts[1].position.y;
-//  RFTipPosition_(2) = (double)quadrupedState.contacts[1].position.z;
-//  LFTipState_ = quadrupedState.contacts[0].state;
-//  RFTipState_ = quadrupedState.contacts[1].state;
-
-
-//  if(runHindLegStanceDetection_){
-//      // Add hind legs for proprioceptive variance estimation.
-//      LHTipPosition_(0) = (double)quadrupedState.contacts[2].position.x;
-//      LHTipPosition_(1) = (double)quadrupedState.contacts[2].position.y;
-//      LHTipPosition_(2) = (double)quadrupedState.contacts[2].position.z;
-//      RHTipPosition_(0) = (double)quadrupedState.contacts[3].position.x;
-//      RHTipPosition_(1) = (double)quadrupedState.contacts[3].position.y;
-//      RHTipPosition_(2) = (double)quadrupedState.contacts[3].position.z;
-//      LHTipState_ = quadrupedState.contacts[2].state;
-//      RHTipState_ = quadrupedState.contacts[3].state;
-//  }
-
-//  // Detect start and end of stances for each of the two front foot tips.
-//  detectStancePhase();
-//}
-
 std::string StanceProcessor::detectStancePhase()
 {
-
-
-
     std::string triggerString = "none";
     //std::cout << "continuing to loop" << std::endl;
     //boost::recursive_mutex::scoped_lock scopedLockForFootTipStanceProcessor(footTipStanceProcessorMutex_);
@@ -476,7 +440,7 @@ bool StanceProcessor::deleteFirstEntriesOfStances(std::string tip)
     }
     else{
         if (tip == "left"){
-            std::vector<Eigen::Vector3f> newLFTipStance;
+            std::vector<grid_map::Position3> newLFTipStance;
             for (unsigned int j = 1; j <= consideredFootStepNumber; ++j) {
                 newLFTipStance.push_back(LFTipStance_[LFTipStance_.size() - j]);     // Probably an additional -1 is needed -> hacked 3 to 10..
             }
@@ -485,7 +449,7 @@ bool StanceProcessor::deleteFirstEntriesOfStances(std::string tip)
             //LFTipStance_.erase(LFTipStance_.begin()); // pop_front (.erase(begin)) // TODO
         }
         if (tip == "right"){
-            std::vector<Eigen::Vector3f> newRFTipStance;
+            std::vector<grid_map::Position3> newRFTipStance;
             for (unsigned int j = 1; j <= consideredFootStepNumber; ++j) {
                 newRFTipStance.push_back(RFTipStance_[RFTipStance_.size() - j]);     // Probably an additional -1 is needed
             }
@@ -493,7 +457,7 @@ bool StanceProcessor::deleteFirstEntriesOfStances(std::string tip)
             RFTipStance_ = newRFTipStance;
         }
         if (tip == "lefthind"){
-            std::vector<Eigen::Vector3f> newLHTipStance;
+            std::vector<grid_map::Position3> newLHTipStance;
             for (unsigned int j = 1; j <= consideredFootStepNumber; ++j) {
                 newLHTipStance.push_back(LHTipStance_[LHTipStance_.size() - j]);     // Probably an additional -1 is needed
             }
@@ -501,7 +465,7 @@ bool StanceProcessor::deleteFirstEntriesOfStances(std::string tip)
             LHTipStance_ = newLHTipStance;
         }
         if (tip == "righthind"){
-            std::vector<Eigen::Vector3f> newRHTipStance;
+            std::vector<grid_map::Position3> newRHTipStance;
             for (unsigned int j = 1; j <= consideredFootStepNumber; ++j) {
                 newRHTipStance.push_back(RHTipStance_[RHTipStance_.size() - j]);     // Probably an additional -1 is needed
             }
@@ -549,8 +513,8 @@ bool StanceProcessor::deleteLastEntriesOfStances(std::string tip)
 
 Eigen::Vector3f StanceProcessor::getAverageFootTipPositions(std::string tip)
 {
-    Eigen::Vector3f totalStance(0, 0, 0);
-    std::vector<Eigen::Vector3f> stance;
+    grid_map::Position3 totalStance(0, 0, 0);
+    std::vector<grid_map::Position3> stance;
     if(tip == "left"){
         stance = LFTipStance_;
         LFTipStance_.clear();
@@ -568,7 +532,6 @@ Eigen::Vector3f StanceProcessor::getAverageFootTipPositions(std::string tip)
         RHTipStance_.clear();
     }
 
-
     // Derive mean foot tip positions
     if(stance.size() > 1){
         for (auto& n : stance){
@@ -578,37 +541,41 @@ Eigen::Vector3f StanceProcessor::getAverageFootTipPositions(std::string tip)
         meanStance_ = totalStance / float(stance.size());
     }
 
-    geometry_msgs::Twist triggerTwist;
+    //geometry_msgs::Twist triggerTwist;
     // Save the mean tip positions for simple foot tip embedding into high grass detection
-    if (tip == "left") {
-        frontLeftFootTip_ = meanStance_;
-        triggerTwist.linear.x = meanStance_(0);
-        triggerTwist.linear.y = meanStance_(1);
-        triggerTwist.linear.z = meanStance_(2);
-        triggerTwist.angular.x = 1.0;
-    }
-    else if (tip == "right") {
-        frontRightFootTip_ = meanStance_;
-        triggerTwist.linear.x = meanStance_(0);
-        triggerTwist.linear.y = meanStance_(1);
-        triggerTwist.linear.z = meanStance_(2);
-        triggerTwist.angular.x = 2.0;
-    }
-    else if (tip == "lefthind") {
-        hindLeftFootTip_ = meanStance_;
-        triggerTwist.linear.x = meanStance_(0);
-        triggerTwist.linear.y = meanStance_(1);
-        triggerTwist.linear.z = meanStance_(2);
-        triggerTwist.angular.x = 3.0;
-    }
-    else if (tip == "righthind") {
-        hindRightFootTip_ = meanStance_;
-        triggerTwist.linear.x = meanStance_(0);
-        triggerTwist.linear.y = meanStance_(1);
-        triggerTwist.linear.z = meanStance_(2);
-        triggerTwist.angular.x = 4.0;
-    }
-    stanceProcessorTriggerPublisher_.publish(triggerTwist);
+//    if (tip == "left") {
+//        frontLeftFootTip_ = meanStance_;
+//        //triggerTwist.linear.x = meanStance_(0);
+//        //triggerTwist.linear.y = meanStance_(1);
+//        //triggerTwist.linear.z = meanStance_(2);
+//        //triggerTwist.angular.x = 1.0;
+//    }
+//    else if (tip == "right") {
+//        frontRightFootTip_ = meanStance_;
+//        //triggerTwist.linear.x = meanStance_(0);
+//        //triggerTwist.linear.y = meanStance_(1);
+//        //triggerTwist.linear.z = meanStance_(2);
+//        //triggerTwist.angular.x = 2.0;
+//    }
+//    else if (tip == "lefthind") {
+//        hindLeftFootTip_ = meanStance_;
+//        //triggerTwist.linear.x = meanStance_(0);
+//        //triggerTwist.linear.y = meanStance_(1);
+//        //triggerTwist.linear.z = meanStance_(2);
+//        //triggerTwist.angular.x = 3.0;
+//    }
+//    else if (tip == "righthind") {
+//        hindRightFootTip_ = meanStance_;
+//        //triggerTwist.linear.x = meanStance_(0);
+//        //triggerTwist.linear.y = meanStance_(1);
+//        //triggerTwist.linear.z = meanStance_(2);
+//        //triggerTwist.angular.x = 4.0;
+//    }
+
+    stanceProcessingTrigger_ = tip;
+    triggeredPosition_ = meanStance_;
+
+    //stanceProcessorTriggerPublisher_.publish(triggerTwist);
 }
 
 void StanceProcessor::setFootTipTrigger(std::string tip){

@@ -202,6 +202,8 @@ class ElevationMapping
 
   void processTriggerCallback(const geometry_msgs::Twist triggerTwist);
 
+  void processStance(std::string tip, grid_map::Position3 meanStancePosition);
+
   //! ROS nodehandle.
   ros::NodeHandle& nodeHandle_;
 

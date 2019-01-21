@@ -568,8 +568,10 @@ private:
 
 
  //! Front Feet Positions:
- Eigen::Vector3f LFTipPosition_, RFTipPosition_, LHTipPosition_, RHTipPosition_;
- std::vector<Eigen::Vector3f> LFTipStance_, RFTipStance_, LHTipStance_, RHTipStance_;
+ grid_map::Position3 LFTipPosition_, RFTipPosition_, LHTipPosition_, RHTipPosition_;
+ //Eigen::Vector3f LFTipPosition_, RFTipPosition_, LHTipPosition_, RHTipPosition_;
+ std::vector<grid_map::Position3> LFTipStance_, RFTipStance_, LHTipStance_, RHTipStance_;
+ //std::vector<Eigen::Vector3f> LFTipStance_, RFTipStance_, LHTipStance_, RHTipStance_;
  std::vector<bool> processStanceTriggerLeft_, processStanceTriggerRight_, processStanceTriggerLeftHind_, processStanceTriggerRightHind_;
  bool LFTipState_, RFTipState_, LHTipState_, RHTipState_;
  double totalHeightDifference_;
@@ -613,7 +615,7 @@ private:
  double estimatedKalmanDiff_, estimatedKalmanDiffIncrement_, PEstimatedKalmanDiffIncrement_;
 
  //! Mean foot tip positions
- Eigen::Vector3f meanStance_;
+ grid_map::Position3 meanStance_;
 
  //! For drift Estimation under Flat ground assumption.
  std::vector<Eigen::Vector3f> leftStanceVector_, rightStanceVector_, leftHindStanceVector_, rightHindStanceVector_;
@@ -664,7 +666,7 @@ private:
  std::string filterChainParametersName_;
 
  // storage of front left foottip position for simple foot tip embedding.
- Eigen::Vector3f frontLeftFootTip_, frontRightFootTip_, hindLeftFootTip_, hindRightFootTip_;
+ grid_map::Position3 frontLeftFootTip_, frontRightFootTip_, hindLeftFootTip_, hindRightFootTip_;
 
  // Footprint storage in class member:
  geometry_msgs::Transform footprint_;
@@ -696,6 +698,9 @@ private:
  //! Robust version of stance detection. (more robust against slippage.)
  bool robustStanceTriggerLF_, robustStanceTriggerRF_, robustStanceTriggerLH_, robustStanceTriggerRH_;
  int robustStanceCounterLF_, robustStanceCounterRF_, robustStanceCounterLH_, robustStanceCounterRH_;
+
+ std::string stanceProcessingTrigger_;
+ grid_map::Position3 triggeredPosition_;
 
 
 };
