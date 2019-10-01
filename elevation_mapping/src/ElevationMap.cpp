@@ -947,6 +947,9 @@ void ElevationMap::footTipStanceCallback(const quadruped_msgs::QuadrupedState& q
   detectStancePhase();
   //detectStancePhase("right");
   frameCorrection();
+
+  std::cout << "I STARTED THE PROCESS INSIDE ELEVATION MAP CPP FILE" << std::endl;
+
 }
 
 bool ElevationMap::detectStancePhase() // SP

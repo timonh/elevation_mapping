@@ -79,6 +79,7 @@ StanceProcessor::StanceProcessor(ros::NodeHandle nodeHandle)
       driftRefinement_(nodeHandle)
 {
   std::cout << "called the stanceprocessor Constructor" << std::endl;
+  std::cout << "JUST SOME OTHER MESSAGE" << std::endl;
 
   // Launching parameters.
   nodeHandle_.param("run_foot_tip_elevation_map_enhancements", runFootTipElevationMapEnhancements_, true);

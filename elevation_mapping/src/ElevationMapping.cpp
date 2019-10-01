@@ -61,10 +61,7 @@ ElevationMapping::ElevationMapping(ros::NodeHandle& nodeHandle)
       ignoreRobotMotionUpdates_(false)
 {
   ROS_INFO("Elevation mapping node started.");
-  readParameters();
-  // TESTS
-  ROS_WARN_STREAM("Elevation mapping topic name: " << pointCloudTopic_);
-  //
+  readParameters();  
   pointCloudSubscriber_ = nodeHandle_.subscribe(pointCloudTopic_, 1, &ElevationMapping::pointCloudCallback, this);
   if (!robotPoseTopic_.empty()) {
     robotPoseSubscriber_.subscribe(nodeHandle_, robotPoseTopic_, 1);
@@ -582,6 +579,7 @@ void ElevationMapping::footTipStanceCallback(const quadruped_msgs::QuadrupedStat
 
   // Perform frame correction to minimize impact of state estimator drift.
   frameCorrection();
+  std::cout << "ELEVATION MAPPING CPP FILE" << std::endl;
 
   // For testing of publisherless triggering.
   if (stanceProcessor_.stanceProcessingTrigger_ != "none") {
@@ -589,7 +587,7 @@ void ElevationMapping::footTipStanceCallback(const quadruped_msgs::QuadrupedStat
       std::cout << " \n \n \n This tip was triggered: " << stanceProcessor_.stanceProcessingTrigger_ << std::endl;
       std::cout << "This tip was triggered ST1: " << stanceProcessor_.triggeredPosition_(0) << std::endl;
       std::cout << "This tip was triggered ST2 " << stanceProcessor_.triggeredPosition_(1) << std::endl;
-      std::cout << "This tip was triggered ST3: " << stanceProcessor_.triggeredPosition_(2) << " \n \n \n " << std::endl;
+      std::cout << "This tip was triggered ST4: " << stanceProcessor_.triggeredPosition_(2) << " \n \n \n " << std::endl;
       processStance(stanceProcessor_.stanceProcessingTrigger_, stanceProcessor_.triggeredPosition_);
       stanceProcessor_.stanceProcessingTrigger_ = "none";
   }
