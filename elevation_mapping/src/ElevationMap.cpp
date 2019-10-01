@@ -58,9 +58,6 @@
 // PCL normal estimation
 #include <pcl/features/normal_3d.h>
 
-// Plane calculus
-//#include <Plane/>
-
 // ROS msgs
 //#include <elevation_mapping/PerformanceAssessment.h>
 
@@ -228,10 +225,6 @@ bool ElevationMap::add(const pcl::PointCloud<pcl::PointXYZRGB>::Ptr pointCloud, 
   }
 
   if(false) publishSpatialVariancePointCloud(pointCloud, spatialVariances);
-  // TESTING:
-  //std::cout << "TIMING OF ADDING!! " << std::endl;
-  // END TESTING
-
 
   // Initialization for time calculation.
   const ros::WallTime methodStartTime(ros::WallTime::now());
@@ -980,7 +973,7 @@ bool ElevationMap::detectStancePhase() // SP
         processStanceTriggerRight_.erase(processStanceTriggerRight_.begin());
     }
 
-    // Collect the foot tip position data (if foot tip in contact). (Prevent nans)
+    // Collect the foot tip position data (if foot tip is in contact). (Prevent nans)
     if (LFTipState_ && isInStanceLeft_) {
         LFTipStance_.push_back(LFTipPosition_);
     }
